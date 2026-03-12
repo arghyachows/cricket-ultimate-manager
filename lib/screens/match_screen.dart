@@ -16,7 +16,16 @@ class MatchScreen extends ConsumerWidget {
     final chemistry = ref.watch(chemistryProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('PLAY MATCH')),
+      appBar: AppBar(
+        title: const Text('PLAY MATCH'),
+        actions: [
+          TextButton.icon(
+            onPressed: () => context.go(AppConstants.matchHistoryRoute),
+            icon: const Icon(Icons.history, size: 18, color: Colors.white54),
+            label: const Text('History', style: TextStyle(color: Colors.white54, fontSize: 12)),
+          ),
+        ],
+      ),
       body: teamAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Error: $e')),

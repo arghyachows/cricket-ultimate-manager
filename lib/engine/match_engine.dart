@@ -30,6 +30,7 @@ class MatchEngine {
   int _currentBatsmanIndex = 0;
   int _currentBowlerIndex = 0;
   int _nonStrikerIndex = 1;
+  int _nextBatsmanIndex = 2; // Next batsman to come in (after opener 0 and 1)
   bool _matchComplete = false;
   int _target = 0;
 
@@ -260,6 +261,7 @@ class MatchEngine {
       _currentBowling = _bowlingOrder1;
       _currentBatsmanIndex = 0;
       _nonStrikerIndex = 1;
+      _nextBatsmanIndex = 2;
       _currentBowlerIndex = 0;
 
       return MatchEvent(
@@ -432,13 +434,10 @@ class MatchEngine {
   }
 
   void _advanceBatsman() {
-    // Find next available batsman
-    final nextIndex = _currentBatting.length > _nonStrikerIndex + 1
-        ? max(_currentBatsmanIndex, _nonStrikerIndex) + 1
-        : -1;
-
-    if (nextIndex >= 0 && nextIndex < _currentBatting.length) {
-      _currentBatsmanIndex = nextIndex;
+    // New batsman replaces the dismissed one (current batsman)
+    if (_nextBatsmanIndex < _currentBatting.length) {
+      _currentBatsmanIndex = _nextBatsmanIndex;
+      _nextBatsmanIndex++;
     }
   }
 

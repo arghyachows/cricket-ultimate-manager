@@ -397,6 +397,10 @@ class _LiveMatchBanner extends StatelessWidget {
                           color: AppTheme.accent,
                         ),
                       ),
+                      Text(
+                        '(${matchState.homeOvers} ov)',
+                        style: const TextStyle(fontSize: 11, color: Colors.white38),
+                      ),
                     ],
                   ),
                 ),
@@ -428,6 +432,11 @@ class _LiveMatchBanner extends StatelessWidget {
                               ? Colors.white : Colors.white38,
                         ),
                       ),
+                      if (matchState.currentInnings >= 2)
+                        Text(
+                          '(${matchState.awayOvers} ov)',
+                          style: const TextStyle(fontSize: 11, color: Colors.white38),
+                        ),
                     ],
                   ),
                 ),

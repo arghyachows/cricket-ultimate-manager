@@ -6,11 +6,31 @@ import '../core/constants.dart';
 import '../providers/match_provider.dart';
 import '../models/models.dart';
 
-class LiveMatchScreen extends ConsumerWidget {
+class LiveMatchScreen extends ConsumerStatefulWidget {
   const LiveMatchScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<LiveMatchScreen> createState() => _LiveMatchScreenState();
+}
+
+class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final matchState = ref.watch(matchProvider);
 
     return Scaffold(
@@ -24,71 +44,86 @@ class LiveMatchScreen extends ConsumerWidget {
               child: const Text('SKIP TO END', style: TextStyle(color: AppTheme.accent)),
             ),
         ],
+        bottom: TabBar(
+          controller: _tabController,
+          indicatorColor: AppTheme.accent,
+          labelColor: AppTheme.accent,
+          unselectedLabelColor: Colors.white54,
+          tabs: const [
+            Tab(text: 'LIVE'),
+            Tab(text: 'SCORECARD'),
+          ],
+        ),
       ),
       body: Column(
         children: [
-          // Scoreboard
+          // Scoreboard always visible
           _buildScoreboard(matchState),
-          const SizedBox(height: 8),
 
-          // Live commentary
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(16),
-            color: AppTheme.surfaceLight,
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 300),
-              child: Text(
-                matchState.currentCommentary ?? 'Match starting...',
-                key: ValueKey(matchState.events.length),
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.white,
-                ),
-                textAlign: TextAlign.center,
-              ),
+          // Tabbed content
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                // Tab 1: Live view
+                _buildLiveTab(context, ref, matchState),
+                // Tab 2: Scorecard
+                _ScorecardTab(matchState: matchState),
+              ],
             ),
           ),
-
-          // Batting stats
-          if (matchState.batsmanStats.isNotEmpty)
-            _buildBatsmanPanel(matchState),
-
-          // Bowler stats
-          if (matchState.bowlerStats.isNotEmpty)
-            _buildBowlerPanel(matchState),
-
-          // Ball timeline
-          Expanded(
-            child: _buildTimeline(matchState),
-          ),
-
-          // Match result
-          if (!matchState.isSimulating && matchState.events.isNotEmpty)
-            _buildMatchResult(context, ref, matchState),
         ],
       ),
     );
   }
 
+  Widget _buildLiveTab(BuildContext context, WidgetRef ref, MatchState matchState) {
+    return Column(
+      children: [
+        const SizedBox(height: 4),
+        // Live commentary
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          color: AppTheme.surfaceLight,
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 300),
+            child: Text(
+              matchState.currentCommentary ?? 'Match starting...',
+              key: ValueKey(matchState.events.length),
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w500,
+                color: Colors.white,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+
+        // Current batsmen (filtered by current innings)
+        if (matchState.currentBatsmen.isNotEmpty)
+          _buildBatsmanPanel(matchState),
+
+        // Current bowler
+        if (matchState.currentBowlers.isNotEmpty)
+          _buildBowlerPanel(matchState),
+
+        // Ball timeline
+        Expanded(
+          child: _buildTimeline(matchState),
+        ),
+
+        // Match result
+        if (!matchState.isSimulating && matchState.events.isNotEmpty)
+          _buildMatchResult(context, ref, matchState),
+      ],
+    );
+  }
+
   Widget _buildScoreboard(MatchState state) {
-    final lastEvent = state.events.isNotEmpty ? state.events.last : null;
-    final score = lastEvent?.scoreAfter ?? 0;
-    final wickets = lastEvent?.wicketsAfter ?? 0;
-    final overs = lastEvent != null
-        ? '${lastEvent.overNumber}.${lastEvent.ballNumber}'
-        : '0.0';
-
-    final battingTeam = state.currentInnings == 1
-        ? state.homeTeamName
-        : state.awayTeamName;
-    final bowlingTeam = state.currentInnings == 1
-        ? state.awayTeamName
-        : state.homeTeamName;
-
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [AppTheme.primary.withValues(alpha: 0.6), AppTheme.surface],
@@ -96,87 +131,110 @@ class LiveMatchScreen extends ConsumerWidget {
       ),
       child: Column(
         children: [
-          // Team names
+          // Both teams side by side
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
+              // Home team (innings 1)
               Expanded(
-                child: Text(
-                  battingTeam,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold, fontSize: 14, color: AppTheme.accent,
-                  ),
-                  overflow: TextOverflow.ellipsis,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      state.homeTeamName,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                        color: state.currentInnings == 1 ? AppTheme.accent : Colors.white54,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Text(
+                          '${state.homeScore}/${state.homeWickets}',
+                          style: TextStyle(
+                            fontSize: state.currentInnings == 1 ? 28 : 22,
+                            fontWeight: FontWeight.bold,
+                            color: state.currentInnings == 1 ? Colors.white : Colors.white54,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          '(${state.homeOvers})',
+                          style: const TextStyle(fontSize: 13, color: Colors.white38),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
-              Text(
-                'vs',
-                style: TextStyle(color: Colors.white38, fontSize: 12),
+              // VS + Innings indicator
+              Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: state.currentInnings == 1
+                          ? AppTheme.accent.withValues(alpha: 0.2)
+                          : AppTheme.cardElite.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      'INN ${state.currentInnings}',
+                      style: TextStyle(
+                        color: state.currentInnings == 1 ? AppTheme.accent : AppTheme.cardElite,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 10,
+                      ),
+                    ),
+                  ),
+                ],
               ),
+              // Away team (innings 2)
               Expanded(
-                child: Text(
-                  bowlingTeam,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white54,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.end,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      state.awayTeamName,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                        color: state.currentInnings == 2 ? AppTheme.accent : Colors.white54,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.end,
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        if (state.currentInnings >= 2 || state.isMatchComplete) ...[
+                          Text(
+                            '(${state.awayOvers})',
+                            style: const TextStyle(fontSize: 13, color: Colors.white38),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            '${state.awayScore}/${state.awayWickets}',
+                            style: TextStyle(
+                              fontSize: state.currentInnings == 2 ? 28 : 22,
+                              fontWeight: FontWeight.bold,
+                              color: state.currentInnings == 2 ? Colors.white : Colors.white54,
+                            ),
+                          ),
+                        ] else
+                          const Text(
+                            'Yet to bat',
+                            style: TextStyle(fontSize: 14, color: Colors.white38),
+                          ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // Innings indicator
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                decoration: BoxDecoration(
-                  color: state.currentInnings == 1
-                      ? AppTheme.accent.withValues(alpha: 0.2)
-                      : AppTheme.cardElite.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  'INNINGS ${state.currentInnings}',
-                  style: TextStyle(
-                    color: state.currentInnings == 1 ? AppTheme.accent : AppTheme.cardElite,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                '$score',
-                style: const TextStyle(
-                  fontSize: 56,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-              Text(
-                '/$wickets',
-                style: const TextStyle(
-                  fontSize: 36,
-                  fontWeight: FontWeight.w400,
-                  color: Colors.white70,
-                ),
-              ),
-            ],
-          ),
-          Text(
-            '($overs overs)',
-            style: const TextStyle(
-              fontSize: 18,
-              color: Colors.white54,
-            ),
           ),
           if (state.isSimulating)
             const Padding(
@@ -195,10 +253,8 @@ class LiveMatchScreen extends ConsumerWidget {
   }
 
   Widget _buildBatsmanPanel(MatchState state) {
-    final activeBatsmen = state.batsmanStats.values
-        .where((b) => !b.isOut)
-        .take(2)
-        .toList();
+    // Show only current innings batsmen who are not out (max 2 at crease)
+    final activeBatsmen = state.currentBatsmen.take(2).toList();
 
     if (activeBatsmen.isEmpty) return const SizedBox();
 
@@ -236,11 +292,12 @@ class LiveMatchScreen extends ConsumerWidget {
   }
 
   Widget _buildBowlerPanel(MatchState state) {
-    final lastEvent = state.events.isNotEmpty ? state.events.last : null;
-    if (lastEvent == null) return const SizedBox();
+    // Show the most recent bowler for the current innings
+    final currentBowlers = state.currentBowlers;
+    if (currentBowlers.isEmpty) return const SizedBox();
 
-    final bowler = state.bowlerStats[lastEvent.bowlerCardId];
-    if (bowler == null) return const SizedBox();
+    // The last bowler in the list is typically the current one
+    final bowler = currentBowlers.last;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -319,7 +376,7 @@ class LiveMatchScreen extends ConsumerWidget {
       ),
       child: Row(
         children: [
-          Container(
+          SizedBox(
             width: 50,
             child: Text(
               event.overDisplay,
@@ -446,6 +503,191 @@ class LiveMatchScreen extends ConsumerWidget {
             ),
             child: const Text('CONTINUE'),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Scorecard Tab ───────────────────────────────────────────────────────────
+
+class _ScorecardTab extends StatelessWidget {
+  final MatchState matchState;
+  const _ScorecardTab({required this.matchState});
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(12),
+      children: [
+        // Innings 1 Batting
+        if (matchState.innings1Batsmen.isNotEmpty) ...[
+          _inningsHeader('${matchState.homeTeamName} Batting', matchState.homeScore, matchState.homeWickets, matchState.homeOvers),
+          _battingCard(matchState.innings1Batsmen),
+          const SizedBox(height: 4),
+          _bowlingCard(matchState.innings1Bowlers),
+        ],
+
+        const SizedBox(height: 16),
+
+        // Innings 2 Batting
+        if (matchState.innings2Batsmen.isNotEmpty) ...[
+          _inningsHeader('${matchState.awayTeamName} Batting', matchState.awayScore, matchState.awayWickets, matchState.awayOvers),
+          _battingCard(matchState.innings2Batsmen),
+          const SizedBox(height: 4),
+          _bowlingCard(matchState.innings2Bowlers),
+        ],
+
+        if (matchState.batsmanStats.isEmpty)
+          const Center(
+            child: Padding(
+              padding: EdgeInsets.all(40),
+              child: Text(
+                'Scorecard will appear once the match starts',
+                style: TextStyle(color: Colors.white38),
+              ),
+            ),
+          ),
+        const SizedBox(height: 80),
+      ],
+    );
+  }
+
+  Widget _inningsHeader(String title, int score, int wickets, String overs) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      margin: const EdgeInsets.only(bottom: 2),
+      decoration: BoxDecoration(
+        color: AppTheme.primary.withValues(alpha: 0.4),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              title,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppTheme.accent),
+            ),
+          ),
+          Text(
+            '$score/$wickets ($overs ov)',
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.white),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _battingCard(List<BatsmanStats> batsmen) {
+    return Container(
+      color: AppTheme.surface,
+      child: Column(
+        children: [
+          // Header row
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            color: AppTheme.surfaceLight,
+            child: const Row(
+              children: [
+                Expanded(flex: 4, child: Text('Batter', style: TextStyle(fontSize: 11, color: Colors.white38, fontWeight: FontWeight.bold))),
+                Expanded(child: Text('R', style: TextStyle(fontSize: 11, color: Colors.white38, fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
+                Expanded(child: Text('B', style: TextStyle(fontSize: 11, color: Colors.white38, fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
+                Expanded(child: Text('4s', style: TextStyle(fontSize: 11, color: Colors.white38, fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
+                Expanded(child: Text('6s', style: TextStyle(fontSize: 11, color: Colors.white38, fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
+                Expanded(child: Text('SR', style: TextStyle(fontSize: 11, color: Colors.white38, fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
+              ],
+            ),
+          ),
+          ...batsmen.map((b) => Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              border: Border(bottom: BorderSide(color: Colors.white10)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  flex: 4,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        b.name,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: b.isOut ? Colors.white54 : Colors.white,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (b.isOut && b.dismissalType != null)
+                        Text(
+                          b.dismissalType!,
+                          style: const TextStyle(fontSize: 10, color: Colors.redAccent),
+                        )
+                      else if (!b.isOut)
+                        const Text('not out', style: TextStyle(fontSize: 10, color: AppTheme.accent)),
+                    ],
+                  ),
+                ),
+                Expanded(child: Text('${b.runs}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: b.runs >= 50 ? AppTheme.accent : Colors.white), textAlign: TextAlign.center)),
+                Expanded(child: Text('${b.balls}', style: const TextStyle(fontSize: 13, color: Colors.white70), textAlign: TextAlign.center)),
+                Expanded(child: Text('${b.fours}', style: const TextStyle(fontSize: 13, color: Colors.white70), textAlign: TextAlign.center)),
+                Expanded(child: Text('${b.sixes}', style: const TextStyle(fontSize: 13, color: Colors.white70), textAlign: TextAlign.center)),
+                Expanded(child: Text(b.strikeRate.toStringAsFixed(1), style: const TextStyle(fontSize: 12, color: Colors.white54), textAlign: TextAlign.center)),
+              ],
+            ),
+          )),
+        ],
+      ),
+    );
+  }
+
+  Widget _bowlingCard(List<BowlerStats> bowlers) {
+    if (bowlers.isEmpty) return const SizedBox();
+
+    return Container(
+      color: AppTheme.surface,
+      margin: const EdgeInsets.only(bottom: 4),
+      child: Column(
+        children: [
+          // Header row
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            color: AppTheme.surfaceLight,
+            child: const Row(
+              children: [
+                Expanded(flex: 4, child: Text('Bowler', style: TextStyle(fontSize: 11, color: Colors.white38, fontWeight: FontWeight.bold))),
+                Expanded(child: Text('O', style: TextStyle(fontSize: 11, color: Colors.white38, fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
+                Expanded(child: Text('M', style: TextStyle(fontSize: 11, color: Colors.white38, fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
+                Expanded(child: Text('R', style: TextStyle(fontSize: 11, color: Colors.white38, fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
+                Expanded(child: Text('W', style: TextStyle(fontSize: 11, color: Colors.white38, fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
+                Expanded(child: Text('ECO', style: TextStyle(fontSize: 11, color: Colors.white38, fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
+              ],
+            ),
+          ),
+          ...bowlers.map((b) => Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              border: Border(bottom: BorderSide(color: Colors.white10)),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  flex: 4,
+                  child: Text(
+                    b.name,
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                Expanded(child: Text(b.oversDisplay, style: const TextStyle(fontSize: 13, color: Colors.white70), textAlign: TextAlign.center)),
+                Expanded(child: Text('${b.maidens}', style: const TextStyle(fontSize: 13, color: Colors.white70), textAlign: TextAlign.center)),
+                Expanded(child: Text('${b.runs}', style: const TextStyle(fontSize: 13, color: Colors.white70), textAlign: TextAlign.center)),
+                Expanded(child: Text('${b.wickets}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: b.wickets >= 3 ? AppTheme.accent : Colors.white), textAlign: TextAlign.center)),
+                Expanded(child: Text(b.economy.toStringAsFixed(1), style: const TextStyle(fontSize: 12, color: Colors.white54), textAlign: TextAlign.center)),
+              ],
+            ),
+          )),
         ],
       ),
     );

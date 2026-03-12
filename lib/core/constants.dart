@@ -85,4 +85,5 @@ class AppConstants {
   static const String leaderboardRoute = '/leaderboard';
   static const String tournamentsRoute = '/tournaments';
   static const String settingsRoute = '/settings';
+  static const String matchHistoryRoute = '/match/history';
 }

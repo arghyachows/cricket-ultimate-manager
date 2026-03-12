@@ -10,6 +10,7 @@ import '../screens/collection_screen.dart';
 import '../screens/squad_builder_screen.dart';
 import '../screens/match_screen.dart';
 import '../screens/live_match_screen.dart';
+import '../screens/match_history_screen.dart';
 import '../screens/market_screen.dart';
 import '../screens/leaderboard_screen.dart';
 import '../screens/tournament_screen.dart';
@@ -71,6 +72,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: AppConstants.liveMatchRoute,
             builder: (context, state) => const LiveMatchScreen(),
+          ),
+          GoRoute(
+            path: AppConstants.matchHistoryRoute,
+            builder: (context, state) => const MatchHistoryScreen(),
           ),
           GoRoute(
             path: AppConstants.marketRoute,
