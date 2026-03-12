@@ -1,0 +1,219 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import '../core/theme.dart';
+import '../providers/providers.dart';
+import '../models/models.dart';
+import '../widgets/player_card_widget.dart';
+
+class CollectionScreen extends ConsumerWidget {
+  const CollectionScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cards = ref.watch(filteredUserCardsProvider);
+    final filter = ref.watch(cardFilterProvider);
+    final cardsAsync = ref.watch(userCardsProvider);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('MY COLLECTION (${cards.length})'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.filter_list),
+            onPressed: () => _showFilterSheet(context, ref, filter),
+          ),
+        ],
+      ),
+      body: cardsAsync.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(child: Text('Error: $e')),
+        data: (_) {
+          if (cards.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.style_outlined, size: 80, color: Colors.white24),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'No cards yet!',
+                    style: TextStyle(fontSize: 20, color: Colors.white54),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Open packs to get player cards',
+                    style: TextStyle(color: Colors.white38),
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton.icon(
+                    onPressed: () => context.go('/packs'),
+                    icon: const Icon(Icons.card_giftcard),
+                    label: const Text('OPEN PACKS'),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          return GridView.builder(
+            padding: const EdgeInsets.all(12),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 3,
+              childAspectRatio: 0.65,
+              crossAxisSpacing: 8,
+              mainAxisSpacing: 8,
+            ),
+            itemCount: cards.length,
+            itemBuilder: (context, index) {
+              final card = cards[index];
+              if (card.playerCard == null) return const SizedBox();
+
+              return GestureDetector(
+                onTap: () => context.go('/card/${card.id}'),
+                child: PlayerCardWidget(
+                  playerCard: card.playerCard!,
+                  userCard: card,
+                  size: CardSize.small,
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  void _showFilterSheet(BuildContext context, WidgetRef ref, CardFilter filter) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'FILTER & SORT',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              const Text('Rarity', style: TextStyle(color: Colors.white70)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                children: [
+                  _FilterChip(
+                    label: 'All',
+                    selected: filter.rarity == null,
+                    color: Colors.white,
+                    onTap: () =>
+                        ref.read(cardFilterProvider.notifier).state =
+                            filter.copyWith(rarity: null),
+                  ),
+                  ...['bronze', 'silver', 'gold', 'elite', 'legend'].map(
+                    (r) => _FilterChip(
+                      label: r.toUpperCase(),
+                      selected: filter.rarity == r,
+                      color: AppTheme.getRarityColor(r),
+                      onTap: () =>
+                          ref.read(cardFilterProvider.notifier).state =
+                              filter.copyWith(rarity: r),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              const Text('Role', style: TextStyle(color: Colors.white70)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                children: [
+                  _FilterChip(
+                    label: 'All',
+                    selected: filter.role == null,
+                    color: Colors.white,
+                    onTap: () =>
+                        ref.read(cardFilterProvider.notifier).state =
+                            filter.copyWith(role: null),
+                  ),
+                  ...['batsman', 'bowler', 'all_rounder', 'wicket_keeper'].map(
+                    (r) => _FilterChip(
+                      label: r.replaceAll('_', ' ').toUpperCase(),
+                      selected: filter.role == r,
+                      color: Colors.blueAccent,
+                      onTap: () =>
+                          ref.read(cardFilterProvider.notifier).state =
+                              filter.copyWith(role: r),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              const Text('Sort By', style: TextStyle(color: Colors.white70)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                children: ['rating', 'batting', 'bowling', 'name'].map(
+                  (s) => _FilterChip(
+                    label: s.toUpperCase(),
+                    selected: filter.sortBy == s,
+                    color: AppTheme.accent,
+                    onTap: () =>
+                        ref.read(cardFilterProvider.notifier).state =
+                            filter.copyWith(sortBy: s),
+                  ),
+                ).toList(),
+              ),
+              const SizedBox(height: 24),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _FilterChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _FilterChip({
+    required this.label,
+    required this.selected,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? color.withValues(alpha: 0.3) : Colors.transparent,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: selected ? color : Colors.white24,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? color : Colors.white54,
+            fontSize: 12,
+            fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+      ),
+    );
+  }
+}
