@@ -40,10 +40,21 @@ class SupabaseService {
   static Future<void> updateUserCoins(int amount) async {
     final userId = currentUserId;
     if (userId == null) return;
-    await client.rpc('update_user_coins', params: {
-      'p_user_id': userId,
-      'p_amount': amount,
+    await client
+        .from('users')
+        .update({'coins': amount})
+        .eq('id', userId);
+  }
+
+  static Future<void> quickSellCard(String userCardId, int sellPrice) async {
+    await client.rpc('quick_sell_card', params: {
+      'p_user_card_id': userCardId,
+      'p_sell_price': sellPrice,
     });
+  }
+
+  static Future<void> deleteUserCard(String userCardId) async {
+    await client.from('user_cards').delete().eq('id', userCardId);
   }
 
   // ---- CARDS ----

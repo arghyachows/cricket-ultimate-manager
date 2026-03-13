@@ -15,7 +15,10 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
 
   Future<void> loadTeam() async {
     try {
-      state = const AsyncValue.loading();
+      // Only show loading spinner on very first load
+      if (!state.hasValue) {
+        state = const AsyncValue.loading();
+      }
       final data = await SupabaseService.getActiveTeam();
       if (data != null) {
         state = AsyncValue.data(Team.fromJson(data));
@@ -23,7 +26,9 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
         state = const AsyncValue.data(null);
       }
     } catch (e, st) {
-      state = AsyncValue.error(e, st);
+      if (!state.hasValue) {
+        state = AsyncValue.error(e, st);
+      }
     }
   }
 
@@ -122,6 +127,36 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
     await SupabaseService.client
         .from('squad_players')
         .update({'batting_order': order}).eq('id', squadPlayerId);
+    await loadTeam();
+  }
+
+  /// Reorder Playing XI: move the player at [oldIndex] to [newIndex] (0-based)
+  /// and reassign position values (1-11) for all XI players accordingly.
+  Future<void> reorderPlayingXI(List<SquadPlayer> currentOrder, int oldIndex, int newIndex) async {
+    if (newIndex > oldIndex) newIndex--;
+    if (oldIndex == newIndex) return;
+
+    final reordered = List<SquadPlayer>.from(currentOrder);
+    final item = reordered.removeAt(oldIndex);
+    reordered.insert(newIndex, item);
+
+    // Move all affected players to temp positions (100+) first
+    // to avoid UNIQUE(squad_id, position) constraint violations
+    for (int i = 0; i < reordered.length; i++) {
+      if (reordered[i].position != i + 1) {
+        await SupabaseService.client
+            .from('squad_players')
+            .update({'position': 100 + i}).eq('id', reordered[i].id);
+      }
+    }
+    // Now assign final positions
+    for (int i = 0; i < reordered.length; i++) {
+      if (reordered[i].position != i + 1) {
+        await SupabaseService.client
+            .from('squad_players')
+            .update({'position': i + 1}).eq('id', reordered[i].id);
+      }
+    }
     await loadTeam();
   }
 

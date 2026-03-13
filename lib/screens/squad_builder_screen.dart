@@ -11,20 +11,11 @@ class SquadBuilderScreen extends ConsumerStatefulWidget {
   ConsumerState<SquadBuilderScreen> createState() => _SquadBuilderScreenState();
 }
 
-class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
+class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen> {
   final _teamNameController = TextEditingController();
 
   @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 3, vsync: this);
-  }
-
-  @override
   void dispose() {
-    _tabController.dispose();
     _teamNameController.dispose();
     super.dispose();
   }
@@ -33,21 +24,12 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
   Widget build(BuildContext context) {
     final teamAsync = ref.watch(teamProvider);
     final chemistry = ref.watch(chemistryProvider);
+    // Ensure user cards are loaded for the player picker
+    ref.watch(userCardsProvider);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('SQUAD BUILDER'),
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: AppTheme.accent,
-          labelColor: AppTheme.accent,
-          unselectedLabelColor: Colors.white54,
-          tabs: const [
-            Tab(text: 'PLAYING XI'),
-            Tab(text: 'SQUAD'),
-            Tab(text: 'TACTICS'),
-          ],
-        ),
         actions: [
           // Chemistry indicator
           Container(
@@ -93,14 +75,7 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
           if (team == null) {
             return _buildCreateTeam();
           }
-          return TabBarView(
-            controller: _tabController,
-            children: [
-              _buildPlayingXI(team),
-              _buildFullSquad(team),
-              _buildTactics(team),
-            ],
-          );
+          return _buildPlayingXI(team);
         },
       ),
     );
@@ -191,6 +166,17 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
       positionMap[sp.position] = sp;
     }
 
+    // Ordered filled slots and empty positions
+    final filledSlots = <SquadPlayer>[];
+    final emptyPositions = <int>[];
+    for (int pos = 1; pos <= 11; pos++) {
+      if (positionMap.containsKey(pos)) {
+        filledSlots.add(positionMap[pos]!);
+      } else {
+        emptyPositions.add(pos);
+      }
+    }
+
     // Count roles
     final roleCount = <String, int>{};
     for (final sp in xi) {
@@ -270,44 +256,62 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
           ),
         const SizedBox(height: 8),
 
-        // Render all 11 positions — filled or empty
-        ...List.generate(11, (i) {
-          final pos = i + 1;
-          final sp = positionMap[pos];
-          if (sp != null) {
-            return _buildSquadPlayerTile(sp, isXI: true);
-          }
-          return _buildEmptySlot(pos, label: _positionLabels[pos]);
-        }),
+        // Reorderable Playing XI list
+        if (filledSlots.isEmpty)
+          ...List.generate(11, (i) {
+            return _buildEmptySlot(i + 1, label: _positionLabels[i + 1]);
+          })
+        else ...
+        [
+          const Padding(
+            padding: EdgeInsets.only(bottom: 4),
+            child: Text(
+              'Drag to reorder lineup',
+              style: TextStyle(color: Colors.white38, fontSize: 12),
+            ),
+          ),
+          ReorderableListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: filledSlots.length,
+            proxyDecorator: (child, index, animation) {
+              return Material(
+                color: Colors.transparent,
+                elevation: 4,
+                child: child,
+              );
+            },
+            onReorder: (oldIndex, newIndex) {
+              ref.read(teamProvider.notifier).reorderPlayingXI(
+                filledSlots,
+                oldIndex,
+                newIndex,
+              );
+            },
+            itemBuilder: (context, index) {
+              final sp = filledSlots[index];
+              return _buildReorderableTile(sp, index + 1, key: ValueKey(sp.id));
+            },
+          ),
+          // Empty slots after filled ones
+          ...emptyPositions.map(
+            (pos) => _buildEmptySlot(pos, label: _positionLabels[pos]),
+          ),
+        ],
       ],
     );
   }
 
-  Widget _roleChip(String label, int count, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Text(
-        '$label: $count',
-        style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.bold),
-      ),
-    );
-  }
-
-  // ─── Player Tile ─────────────────────────────────────────────────────────
-
-  Widget _buildSquadPlayerTile(SquadPlayer sp, {bool isXI = false, bool showAddToXI = false}) {
+  Widget _buildReorderableTile(SquadPlayer sp, int order, {Key? key}) {
     final card = sp.userCard?.playerCard;
-    if (card == null) return const SizedBox();
+    if (card == null) return SizedBox(key: key);
 
     final rarityColor = AppTheme.getRarityColor(card.rarity);
+    final label = _positionLabels[order] ?? 'Slot $order';
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
+      key: key,
+      margin: const EdgeInsets.only(bottom: 6),
       decoration: BoxDecoration(
         color: AppTheme.surface,
         borderRadius: BorderRadius.circular(12),
@@ -328,8 +332,6 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
             borderRadius: BorderRadius.circular(8),
             gradient: LinearGradient(
               colors: [rarityColor, rarityColor.withValues(alpha: 0.5)],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
             ),
           ),
           child: Column(
@@ -337,11 +339,7 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
             children: [
               Text(
                 '${card.rating}',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
               ),
               Text(
                 card.roleDisplay,
@@ -352,6 +350,18 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
         ),
         title: Row(
           children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              margin: const EdgeInsets.only(right: 6),
+              decoration: BoxDecoration(
+                color: Colors.white10,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                '#$order',
+                style: const TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.bold),
+              ),
+            ),
             Expanded(
               child: Text(
                 card.playerName,
@@ -368,53 +378,59 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
                 ),
                 child: const Text('C', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 11)),
               ),
-            if (sp.isViceCaptain) ...[
-              const SizedBox(width: 4),
+            if (sp.isViceCaptain)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                margin: const EdgeInsets.only(left: 4),
                 decoration: BoxDecoration(
                   color: Colors.blueAccent,
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: const Text('VC', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11)),
               ),
-            ],
           ],
         ),
-        subtitle: Row(
+        subtitle: Text(
+          '$label  •  ${card.countryCode}  •  BAT ${card.batting}  BOWL ${card.bowling}',
+          style: const TextStyle(color: Colors.white54, fontSize: 11),
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Text(card.countryCode, style: const TextStyle(color: Colors.white54, fontSize: 12)),
-            const SizedBox(width: 8),
-            Text(
-              'BAT ${card.batting}',
-              style: const TextStyle(color: Colors.blueAccent, fontSize: 11),
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert, color: Colors.white54, size: 20),
+              color: AppTheme.surfaceLight,
+              onSelected: (value) => _handlePlayerAction(value, sp),
+              itemBuilder: (context) => [
+                if (!sp.isCaptain)
+                  const PopupMenuItem(value: 'captain', child: Text('Set Captain')),
+                if (!sp.isViceCaptain)
+                  const PopupMenuItem(value: 'vice_captain', child: Text('Set Vice Captain')),
+                const PopupMenuItem(value: 'remove_xi', child: Text('Remove from XI')),
+                const PopupMenuItem(
+                  value: 'remove',
+                  child: Text('Remove from Squad', style: TextStyle(color: AppTheme.error)),
+                ),
+              ],
             ),
-            const SizedBox(width: 6),
-            Text(
-              'BOWL ${card.bowling}',
-              style: const TextStyle(color: Colors.redAccent, fontSize: 11),
-            ),
+            const Icon(Icons.drag_handle, color: Colors.white24, size: 20),
           ],
         ),
-        trailing: PopupMenuButton<String>(
-          icon: const Icon(Icons.more_vert, color: Colors.white54),
-          color: AppTheme.surfaceLight,
-          onSelected: (value) => _handlePlayerAction(value, sp),
-          itemBuilder: (context) => [
-            if (isXI && !sp.isCaptain)
-              const PopupMenuItem(value: 'captain', child: Text('Set Captain')),
-            if (isXI && !sp.isViceCaptain)
-              const PopupMenuItem(value: 'vice_captain', child: Text('Set Vice Captain')),
-            if (!isXI && !sp.isPlayingXI)
-              const PopupMenuItem(value: 'add_xi', child: Text('Add to Playing XI')),
-            if (isXI)
-              const PopupMenuItem(value: 'remove_xi', child: Text('Remove from XI')),
-            const PopupMenuItem(
-              value: 'remove',
-              child: Text('Remove from Squad', style: TextStyle(color: AppTheme.error)),
-            ),
-          ],
-        ),
+      ),
+    );
+  }
+
+  Widget _roleChip(String label, int count, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Text(
+        '$label: $count',
+        style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.bold),
       ),
     );
   }
@@ -497,15 +513,6 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
   // ─── Add Player Sheet ────────────────────────────────────────────────────
 
   void _showAddPlayerSheet(int position, {String? filterRole}) {
-    final allCards = ref.read(userCardsProvider).valueOrNull ?? [];
-    final team = ref.read(teamProvider).valueOrNull;
-    final squad = team?.activeSquad;
-    // Filter out cards already assigned to the squad
-    final assignedCardIds = squad?.players.map((p) => p.userCardId).toSet() ?? {};
-    var cards = allCards.where((c) => !assignedCardIds.contains(c.id)).toList();
-    // Sort by rating descending
-    cards.sort((a, b) => (b.playerCard?.rating ?? 0).compareTo(a.playerCard?.rating ?? 0));
-
     showModalBottomSheet(
       context: context,
       backgroundColor: AppTheme.background,
@@ -517,9 +524,34 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
         String? selectedRole = filterRole;
         return StatefulBuilder(
           builder: (ctx, setSheetState) {
+            // Read fresh data each rebuild
+            final allCards = ref.read(userCardsProvider).valueOrNull ?? [];
+            final team = ref.read(teamProvider).valueOrNull;
+            final squad = team?.activeSquad;
+
+            // Collect assigned user-card IDs AND player-card IDs (prevent same player twice)
+            final assignedUserCardIds = squad?.players.map((p) => p.userCardId).toSet() ?? {};
+            final assignedPlayerCardIds = squad?.players
+                .where((p) => p.userCard?.playerCard != null)
+                .map((p) => p.userCard!.cardId)
+                .toSet() ?? {};
+
+            var cards = allCards.where((c) {
+              if (assignedUserCardIds.contains(c.id)) return false;
+              // Prevent duplicate player cards in lineup
+              if (assignedPlayerCardIds.contains(c.cardId)) return false;
+              return true;
+            }).toList();
+
+            // Sort by rating descending
+            cards.sort((a, b) =>
+                (b.playerCard?.rating ?? 0).compareTo(a.playerCard?.rating ?? 0));
+
             var filtered = cards.toList();
             if (selectedRole != null) {
-              filtered = filtered.where((c) => c.playerCard?.role == selectedRole).toList();
+              filtered = filtered
+                  .where((c) => c.playerCard?.role == selectedRole)
+                  .toList();
             }
 
             return DraggableScrollableSheet(
@@ -701,305 +733,5 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
     );
   }
 
-  // ─── Full Squad Tab ──────────────────────────────────────────────────────
-
-  Widget _buildFullSquad(Team team) {
-    final squad = team.activeSquad;
-    if (squad == null) {
-      return const Center(child: Text('No squad', style: TextStyle(color: Colors.white38)));
-    }
-
-    final squadPlayers = squad.players.toList()
-      ..sort((a, b) => a.position.compareTo(b.position));
-    final xiPlayers = squadPlayers.where((p) => p.isPlayingXI).toList();
-    final benchPlayers = squadPlayers.where((p) => !p.isPlayingXI).toList();
-
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        // Summary
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: AppTheme.surfaceLight,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _squadStat('Total', '${squad.players.length}'),
-              _squadStat('In XI', '${xiPlayers.length}'),
-              _squadStat('Bench', '${benchPlayers.length}'),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-
-        // Playing XI section
-        if (xiPlayers.isNotEmpty) ...[
-          _sectionHeader('PLAYING XI', xiPlayers.length),
-          const SizedBox(height: 8),
-          ...xiPlayers.map((sp) => _buildSquadPlayerTile(sp, isXI: true)),
-          const SizedBox(height: 16),
-        ],
-
-        // Bench section
-        if (benchPlayers.isNotEmpty) ...[
-          _sectionHeader('BENCH', benchPlayers.length),
-          const SizedBox(height: 8),
-          ...benchPlayers.map((sp) => _buildSquadPlayerTile(sp, showAddToXI: true)),
-          const SizedBox(height: 16),
-        ],
-
-        // Add player button
-        Container(
-          margin: const EdgeInsets.only(bottom: 8),
-          child: OutlinedButton.icon(
-            onPressed: () {
-              // Find next free position for squad (not XI)
-              final usedPositions = squad.players.map((p) => p.position).toSet();
-              int freePos = 12;
-              for (int i = 12; i <= 30; i++) {
-                if (!usedPositions.contains(i)) {
-                  freePos = i;
-                  break;
-                }
-              }
-              _showAddPlayerSheet(freePos);
-            },
-            icon: const Icon(Icons.person_add, size: 18),
-            label: const Text('ADD TO SQUAD'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppTheme.accent,
-              side: BorderSide(color: AppTheme.accent.withValues(alpha: 0.5)),
-              padding: const EdgeInsets.symmetric(vertical: 14),
-            ),
-          ),
-        ),
-
-        const SizedBox(height: 80),
-      ],
-    );
-  }
-
-  Widget _squadStat(String label, String value) {
-    return Column(
-      children: [
-        Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.accent)),
-        Text(label, style: const TextStyle(fontSize: 11, color: Colors.white54)),
-      ],
-    );
-  }
-
-  Widget _sectionHeader(String title, int count) {
-    return Row(
-      children: [
-        Text(
-          title,
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 1, color: Colors.white54),
-        ),
-        const SizedBox(width: 8),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-          decoration: BoxDecoration(
-            color: AppTheme.accent.withValues(alpha: 0.15),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Text('$count', style: const TextStyle(color: AppTheme.accent, fontSize: 12, fontWeight: FontWeight.bold)),
-        ),
-      ],
-    );
-  }
-
   // ─── Tactics Tab ─────────────────────────────────────────────────────────
-
-  Widget _buildTactics(Team team) {
-    final squad = team.activeSquad;
-    if (squad == null) return const Center(child: Text('No squad'));
-
-    final xi = squad.playingXI;
-    final bowlers = squad.bowlers;
-
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        // Batting order section
-        const Text(
-          'BATTING ORDER',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1),
-        ),
-        const SizedBox(height: 4),
-        const Text(
-          'Drag to reorder batting positions',
-          style: TextStyle(color: Colors.white38, fontSize: 12),
-        ),
-        const SizedBox(height: 12),
-
-        if (xi.isEmpty)
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: AppTheme.surface,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Text(
-              'Add players to your Playing XI to set batting order',
-              style: TextStyle(color: Colors.white38),
-              textAlign: TextAlign.center,
-            ),
-          )
-        else
-          ReorderableListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: xi.length,
-            onReorder: (oldIndex, newIndex) {
-              if (newIndex > oldIndex) newIndex--;
-              // Update batting orders for all players in the new order
-              final reordered = List<SquadPlayer>.from(xi);
-              final item = reordered.removeAt(oldIndex);
-              reordered.insert(newIndex, item);
-              for (int i = 0; i < reordered.length; i++) {
-                ref.read(teamProvider.notifier).setBattingOrder(reordered[i].id, i + 1);
-              }
-            },
-            itemBuilder: (context, index) {
-              final sp = xi[index];
-              return _buildBattingOrderTile(sp, index + 1, key: ValueKey(sp.id));
-            },
-          ),
-
-        const SizedBox(height: 24),
-
-        // Bowling section
-        const Text(
-          'BOWLERS',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1),
-        ),
-        const SizedBox(height: 4),
-        const Text(
-          'All-rounders and bowlers in your XI',
-          style: TextStyle(color: Colors.white38, fontSize: 12),
-        ),
-        const SizedBox(height: 12),
-
-        if (bowlers.isEmpty)
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: AppTheme.surface,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Text(
-              'No bowlers in your Playing XI!',
-              style: TextStyle(color: AppTheme.error),
-              textAlign: TextAlign.center,
-            ),
-          )
-        else
-          ...bowlers.map((sp) {
-            final card = sp.userCard?.playerCard;
-            if (card == null) return const SizedBox();
-            return Container(
-              margin: const EdgeInsets.only(bottom: 8),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppTheme.surface,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(6),
-                      color: Colors.redAccent.withValues(alpha: 0.2),
-                    ),
-                    child: Center(
-                      child: Text(
-                        '${card.bowling}',
-                        style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(card.playerName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                        Text(
-                          '${card.roleDisplay} | Pace ${card.pace} | Spin ${card.spin}',
-                          style: const TextStyle(color: Colors.white54, fontSize: 11),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }),
-
-        const SizedBox(height: 80),
-      ],
-    );
-  }
-
-  Widget _buildBattingOrderTile(SquadPlayer sp, int order, {Key? key}) {
-    final card = sp.userCard?.playerCard;
-    if (card == null) return SizedBox(key: key);
-
-    final rarityColor = AppTheme.getRarityColor(card.rarity);
-
-    return Container(
-      key: key,
-      margin: const EdgeInsets.only(bottom: 6),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 28,
-            height: 28,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppTheme.accent.withValues(alpha: 0.2),
-            ),
-            child: Center(
-              child: Text(
-                '$order',
-                style: const TextStyle(color: AppTheme.accent, fontWeight: FontWeight.bold, fontSize: 13),
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(6),
-              color: rarityColor.withValues(alpha: 0.3),
-            ),
-            child: Center(
-              child: Text(
-                '${card.rating}',
-                style: TextStyle(color: rarityColor, fontWeight: FontWeight.bold, fontSize: 13),
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(card.playerName, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14)),
-          ),
-          Text(card.roleDisplay, style: const TextStyle(color: Colors.white54, fontSize: 12)),
-          const SizedBox(width: 8),
-          const Icon(Icons.drag_handle, color: Colors.white24, size: 20),
-        ],
-      ),
-    );
-  }
 }

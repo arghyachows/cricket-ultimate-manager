@@ -1,10 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:go_router/go_router.dart';
 import '../core/theme.dart';
+import '../core/constants.dart' show AppConstants;
+import '../core/supabase_service.dart';
 import '../models/models.dart';
 import '../providers/providers.dart';
 import '../widgets/player_card_widget.dart';
+
+int quickSellPrice(String rarity) =>
+    AppConstants.quickSellPrices[rarity] ?? 25;
 
 class CardDetailScreen extends ConsumerWidget {
   final String cardId;
@@ -410,10 +416,14 @@ class CardDetailScreen extends ConsumerWidget {
 
   Widget _buildActions(
       BuildContext context, WidgetRef ref, UserCard userCard, Color rarityColor) {
-    return Row(
+    final card = userCard.playerCard!;
+    final sellPrice = quickSellPrice(card.rarity);
+
+    return Column(
       children: [
         if (userCard.isTradeable)
-          Expanded(
+          SizedBox(
+            width: double.infinity,
             child: OutlinedButton.icon(
               onPressed: () {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -421,7 +431,7 @@ class CardDetailScreen extends ConsumerWidget {
                 );
               },
               icon: const Icon(Icons.sell),
-              label: const Text('SELL'),
+              label: const Text('SELL ON MARKET'),
               style: OutlinedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 side: BorderSide(color: rarityColor),
@@ -429,24 +439,132 @@ class CardDetailScreen extends ConsumerWidget {
               ),
             ),
           ),
-        if (userCard.isTradeable) const SizedBox(width: 12),
-        Expanded(
-          child: ElevatedButton.icon(
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Added to squad!')),
-              );
-            },
-            icon: const Icon(Icons.add),
-            label: const Text('ADD TO SQUAD'),
-            style: ElevatedButton.styleFrom(
+        if (userCard.isTradeable) const SizedBox(height: 12),
+        // Quick Sell button
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: () => _showQuickSellDialog(context, ref, userCard, sellPrice),
+            icon: const Icon(Icons.monetization_on_outlined, size: 18),
+            label: Text('QUICK SELL  •  $sellPrice coins'),
+            style: OutlinedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 14),
-              backgroundColor: rarityColor,
-              foregroundColor: Colors.white,
+              side: BorderSide(color: Colors.amber.withValues(alpha: 0.5)),
+              foregroundColor: Colors.amber,
             ),
           ),
         ),
       ],
+    );
+  }
+
+  void _showQuickSellDialog(
+      BuildContext context, WidgetRef ref, UserCard userCard, int sellPrice) {
+    final card = userCard.playerCard!;
+    final rarityColor = AppTheme.getRarityColor(card.rarity);
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Quick Sell', style: TextStyle(fontWeight: FontWeight.bold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            PlayerCardWidget(
+              playerCard: card,
+              userCard: userCard,
+              size: CardSize.small,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Sell ${card.playerName} for',
+              style: const TextStyle(color: Colors.white70),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.monetization_on, color: Colors.amber, size: 28),
+                const SizedBox(width: 6),
+                Text(
+                  '$sellPrice',
+                  style: const TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.amber,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                const Text('coins', style: TextStyle(color: Colors.white54)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppTheme.error.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppTheme.error.withValues(alpha: 0.3)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.warning_amber, color: AppTheme.error, size: 16),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'This action cannot be undone.',
+                      style: TextStyle(color: AppTheme.error, fontSize: 12),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('CANCEL', style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                // Atomic: remove card + credit coins in one RPC
+                await SupabaseService.quickSellCard(userCard.id, sellPrice);
+                // Update local state
+                ref.read(userCardsProvider.notifier).removeCard(userCard.id);
+                ref.read(currentUserProvider.notifier).updateCoins(sellPrice);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Sold ${card.playerName} for $sellPrice coins!'),
+                      backgroundColor: AppTheme.success,
+                    ),
+                  );
+                  context.go(AppConstants.collectionRoute);
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Failed to sell: $e'),
+                      backgroundColor: AppTheme.error,
+                    ),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.amber,
+              foregroundColor: Colors.black,
+            ),
+            child: const Text('SELL', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
     );
   }
 }

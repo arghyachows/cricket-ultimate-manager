@@ -72,6 +72,15 @@ class AppConstants {
     },
   };
 
+  // Quick Sell prices by rarity
+  static const Map<String, int> quickSellPrices = {
+    'bronze': 25,
+    'silver': 75,
+    'gold': 250,
+    'elite': 1000,
+    'legend': 5000,
+  };
+
   // Routes
   static const String loginRoute = '/login';
   static const String dashboardRoute = '/dashboard';

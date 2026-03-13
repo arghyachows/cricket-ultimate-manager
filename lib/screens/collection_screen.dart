@@ -20,6 +20,13 @@ class CollectionScreen extends ConsumerWidget {
         title: Text('MY COLLECTION (${cards.length})'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () {
+              ref.read(userCardsProvider.notifier).refresh();
+              ref.read(currentUserProvider.notifier).silentRefresh();
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.filter_list),
             onPressed: () => _showFilterSheet(context, ref, filter),
           ),
