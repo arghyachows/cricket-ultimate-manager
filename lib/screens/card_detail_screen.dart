@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../core/theme.dart';
 import '../models/models.dart';
 import '../providers/providers.dart';
+import '../widgets/player_card_widget.dart';
 
 class CardDetailScreen extends ConsumerWidget {
   final String cardId;
@@ -98,106 +100,162 @@ class CardDetailScreen extends ConsumerWidget {
   }
 
   Widget _buildCardHero(PlayerCard card, UserCard userCard, Color rarityColor) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            rarityColor.withValues(alpha: 0.4),
-            rarityColor.withValues(alpha: 0.1),
-            AppTheme.background,
-          ],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        // Background image
+        CachedNetworkImage(
+          imageUrl: playerCardImageUrl(card),
+          fit: BoxFit.cover,
+          placeholder: (_, __) => Container(color: rarityColor.withValues(alpha: 0.3)),
+          errorWidget: (_, __, ___) => Container(color: rarityColor.withValues(alpha: 0.3)),
         ),
-      ),
-      child: SafeArea(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const SizedBox(height: 40),
-            // Large rating circle
-            Container(
-              width: 100,
-              height: 100,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  colors: [rarityColor, rarityColor.withValues(alpha: 0.5)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: rarityColor.withValues(alpha: 0.4),
-                    blurRadius: 20,
-                    spreadRadius: 2,
+
+        // Dark overlay so text is readable
+        Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                Colors.black.withValues(alpha: 0.5),
+                Colors.black.withValues(alpha: 0.2),
+                Colors.transparent,
+                Colors.black.withValues(alpha: 0.3),
+                AppTheme.background,
+              ],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              stops: const [0.0, 0.25, 0.45, 0.75, 1.0],
+            ),
+          ),
+        ),
+
+        // Rarity accent tint
+        Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                rarityColor.withValues(alpha: 0.3),
+                Colors.transparent,
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.center,
+            ),
+          ),
+        ),
+
+        // Content
+        SafeArea(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const SizedBox(height: 40),
+              // Large rating circle
+              Container(
+                width: 100,
+                height: 100,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    colors: [rarityColor, rarityColor.withValues(alpha: 0.5)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
                   ),
-                ],
+                  boxShadow: [
+                    BoxShadow(
+                      color: rarityColor.withValues(alpha: 0.4),
+                      blurRadius: 20,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      '${userCard.effectiveRating}',
+                      style: const TextStyle(
+                        fontSize: 36,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        shadows: [
+                          Shadow(offset: Offset(0, 1), blurRadius: 4, color: Colors.black87),
+                        ],
+                      ),
+                    ),
+                    Text(
+                      card.rarity.toUpperCase(),
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: Colors.white70,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              child: Column(
+              const SizedBox(height: 16),
+              Text(
+                card.playerName,
+                style: const TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w900,
+                  shadows: [
+                    Shadow(offset: Offset(0, 1), blurRadius: 4, color: Colors.black87),
+                    Shadow(offset: Offset(0, 0), blurRadius: 8, color: Colors.black54),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 4),
+              Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
-                    '${userCard.effectiveRating}',
+                    card.country,
                     style: const TextStyle(
-                      fontSize: 36,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                      color: Colors.white70,
+                      shadows: [
+                        Shadow(offset: Offset(0, 1), blurRadius: 3, color: Colors.black54),
+                      ],
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  Container(
+                    width: 4,
+                    height: 4,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white38,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   Text(
-                    card.rarity.toUpperCase(),
-                    style: const TextStyle(
-                      fontSize: 10,
-                      color: Colors.white70,
-                      letterSpacing: 1,
+                    card.roleDisplay,
+                    style: TextStyle(
+                      color: rarityColor,
+                      shadows: const [
+                        Shadow(offset: Offset(0, 1), blurRadius: 3, color: Colors.black54),
+                      ],
                     ),
                   ),
                 ],
               ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              card.playerName,
-              style: const TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
+              if (card.team != null) ...[
+                const SizedBox(height: 4),
                 Text(
-                  card.country,
-                  style: const TextStyle(color: Colors.white54),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  width: 4,
-                  height: 4,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: Colors.white38,
+                  card.team!,
+                  style: const TextStyle(
+                    color: Colors.white54,
+                    fontSize: 12,
+                    shadows: [
+                      Shadow(offset: Offset(0, 1), blurRadius: 3, color: Colors.black54),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  card.roleDisplay,
-                  style: TextStyle(color: rarityColor),
-                ),
               ],
-            ),
-            if (card.team != null) ...[
-              const SizedBox(height: 4),
-              Text(
-                card.team!,
-                style: const TextStyle(color: Colors.white38, fontSize: 12),
-              ),
             ],
-          ],
+          ),
         ),
-      ),
+      ],
     );
   }
 

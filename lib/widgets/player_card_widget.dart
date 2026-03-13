@@ -1,8 +1,59 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../core/theme.dart';
 import '../models/models.dart';
 
 enum CardSize { small, medium, large }
+
+/// Maps a country name to an ethnicity / skin-tone keyword that matches the
+/// uploaded image filenames (brown / dark / white).
+String _ethnicityForCountry(String country) {
+  switch (country) {
+    case 'India':
+    case 'Pakistan':
+    case 'Sri Lanka':
+    case 'Bangladesh':
+    case 'Afghanistan':
+      return 'brown';
+    case 'West Indies':
+    case 'South Africa':
+      return 'dark';
+    case 'England':
+    case 'Australia':
+    case 'New Zealand':
+    case 'Ireland':
+      return 'white';
+    default:
+      return 'brown';
+  }
+}
+
+/// Maps a role string to the image-file prefix.
+String _imageRolePrefix(String role) {
+  switch (role) {
+    case 'batsman':
+      return 'batsman';
+    case 'bowler':
+      return 'bowler';
+    case 'all_rounder':
+      return 'all';
+    case 'wicket_keeper':
+      return 'wk';
+    default:
+      return 'batsman';
+  }
+}
+
+/// Supabase public storage URL for the images bucket.
+const _storageBucket =
+    'https://kollxlzqqgznfiutpqjz.supabase.co/storage/v1/object/public/images';
+
+/// Builds the Supabase storage URL for a player card background image.
+String playerCardImageUrl(PlayerCard card) {
+  final prefix = _imageRolePrefix(card.role);
+  final tone = _ethnicityForCountry(card.country);
+  return '$_storageBucket/$prefix-$tone.jpg';
+}
 
 class PlayerCardWidget extends StatelessWidget {
   final PlayerCard? playerCard;
@@ -45,15 +96,6 @@ class PlayerCardWidget extends StatelessWidget {
         height: dimensions.height,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(12),
-          gradient: LinearGradient(
-            colors: [
-              rarityColor,
-              rarityColor.withValues(alpha: 0.6),
-              rarityColor.withValues(alpha: 0.3),
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
           border: Border.all(
             color: isSelected ? Colors.white : rarityColor.withValues(alpha: 0.5),
             width: isSelected ? 2 : 1,
@@ -68,12 +110,82 @@ class PlayerCardWidget extends StatelessWidget {
         ),
         child: Stack(
           children: [
-            // Background pattern
+            // Player image background
             Positioned.fill(
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(11),
-                child: CustomPaint(
-                  painter: _CardPatternPainter(rarityColor),
+                child: CachedNetworkImage(
+                  imageUrl: playerCardImageUrl(card),
+                  fit: BoxFit.cover,
+                  placeholder: (_, __) => Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          rarityColor,
+                          rarityColor.withValues(alpha: 0.6),
+                          rarityColor.withValues(alpha: 0.3),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                    ),
+                  ),
+                  errorWidget: (_, __, ___) => Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          rarityColor,
+                          rarityColor.withValues(alpha: 0.6),
+                          rarityColor.withValues(alpha: 0.3),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            // Rarity colour overlay (bottom → top gradient)
+            Positioned.fill(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(11),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        Colors.black.withValues(alpha: 0.8),
+                        rarityColor.withValues(alpha: 0.45),
+                        Colors.transparent,
+                        Colors.transparent,
+                        rarityColor.withValues(alpha: 0.25),
+                        Colors.black.withValues(alpha: 0.5),
+                      ],
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                      stops: const [0.0, 0.2, 0.4, 0.7, 0.85, 1.0],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            // Rarity top-left accent ribbon
+            Positioned.fill(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(11),
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        rarityColor.withValues(alpha: 0.6),
+                        Colors.transparent,
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.center,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -89,9 +201,13 @@ class PlayerCardWidget extends StatelessWidget {
                     '$rating',
                     style: TextStyle(
                       fontSize: dimensions.ratingSize,
-                      fontWeight: FontWeight.bold,
+                      fontWeight: FontWeight.w900,
                       color: Colors.white,
                       height: 1,
+                      shadows: const [
+                        Shadow(offset: Offset(0, 1), blurRadius: 4, color: Colors.black87),
+                        Shadow(offset: Offset(0, 0), blurRadius: 8, color: Colors.black54),
+                      ],
                     ),
                   ),
 
@@ -103,6 +219,9 @@ class PlayerCardWidget extends StatelessWidget {
                         fontSize: dimensions.fontSize - 2,
                         color: Colors.white70,
                         letterSpacing: 1,
+                        shadows: const [
+                          Shadow(offset: Offset(0, 1), blurRadius: 3, color: Colors.black54),
+                        ],
                       ),
                     ),
                   ],
@@ -128,8 +247,12 @@ class PlayerCardWidget extends StatelessWidget {
                         : card.playerName,
                     style: TextStyle(
                       fontSize: dimensions.fontSize,
-                      fontWeight: FontWeight.bold,
+                      fontWeight: FontWeight.w900,
                       color: Colors.white,
+                      shadows: const [
+                        Shadow(offset: Offset(0, 1), blurRadius: 4, color: Colors.black87),
+                        Shadow(offset: Offset(0, 0), blurRadius: 8, color: Colors.black54),
+                      ],
                     ),
                     maxLines: size == CardSize.small ? 1 : 2,
                     overflow: TextOverflow.ellipsis,
@@ -234,29 +357,4 @@ class PlayerCardWidget extends StatelessWidget {
       ),
     );
   }
-}
-
-class _CardPatternPainter extends CustomPainter {
-  final Color color;
-  _CardPatternPainter(this.color);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.05)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 0.5;
-
-    // Diagonal lines
-    for (double i = -size.height; i < size.width + size.height; i += 20) {
-      canvas.drawLine(
-        Offset(i, 0),
-        Offset(i + size.height, size.height),
-        paint,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
