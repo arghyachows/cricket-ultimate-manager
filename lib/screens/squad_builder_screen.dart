@@ -256,13 +256,8 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen> {
           ),
         const SizedBox(height: 8),
 
-        // Reorderable Playing XI list
-        if (filledSlots.isEmpty)
-          ...List.generate(11, (i) {
-            return _buildEmptySlot(i + 1, label: _positionLabels[i + 1]);
-          })
-        else ...
-        [
+        // Playing XI list — filled slots are reorderable, empty slots inline
+        if (filledSlots.isNotEmpty)
           const Padding(
             padding: EdgeInsets.only(bottom: 4),
             child: Text(
@@ -270,34 +265,55 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen> {
               style: TextStyle(color: Colors.white38, fontSize: 12),
             ),
           ),
-          ReorderableListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: filledSlots.length,
-            proxyDecorator: (child, index, animation) {
-              return Material(
-                color: Colors.transparent,
-                elevation: 4,
-                child: child,
-              );
-            },
-            onReorder: (oldIndex, newIndex) {
-              ref.read(teamProvider.notifier).reorderPlayingXI(
-                filledSlots,
-                oldIndex,
-                newIndex,
-              );
-            },
-            itemBuilder: (context, index) {
-              final sp = filledSlots[index];
-              return _buildReorderableTile(sp, index + 1, key: ValueKey(sp.id));
-            },
-          ),
-          // Empty slots after filled ones
-          ...emptyPositions.map(
-            (pos) => _buildEmptySlot(pos, label: _positionLabels[pos]),
-          ),
-        ],
+        ReorderableListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: 11,
+          proxyDecorator: (child, index, animation) {
+            return Material(
+              color: Colors.transparent,
+              elevation: 4,
+              child: child,
+            );
+          },
+          onReorder: (oldIndex, newIndex) {
+            // Map visual indices to filled-only indices for reorder
+            final oldPlayer = positionMap[oldIndex + 1];
+            final newPlayer = positionMap[newIndex > oldIndex ? newIndex : newIndex + 1];
+            if (oldPlayer == null) return; // Can't drag empty slots
+            // Find indices within filledSlots
+            final oldFilled = filledSlots.indexOf(oldPlayer);
+            if (oldFilled < 0) return;
+            // Compute target filled index
+            int newFilled;
+            if (newPlayer != null) {
+              newFilled = filledSlots.indexOf(newPlayer);
+              if (newIndex > oldIndex) newFilled++;
+            } else {
+              // Dropped onto an empty slot — find nearest filled position
+              newFilled = newIndex > oldIndex ? filledSlots.length : 0;
+              for (int i = 0; i < filledSlots.length; i++) {
+                if (filledSlots[i].position > newIndex + 1) {
+                  newFilled = i;
+                  break;
+                }
+              }
+            }
+            ref.read(teamProvider.notifier).reorderPlayingXI(
+              filledSlots,
+              oldFilled,
+              newFilled,
+            );
+          },
+          itemBuilder: (context, index) {
+            final pos = index + 1;
+            final sp = positionMap[pos];
+            if (sp != null) {
+              return _buildReorderableTile(sp, pos, key: ValueKey(sp.id));
+            }
+            return _buildEmptySlot(pos, label: _positionLabels[pos], key: ValueKey('empty_$pos'));
+          },
+        ),
       ],
     );
   }
@@ -479,8 +495,9 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen> {
 
   // ─── Empty Slot ──────────────────────────────────────────────────────────
 
-  Widget _buildEmptySlot(int position, {String? label}) {
+  Widget _buildEmptySlot(int position, {String? label, Key? key}) {
     return Container(
+      key: key,
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
         color: AppTheme.surface.withValues(alpha: 0.5),

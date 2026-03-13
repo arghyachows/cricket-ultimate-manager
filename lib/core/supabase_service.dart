@@ -94,6 +94,7 @@ class SupabaseService {
         .select('*, squads(*, squad_players(*, user_cards(*, player_cards(*))))')
         .eq('user_id', userId)
         .eq('is_active', true)
+        .order('position', referencedTable: 'squads.squad_players')
         .maybeSingle();
     return result;
   }

@@ -56,9 +56,8 @@ class MatchEngine {
     this.awayTeamName = 'Away',
     this.homeBatsFirst = true,
   }) {
-    // Sort by batting/bowling order if available
-    _battingOrder1 = List.from(homeBatsFirst ? homeXI : awayXI)
-      ..sort((a, b) => (a.battingOrder ?? 99).compareTo(b.battingOrder ?? 99));
+    // Use the lineup order as provided (already sorted by position)
+    _battingOrder1 = List.from(homeBatsFirst ? homeXI : awayXI);
     _bowlingOrder1 = (homeBatsFirst ? homeXI : awayXI)
         .where((p) =>
             p.userCard?.playerCard?.role == 'bowler' ||
@@ -66,8 +65,7 @@ class MatchEngine {
         .toList();
     if (_bowlingOrder1.isEmpty) _bowlingOrder1 = List.from(homeBatsFirst ? homeXI : awayXI);
 
-    _battingOrder2 = List.from(homeBatsFirst ? awayXI : homeXI)
-      ..sort((a, b) => (a.battingOrder ?? 99).compareTo(b.battingOrder ?? 99));
+    _battingOrder2 = List.from(homeBatsFirst ? awayXI : homeXI);
     _bowlingOrder2 = (homeBatsFirst ? awayXI : homeXI)
         .where((p) =>
             p.userCard?.playerCard?.role == 'bowler' ||

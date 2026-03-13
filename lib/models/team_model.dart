@@ -60,22 +60,24 @@ class Squad {
   });
 
   factory Squad.fromJson(Map<String, dynamic> json) {
+    final playersList = (json['squad_players'] as List<dynamic>?)
+            ?.map((p) => SquadPlayer.fromJson(p))
+            .toList() ??
+        [];
+    playersList.sort((a, b) => a.position.compareTo(b.position));
     return Squad(
       id: json['id'],
       teamId: json['team_id'],
       squadName: json['squad_name'],
       formation: json['formation'] ?? '4-3-4',
       isActive: json['is_active'] ?? true,
-      players: (json['squad_players'] as List<dynamic>?)
-              ?.map((p) => SquadPlayer.fromJson(p))
-              .toList() ??
-          [],
+      players: playersList,
     );
   }
 
   List<SquadPlayer> get playingXI =>
       players.where((p) => p.isPlayingXI).toList()
-        ..sort((a, b) => (a.battingOrder ?? 99).compareTo(b.battingOrder ?? 99));
+        ..sort((a, b) => a.position.compareTo(b.position));
 
   SquadPlayer? get captain =>
       players.where((p) => p.isCaptain).firstOrNull;

@@ -140,9 +140,11 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
     final item = reordered.removeAt(oldIndex);
     reordered.insert(newIndex, item);
 
-    // Build new position map
+    // Build new position map and save old positions for DB comparison
     final positionUpdates = <String, int>{};
+    final oldPositions = <String, int>{};
     for (int i = 0; i < reordered.length; i++) {
+      oldPositions[reordered[i].id] = reordered[i].position;
       positionUpdates[reordered[i].id] = i + 1;
     }
 
@@ -197,7 +199,8 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
 
     // Persist to DB — move to temp positions first to avoid UNIQUE constraint
     for (int i = 0; i < reordered.length; i++) {
-      if (reordered[i].position != i + 1) {
+      final targetPos = i + 1;
+      if (oldPositions[reordered[i].id] != targetPos) {
         await SupabaseService.client
             .from('squad_players')
             .update({'position': 100 + i}).eq('id', reordered[i].id);
@@ -205,10 +208,11 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
     }
     // Now assign final positions
     for (int i = 0; i < reordered.length; i++) {
-      if (reordered[i].position != i + 1) {
+      final targetPos = i + 1;
+      if (oldPositions[reordered[i].id] != targetPos) {
         await SupabaseService.client
             .from('squad_players')
-            .update({'position': i + 1}).eq('id', reordered[i].id);
+            .update({'position': targetPos}).eq('id', reordered[i].id);
       }
     }
     await loadTeam();
