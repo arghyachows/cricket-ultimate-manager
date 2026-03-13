@@ -30,9 +30,9 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
   Future<Team?> createTeam(String name) async {
     try {
       final data = await SupabaseService.createTeam(name);
-      final team = Team.fromJson(data);
-      state = AsyncValue.data(team);
-      return team;
+      // Reload to get full team with squads joined
+      await loadTeam();
+      return state.valueOrNull;
     } catch (e) {
       return null;
     }
@@ -95,6 +95,26 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
     await SupabaseService.client
         .from('squad_players')
         .update({'is_captain': true}).eq('id', squadPlayerId);
+    await loadTeam();
+  }
+
+  Future<void> setViceCaptain(String squadPlayerId) async {
+    final team = state.valueOrNull;
+    if (team == null) return;
+    final squad = team.activeSquad;
+    if (squad == null) return;
+
+    // Clear existing vice captain
+    for (final player in squad.players.where((p) => p.isViceCaptain)) {
+      await SupabaseService.client
+          .from('squad_players')
+          .update({'is_vice_captain': false}).eq('id', player.id);
+    }
+
+    // Set new vice captain
+    await SupabaseService.client
+        .from('squad_players')
+        .update({'is_vice_captain': true}).eq('id', squadPlayerId);
     await loadTeam();
   }
 

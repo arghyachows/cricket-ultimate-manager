@@ -19,6 +19,8 @@ class _PackOpeningScreenState extends ConsumerState<PackOpeningScreen>
     with TickerProviderStateMixin {
   late AnimationController _glowController;
   bool _packOpened = false;
+  PageController? _pageController;
+  int _currentPage = 0;
 
   @override
   void initState() {
@@ -32,6 +34,7 @@ class _PackOpeningScreenState extends ConsumerState<PackOpeningScreen>
   @override
   void dispose() {
     _glowController.dispose();
+    _pageController?.dispose();
     super.dispose();
   }
 
@@ -179,46 +182,143 @@ class _PackOpeningScreenState extends ConsumerState<PackOpeningScreen>
   }
 
   Widget _buildRevealView(PackOpeningState packState) {
+    // Initialize page controller once when cards are ready
+    if (_pageController == null || !_pageController!.hasClients) {
+      _pageController?.dispose();
+      _pageController = PageController();
+      _currentPage = 0;
+      // Auto-reveal first card
+      if (packState.currentRevealIndex < 0) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          ref.read(packOpeningProvider.notifier).revealNext();
+        });
+      }
+    }
+
+    final totalCards = packState.revealedCards.length;
+    final revealedCount = packState.currentRevealIndex + 1;
+
     return Column(
       children: [
+        // Progress indicator
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(totalCards, (i) {
+              final isRevealed = i <= packState.currentRevealIndex;
+              final isCurrent = i == _currentPage;
+              return Container(
+                margin: const EdgeInsets.symmetric(horizontal: 3),
+                width: isCurrent ? 24 : 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(5),
+                  color: isRevealed
+                      ? (isCurrent ? AppTheme.accent : AppTheme.accent.withValues(alpha: 0.5))
+                      : Colors.white24,
+                ),
+              );
+            }),
+          ),
+        ),
+
+        // Card counter
+        Text(
+          '$revealedCount / $totalCards revealed',
+          style: const TextStyle(color: Colors.white54, fontSize: 13),
+        ),
+        const SizedBox(height: 8),
+
+        // Cards
         Expanded(
           child: PageView.builder(
-            itemCount: packState.revealedCards.length,
+            controller: _pageController,
+            itemCount: totalCards,
+            onPageChanged: (page) {
+              setState(() => _currentPage = page);
+              // Auto-reveal when user swipes to an unrevealed card
+              if (page > packState.currentRevealIndex) {
+                // Reveal up to this page
+                final notifier = ref.read(packOpeningProvider.notifier);
+                for (int i = packState.currentRevealIndex + 1; i <= page; i++) {
+                  notifier.revealNext();
+                }
+              }
+            },
             itemBuilder: (context, index) {
               final card = packState.revealedCards[index];
               final isRevealed = index <= packState.currentRevealIndex;
 
               return Center(
-                child: AnimatedOpacity(
+                child: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 500),
-                  opacity: isRevealed ? 1.0 : 0.3,
-                  child: AnimatedScale(
-                    duration: const Duration(milliseconds: 400),
-                    scale: isRevealed ? 1.0 : 0.8,
-                    child: isRevealed
-                        ? PlayerCardWidget(
-                            playerCard: card.playerCard!,
-                            showStats: true,
-                            size: CardSize.large,
-                          )
-                        : Container(
-                            width: 200,
-                            height: 300,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(16),
-                              color: AppTheme.surfaceLight,
-                              border: Border.all(color: Colors.white24),
+                  transitionBuilder: (child, animation) {
+                    return ScaleTransition(scale: animation, child: child);
+                  },
+                  child: isRevealed
+                      ? Column(
+                          key: ValueKey('revealed_$index'),
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            PlayerCardWidget(
+                              playerCard: card.playerCard!,
+                              showStats: true,
+                              size: CardSize.large,
                             ),
-                            child: const Center(
-                              child: Icon(Icons.help_outline, size: 48, color: Colors.white24),
+                            const SizedBox(height: 12),
+                            Text(
+                              card.playerCard!.rarity.toUpperCase(),
+                              style: TextStyle(
+                                color: AppTheme.getRarityColor(card.playerCard!.rarity),
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                                letterSpacing: 2,
+                              ),
                             ),
+                          ],
+                        )
+                      : Container(
+                          key: ValueKey('hidden_$index'),
+                          width: 200,
+                          height: 300,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            gradient: LinearGradient(
+                              colors: [
+                                AppTheme.surfaceLight,
+                                AppTheme.surface,
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            border: Border.all(color: Colors.white24),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.white.withValues(alpha: 0.05),
+                                blurRadius: 10,
+                              ),
+                            ],
                           ),
-                  ),
+                          child: const Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.help_outline, size: 48, color: Colors.white24),
+                              SizedBox(height: 8),
+                              Text(
+                                'TAP REVEAL\nOR SWIPE',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: Colors.white24, fontSize: 12),
+                              ),
+                            ],
+                          ),
+                        ),
                 ),
               );
             },
           ),
         ),
+
         // Controls
         Padding(
           padding: const EdgeInsets.all(24),
@@ -227,10 +327,25 @@ class _PackOpeningScreenState extends ConsumerState<PackOpeningScreen>
             children: [
               if (!packState.allRevealed) ...[
                 ElevatedButton.icon(
-                  onPressed: () =>
-                      ref.read(packOpeningProvider.notifier).revealNext(),
+                  onPressed: () {
+                    final notifier = ref.read(packOpeningProvider.notifier);
+                    notifier.revealNext();
+                    // Navigate to the newly revealed card
+                    final nextPage = packState.currentRevealIndex + 1;
+                    if (nextPage < totalCards) {
+                      _pageController?.animateToPage(
+                        nextPage,
+                        duration: const Duration(milliseconds: 400),
+                        curve: Curves.easeInOut,
+                      );
+                    }
+                  },
                   icon: const Icon(Icons.touch_app),
-                  label: const Text('REVEAL NEXT'),
+                  label: Text(
+                    packState.currentRevealIndex < 0
+                        ? 'REVEAL FIRST'
+                        : 'REVEAL NEXT',
+                  ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppTheme.accent,
                     foregroundColor: Colors.black,
@@ -239,8 +354,15 @@ class _PackOpeningScreenState extends ConsumerState<PackOpeningScreen>
                 ),
                 const SizedBox(width: 16),
                 OutlinedButton(
-                  onPressed: () =>
-                      ref.read(packOpeningProvider.notifier).revealAll(),
+                  onPressed: () {
+                    ref.read(packOpeningProvider.notifier).revealAll();
+                    // Scroll back to first card so user can swipe through all
+                    _pageController?.animateToPage(
+                      0,
+                      duration: const Duration(milliseconds: 400),
+                      curve: Curves.easeInOut,
+                    );
+                  },
                   style: OutlinedButton.styleFrom(
                     side: const BorderSide(color: Colors.white54),
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
@@ -251,6 +373,8 @@ class _PackOpeningScreenState extends ConsumerState<PackOpeningScreen>
                 ElevatedButton.icon(
                   onPressed: () {
                     ref.read(packOpeningProvider.notifier).reset();
+                    _pageController?.dispose();
+                    _pageController = null;
                     context.go(AppConstants.collectionRoute);
                   },
                   icon: const Icon(Icons.check),
