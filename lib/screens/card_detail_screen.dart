@@ -536,6 +536,7 @@ class CardDetailScreen extends ConsumerWidget {
                 await SupabaseService.quickSellCard(userCard.id, sellPrice);
                 // Update local state
                 ref.read(userCardsProvider.notifier).removeCard(userCard.id);
+                ref.read(teamProvider.notifier).refresh();
                 ref.read(currentUserProvider.notifier).updateCoins(sellPrice);
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(

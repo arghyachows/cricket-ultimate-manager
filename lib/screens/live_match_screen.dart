@@ -122,6 +122,17 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen>
   }
 
   Widget _buildScoreboard(MatchState state) {
+    // Determine which team is currently batting based on toss result
+    final homeBatting = state.homeBatsFirst
+        ? state.currentInnings == 1
+        : state.currentInnings == 2;
+    final homeHasBatted = state.homeBatsFirst ||
+        state.currentInnings >= 2 ||
+        state.isMatchComplete;
+    final awayHasBatted = !state.homeBatsFirst ||
+        state.currentInnings >= 2 ||
+        state.isMatchComplete;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
@@ -134,7 +145,7 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen>
           // Both teams side by side
           Row(
             children: [
-              // Home team (innings 1)
+              // Home team
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -144,28 +155,34 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen>
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 13,
-                        color: state.currentInnings == 1 ? AppTheme.accent : Colors.white54,
+                        color: homeBatting ? AppTheme.accent : Colors.white54,
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Text(
-                          '${state.homeScore}/${state.homeWickets}',
-                          style: TextStyle(
-                            fontSize: state.currentInnings == 1 ? 28 : 22,
-                            fontWeight: FontWeight.bold,
-                            color: state.currentInnings == 1 ? Colors.white : Colors.white54,
+                    if (homeHasBatted)
+                      Row(
+                        children: [
+                          Text(
+                            '${state.homeScore}/${state.homeWickets}',
+                            style: TextStyle(
+                              fontSize: homeBatting ? 28 : 22,
+                              fontWeight: FontWeight.bold,
+                              color: homeBatting ? Colors.white : Colors.white54,
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 6),
-                        Text(
-                          '(${state.homeOvers})',
-                          style: const TextStyle(fontSize: 13, color: Colors.white38),
-                        ),
-                      ],
-                    ),
+                          const SizedBox(width: 6),
+                          Text(
+                            '(${state.homeOvers})',
+                            style: const TextStyle(fontSize: 13, color: Colors.white38),
+                          ),
+                        ],
+                      )
+                    else
+                      const Text(
+                        'Yet to bat',
+                        style: TextStyle(fontSize: 14, color: Colors.white38),
+                      ),
                   ],
                 ),
               ),
@@ -191,7 +208,7 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen>
                   ),
                 ],
               ),
-              // Away team (innings 2)
+              // Away team
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
@@ -201,7 +218,7 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen>
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 13,
-                        color: state.currentInnings == 2 ? AppTheme.accent : Colors.white54,
+                        color: !homeBatting ? AppTheme.accent : Colors.white54,
                       ),
                       overflow: TextOverflow.ellipsis,
                       textAlign: TextAlign.end,
@@ -210,7 +227,7 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen>
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        if (state.currentInnings >= 2 || state.isMatchComplete) ...[
+                        if (awayHasBatted) ...[
                           Text(
                             '(${state.awayOvers})',
                             style: const TextStyle(fontSize: 13, color: Colors.white38),
@@ -219,9 +236,9 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen>
                           Text(
                             '${state.awayScore}/${state.awayWickets}',
                             style: TextStyle(
-                              fontSize: state.currentInnings == 2 ? 28 : 22,
+                              fontSize: !homeBatting ? 28 : 22,
                               fontWeight: FontWeight.bold,
-                              color: state.currentInnings == 2 ? Colors.white : Colors.white54,
+                              color: !homeBatting ? Colors.white : Colors.white54,
                             ),
                           ),
                         ] else
@@ -244,6 +261,26 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen>
                 child: LinearProgressIndicator(
                   backgroundColor: Colors.white12,
                   valueColor: AlwaysStoppedAnimation(AppTheme.accent),
+                ),
+              ),
+            ),
+          // Chase info during 2nd innings
+          if (state.currentInnings >= 2 && state.isSimulating && state.runsNeeded > 0)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppTheme.accent.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '${state.runsNeeded} runs needed from ${state.ballsRemaining} balls  (RRR: ${state.requiredRunRate.toStringAsFixed(2)})',
+                  style: const TextStyle(
+                    color: AppTheme.accent,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
                 ),
               ),
             ),
@@ -517,12 +554,21 @@ class _ScorecardTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final battingFirstName = matchState.homeBatsFirst ? matchState.homeTeamName : matchState.awayTeamName;
+    final battingSecondName = matchState.homeBatsFirst ? matchState.awayTeamName : matchState.homeTeamName;
+    final inn1Score = matchState.homeBatsFirst ? matchState.homeScore : matchState.awayScore;
+    final inn1Wickets = matchState.homeBatsFirst ? matchState.homeWickets : matchState.awayWickets;
+    final inn1Overs = matchState.homeBatsFirst ? matchState.homeOvers : matchState.awayOvers;
+    final inn2Score = matchState.homeBatsFirst ? matchState.awayScore : matchState.homeScore;
+    final inn2Wickets = matchState.homeBatsFirst ? matchState.awayWickets : matchState.homeWickets;
+    final inn2Overs = matchState.homeBatsFirst ? matchState.awayOvers : matchState.homeOvers;
+
     return ListView(
       padding: const EdgeInsets.all(12),
       children: [
         // Innings 1 Batting
         if (matchState.innings1Batsmen.isNotEmpty) ...[
-          _inningsHeader('${matchState.homeTeamName} Batting', matchState.homeScore, matchState.homeWickets, matchState.homeOvers),
+          _inningsHeader('$battingFirstName Batting', inn1Score, inn1Wickets, inn1Overs),
           _battingCard(matchState.innings1Batsmen),
           const SizedBox(height: 4),
           _bowlingCard(matchState.innings1Bowlers),
@@ -532,7 +578,7 @@ class _ScorecardTab extends StatelessWidget {
 
         // Innings 2 Batting
         if (matchState.innings2Batsmen.isNotEmpty) ...[
-          _inningsHeader('${matchState.awayTeamName} Batting', matchState.awayScore, matchState.awayWickets, matchState.awayOvers),
+          _inningsHeader('$battingSecondName Batting', inn2Score, inn2Wickets, inn2Overs),
           _battingCard(matchState.innings2Batsmen),
           const SizedBox(height: 4),
           _bowlingCard(matchState.innings2Bowlers),

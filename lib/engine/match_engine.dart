@@ -13,6 +13,7 @@ class MatchEngine {
   final String pitchCondition;
   final String homeTeamName;
   final String awayTeamName;
+  final bool homeBatsFirst;
   final Random _rng = Random();
 
   // Match state
@@ -53,27 +54,28 @@ class MatchEngine {
     required this.pitchCondition,
     this.homeTeamName = 'Home',
     this.awayTeamName = 'Away',
+    this.homeBatsFirst = true,
   }) {
     // Sort by batting/bowling order if available
-    _battingOrder1 = List.from(homeXI)
+    _battingOrder1 = List.from(homeBatsFirst ? homeXI : awayXI)
       ..sort((a, b) => (a.battingOrder ?? 99).compareTo(b.battingOrder ?? 99));
-    _bowlingOrder1 = homeXI
+    _bowlingOrder1 = (homeBatsFirst ? homeXI : awayXI)
         .where((p) =>
             p.userCard?.playerCard?.role == 'bowler' ||
             p.userCard?.playerCard?.role == 'all_rounder')
         .toList();
-    if (_bowlingOrder1.isEmpty) _bowlingOrder1 = List.from(homeXI);
+    if (_bowlingOrder1.isEmpty) _bowlingOrder1 = List.from(homeBatsFirst ? homeXI : awayXI);
 
-    _battingOrder2 = List.from(awayXI)
+    _battingOrder2 = List.from(homeBatsFirst ? awayXI : homeXI)
       ..sort((a, b) => (a.battingOrder ?? 99).compareTo(b.battingOrder ?? 99));
-    _bowlingOrder2 = awayXI
+    _bowlingOrder2 = (homeBatsFirst ? awayXI : homeXI)
         .where((p) =>
             p.userCard?.playerCard?.role == 'bowler' ||
             p.userCard?.playerCard?.role == 'all_rounder')
         .toList();
-    if (_bowlingOrder2.isEmpty) _bowlingOrder2 = List.from(awayXI);
+    if (_bowlingOrder2.isEmpty) _bowlingOrder2 = List.from(homeBatsFirst ? awayXI : homeXI);
 
-    // First innings: home bats, away bowls
+    // First innings: batting order 1 bats, bowling order 2 bowls
     _currentBatting = _battingOrder1;
     _currentBowling = _bowlingOrder2;
     _currentBatsmanIndex = 0;
@@ -85,7 +87,6 @@ class MatchEngine {
 
   bool get isFirstInnings => _innings == 1;
 
-  int get _currentScore => isFirstInnings ? _score1 : _score2;
   int get _currentWickets => isFirstInnings ? _wickets1 : _wickets2;
 
   SquadPlayer get _currentBatsman => _currentBatting[_currentBatsmanIndex];
@@ -136,7 +137,9 @@ class MatchEngine {
 
     final battingRating = batsman.userCard?.effectiveBatting ?? 50;
     final bowlingRating = bowler.userCard?.effectiveBowling ?? 50;
-    final chemistry = isFirstInnings ? homeChemistry : awayChemistry;
+    final chemistry = isFirstInnings
+        ? (homeBatsFirst ? homeChemistry : awayChemistry)
+        : (homeBatsFirst ? awayChemistry : homeChemistry);
 
     // Calculate outcome
     final outcome = _calculateOutcome(
@@ -154,6 +157,8 @@ class MatchEngine {
     bool isBoundary = false;
     String eventType;
     String commentary;
+    String? wicketTypeResult;
+    String? fielderCardIdResult;
 
     switch (outcome) {
       case BallOutcome.dot:
@@ -194,7 +199,11 @@ class MatchEngine {
         runs = 0;
         isWicket = true;
         eventType = 'wicket';
-        commentary = _wicketCommentary(batsmanName, bowlerName);
+        wicketTypeResult = _randomWicketType();
+        final fielder = _pickFielder(wicketTypeResult, bowler);
+        fielderCardIdResult = fielder?.userCardId;
+        final fielderName = fielder?.userCard?.playerCard?.playerName;
+        commentary = _wicketCommentary(batsmanName, bowlerName, wicketTypeResult, fielderName);
         break;
       case BallOutcome.wide:
         runs = 1;
@@ -244,7 +253,8 @@ class MatchEngine {
       runs: runs,
       isBoundary: isBoundary,
       isWicket: isWicket,
-      wicketType: isWicket ? _randomWicketType() : null,
+      wicketType: wicketTypeResult,
+      fielderCardId: fielderCardIdResult,
       commentary: commentary,
       scoreAfter: isFirstInnings ? _score1 : _score2,
       wicketsAfter: isFirstInnings ? _wickets1 : _wickets2,
@@ -254,6 +264,9 @@ class MatchEngine {
   MatchEvent? _endInnings() {
     if (isFirstInnings) {
       _target = _score1;
+      // Save final over state before resetting for innings 2
+      final endOver = _overNumber;
+      final endBall = _ballNumber;
       _innings = 2;
       _overNumber = 0;
       _ballNumber = 0;
@@ -268,8 +281,8 @@ class MatchEngine {
         id: 'innings_break',
         matchId: '',
         innings: 1,
-        overNumber: _overNumber,
-        ballNumber: 0,
+        overNumber: endOver,
+        ballNumber: endBall,
         battingTeamId: '',
         bowlingTeamId: '',
         batsmanCardId: _currentBatting[0].userCardId,
@@ -292,12 +305,14 @@ class MatchEngine {
   }
 
   String getMatchResult() {
+    final battingFirstName = homeBatsFirst ? homeTeamName : awayTeamName;
+    final battingSecondName = homeBatsFirst ? awayTeamName : homeTeamName;
     if (_score2 > _score1) {
       final wicketsRemaining = 10 - _wickets2;
-      return '$awayTeamName wins by $wicketsRemaining wickets!';
+      return '$battingSecondName wins by $wicketsRemaining wickets!';
     } else if (_score1 > _score2) {
       final runDiff = _score1 - _score2;
-      return '$homeTeamName wins by $runDiff runs!';
+      return '$battingFirstName wins by $runDiff runs!';
     } else {
       return 'Match tied!';
     }
@@ -481,15 +496,71 @@ class MatchEngine {
     return options[_rng.nextInt(options.length)];
   }
 
-  String _wicketCommentary(String batsman, String bowler) {
-    final options = [
-      'OUT! $bowler strikes! $batsman has to walk back.',
-      'WICKET! $bowler gets the breakthrough! $batsman is gone!',
-      'Gone! $batsman edges it and is caught! $bowler celebrates!',
-      'Timber! $bowler knocks over the stumps! $batsman is bowled!',
-      'Big wicket! $batsman falls to $bowler!',
-    ];
-    return options[_rng.nextInt(options.length)];
+  /// Pick a fielder for caught/stumped dismissals from the bowling team
+  SquadPlayer? _pickFielder(String wicketType, SquadPlayer bowler) {
+    if (wicketType == 'bowled' || wicketType == 'lbw') return null;
+    // All players in the fielding side
+    final allFielders = isFirstInnings
+        ? (homeBatsFirst ? awayXI : homeXI)
+        : (homeBatsFirst ? homeXI : awayXI);
+    if (wicketType == 'caught_behind' || wicketType == 'stumped') {
+      // Pick the wicket keeper
+      final keepers = allFielders.where((p) => p.userCard?.playerCard?.role == 'wicket_keeper').toList();
+      if (keepers.isNotEmpty) return keepers[_rng.nextInt(keepers.length)];
+    }
+    // Pick any fielder (exclude batsman, exclude bowler for caught)
+    final candidates = allFielders.where((p) => p.userCardId != bowler.userCardId).toList();
+    if (candidates.isEmpty) return allFielders[_rng.nextInt(allFielders.length)];
+    return candidates[_rng.nextInt(candidates.length)];
+  }
+
+  String _wicketCommentary(String batsman, String bowler, String wicketType, String? fielderName) {
+    switch (wicketType) {
+      case 'bowled':
+        final options = [
+          'BOWLED! $bowler knocks over the stumps! $batsman is gone!',
+          'Timber! $bowler cleans up $batsman! What a delivery!',
+          'BOWLED HIM! $batsman\'s stumps are shattered by $bowler!',
+        ];
+        return options[_rng.nextInt(options.length)];
+      case 'caught':
+        final catcher = fielderName ?? 'fielder';
+        final options = [
+          'CAUGHT! $batsman edges it and $catcher takes a sharp catch! $bowler strikes!',
+          'OUT! Caught by $catcher! $bowler gets the wicket of $batsman!',
+          'Gone! $batsman skies it to $catcher, c $catcher b $bowler!',
+        ];
+        return options[_rng.nextInt(options.length)];
+      case 'caught_behind':
+        final keeper = fielderName ?? 'keeper';
+        final options = [
+          'CAUGHT BEHIND! $batsman nicks it and $keeper takes a clean catch! c $keeper b $bowler!',
+          'Edge and taken! $keeper snaps it up, $batsman has to go! c $keeper b $bowler!',
+        ];
+        return options[_rng.nextInt(options.length)];
+      case 'lbw':
+        final options = [
+          'LBW! $bowler traps $batsman plumb in front! Given out!',
+          'OUT! LBW! That was crashing into the stumps. $batsman walks back!',
+        ];
+        return options[_rng.nextInt(options.length)];
+      case 'run_out':
+        final thrower = fielderName ?? 'fielder';
+        final options = [
+          'RUN OUT! Direct hit by $thrower! $batsman is short of the crease!',
+          'Gone! Brilliant throw from $thrower catches $batsman short!',
+        ];
+        return options[_rng.nextInt(options.length)];
+      case 'stumped':
+        final keeper = fielderName ?? 'keeper';
+        final options = [
+          'STUMPED! $batsman dances down the pitch and $keeper whips the bails off! st $keeper b $bowler!',
+          'OUT! Quick work by $keeper! $batsman stumped off $bowler!',
+        ];
+        return options[_rng.nextInt(options.length)];
+      default:
+        return 'OUT! $bowler strikes! $batsman has to walk back.';
+    }
   }
 }
 

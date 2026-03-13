@@ -28,6 +28,12 @@ class MatchState {
   final bool? homeWon;
   final int coinsAwarded;
   final int xpAwarded;
+  final String pitchCondition;
+  final String weatherCondition;
+  final bool userWonToss;
+  final String tossDecision; // 'bat' or 'bowl'
+  final bool homeBatsFirst;
+  final int target;
 
   const MatchState({
     this.match,
@@ -44,51 +50,49 @@ class MatchState {
     this.homeWon,
     this.coinsAwarded = 0,
     this.xpAwarded = 0,
+    this.pitchCondition = 'balanced',
+    this.weatherCondition = 'clear',
+    this.userWonToss = true,
+    this.tossDecision = 'bat',
+    this.homeBatsFirst = true,
+    this.target = 0,
   });
 
   bool get hasActiveMatch => isSimulating || isMatchComplete;
 
-  int get homeScore {
+  /// Helper to get score for a specific innings
+  int _inningsScore(int inn) {
     if (events.isEmpty) return 0;
-    final inn1 = events.where((e) => e.innings == 1);
-    return inn1.isEmpty ? 0 : inn1.last.scoreAfter;
+    final inns = events.where((e) => e.innings == inn);
+    return inns.isEmpty ? 0 : inns.last.scoreAfter;
   }
 
-  int get homeWickets {
+  int _inningsWickets(int inn) {
     if (events.isEmpty) return 0;
-    final inn1 = events.where((e) => e.innings == 1);
-    return inn1.isEmpty ? 0 : inn1.last.wicketsAfter;
+    final inns = events.where((e) => e.innings == inn);
+    return inns.isEmpty ? 0 : inns.last.wicketsAfter;
   }
 
-  int get awayScore {
-    if (events.isEmpty) return 0;
-    final inn2 = events.where((e) => e.innings == 2);
-    return inn2.isEmpty ? 0 : inn2.last.scoreAfter;
+  String _inningsOvers(int inn) {
+    final inns = events.where((e) => e.innings == inn);
+    if (inns.isEmpty) return '0.0';
+    final last = inns.last;
+    return '${last.overNumber}.${last.ballNumber}';
   }
 
-  int get awayWickets {
-    if (events.isEmpty) return 0;
-    final inn2 = events.where((e) => e.innings == 2);
-    return inn2.isEmpty ? 0 : inn2.last.wicketsAfter;
-  }
+  /// Home team's score (accounts for batting order)
+  int get homeScore => homeBatsFirst ? _inningsScore(1) : _inningsScore(2);
+  int get homeWickets => homeBatsFirst ? _inningsWickets(1) : _inningsWickets(2);
+  String get homeOvers => homeBatsFirst ? _inningsOvers(1) : _inningsOvers(2);
+
+  /// Away team's score (accounts for batting order)
+  int get awayScore => homeBatsFirst ? _inningsScore(2) : _inningsScore(1);
+  int get awayWickets => homeBatsFirst ? _inningsWickets(2) : _inningsWickets(1);
+  String get awayOvers => homeBatsFirst ? _inningsOvers(2) : _inningsOvers(1);
 
   String get currentOvers {
     if (events.isEmpty) return '0.0';
     final last = events.last;
-    return '${last.overNumber}.${last.ballNumber}';
-  }
-
-  String get homeOvers {
-    final inn1 = events.where((e) => e.innings == 1);
-    if (inn1.isEmpty) return '0.0';
-    final last = inn1.last;
-    return '${last.overNumber}.${last.ballNumber}';
-  }
-
-  String get awayOvers {
-    final inn2 = events.where((e) => e.innings == 2);
-    if (inn2.isEmpty) return '0.0';
-    final last = inn2.last;
     return '${last.overNumber}.${last.ballNumber}';
   }
 
@@ -118,6 +122,33 @@ class MatchState {
   List<BowlerStats> get currentBowlers =>
       bowlerStats.values.where((b) => b.innings == currentInnings).toList();
 
+  /// Runs needed to win (only valid in 2nd innings)
+  int get runsNeeded {
+    if (currentInnings < 2 || target == 0) return 0;
+    // The chasing team's score is always innings 2
+    final chasingScore = _inningsScore(2);
+    final needed = target + 1 - chasingScore;
+    return needed > 0 ? needed : 0;
+  }
+
+  /// Balls remaining in current innings
+  int get ballsRemaining {
+    if (events.isEmpty) return maxOversForFormat * 6;
+    final inningsEvents = events.where((e) => e.innings == currentInnings);
+    if (inningsEvents.isEmpty) return maxOversForFormat * 6;
+    final last = inningsEvents.last;
+    final ballsBowled = last.overNumber * 6 + last.ballNumber;
+    return (maxOversForFormat * 6) - ballsBowled;
+  }
+
+  int get maxOversForFormat => matchFormat == 'odi' ? 50 : 20;
+
+  /// Required run rate (only in 2nd innings)
+  double get requiredRunRate {
+    if (currentInnings < 2 || ballsRemaining <= 0) return 0;
+    return (runsNeeded / ballsRemaining) * 6;
+  }
+
   MatchState copyWith({
     MatchModel? match,
     List<MatchEvent>? events,
@@ -133,6 +164,12 @@ class MatchState {
     bool? homeWon,
     int? coinsAwarded,
     int? xpAwarded,
+    String? pitchCondition,
+    String? weatherCondition,
+    bool? userWonToss,
+    String? tossDecision,
+    bool? homeBatsFirst,
+    int? target,
   }) {
     return MatchState(
       match: match ?? this.match,
@@ -149,6 +186,12 @@ class MatchState {
       homeWon: homeWon ?? this.homeWon,
       coinsAwarded: coinsAwarded ?? this.coinsAwarded,
       xpAwarded: xpAwarded ?? this.xpAwarded,
+      pitchCondition: pitchCondition ?? this.pitchCondition,
+      weatherCondition: weatherCondition ?? this.weatherCondition,
+      userWonToss: userWonToss ?? this.userWonToss,
+      tossDecision: tossDecision ?? this.tossDecision,
+      homeBatsFirst: homeBatsFirst ?? this.homeBatsFirst,
+      target: target ?? this.target,
     );
   }
 }
@@ -252,6 +295,11 @@ class MatchNotifier extends StateNotifier<MatchState> {
 
   MatchNotifier(this.ref) : super(const MatchState());
 
+  static int _inningsScoreFromEvents(List<MatchEvent> events, int inn) {
+    final inns = events.where((e) => e.innings == inn);
+    return inns.isEmpty ? 0 : inns.last.scoreAfter;
+  }
+
   /// In-memory match history
   final List<MatchSummary> _matchHistory = [];
   List<MatchSummary> get matchHistory => List.unmodifiable(_matchHistory);
@@ -267,6 +315,10 @@ class MatchNotifier extends StateNotifier<MatchState> {
     required String awayTeamName,
     String format = 't20',
     String pitchCondition = 'balanced',
+    String weatherCondition = 'clear',
+    bool userWonToss = true,
+    String tossDecision = 'bat',
+    bool homeBatsFirst = true,
   }) async {
     _engine = MatchEngine(
       homeXI: homeXI,
@@ -277,6 +329,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
       pitchCondition: pitchCondition,
       homeTeamName: homeTeamName,
       awayTeamName: awayTeamName,
+      homeBatsFirst: homeBatsFirst,
     );
 
     state = MatchState(
@@ -284,6 +337,11 @@ class MatchNotifier extends StateNotifier<MatchState> {
       homeTeamName: homeTeamName,
       awayTeamName: awayTeamName,
       matchFormat: format,
+      pitchCondition: pitchCondition,
+      weatherCondition: weatherCondition,
+      userWonToss: userWonToss,
+      tossDecision: tossDecision,
+      homeBatsFirst: homeBatsFirst,
     );
 
     // Simulate ball by ball with delay for UX
@@ -291,6 +349,25 @@ class MatchNotifier extends StateNotifier<MatchState> {
       const Duration(milliseconds: 800),
       (_) => _simulateNextBall(),
     );
+  }
+
+  String _formatDismissal(String wicketType, String bowlerName, String? fielderName) {
+    switch (wicketType) {
+      case 'bowled':
+        return 'b $bowlerName';
+      case 'caught':
+        return 'c ${fielderName ?? "fielder"} b $bowlerName';
+      case 'caught_behind':
+        return 'c ${fielderName ?? "†keeper"} b $bowlerName';
+      case 'lbw':
+        return 'lbw b $bowlerName';
+      case 'run_out':
+        return 'run out (${fielderName ?? "fielder"})';
+      case 'stumped':
+        return 'st ${fielderName ?? "†keeper"} b $bowlerName';
+      default:
+        return 'b $bowlerName';
+    }
   }
 
   void _simulateNextBall() {
@@ -328,7 +405,15 @@ class MatchNotifier extends StateNotifier<MatchState> {
     if (result.runs == 6) batStats.sixes++;
     if (result.isWicket) {
       batStats.isOut = true;
-      batStats.dismissalType = result.wicketType;
+      final bowlerNameForDismissal = _engine!.getBowlerName(result.bowlerCardId);
+      final fielderNameForDismissal = result.fielderCardId != null
+          ? _engine!.getBatsmanName(result.fielderCardId!)
+          : null;
+      batStats.dismissalType = _formatDismissal(
+        result.wicketType ?? 'bowled',
+        bowlerNameForDismissal,
+        fielderNameForDismissal,
+      );
     }
 
     // Update bowler stats
@@ -343,32 +428,44 @@ class MatchNotifier extends StateNotifier<MatchState> {
       bowlStats.dotBalls++;
     }
 
+    // Track target when innings changes to 2nd (target = innings 1 score)
+    final newTarget = (result.innings == 2 && state.target == 0)
+        ? _inningsScoreFromEvents([...state.events, result], 1)
+        : null;
+
     state = state.copyWith(
       events: events,
       currentCommentary: result.commentary,
       currentInnings: result.innings,
       batsmanStats: batsmanStats,
       bowlerStats: bowlerStats,
+      target: newTarget,
     );
   }
 
   void _onMatchComplete() {
     if (_engine == null) return;
 
-    // Determine winner
-    final homeScore = _engine!.score1;
-    final awayScore = _engine!.score2;
+    // Determine winner — score1 is batting-first team, score2 is batting-second
+    final score1 = _engine!.score1;
+    final score2 = _engine!.score2;
+    final homeBatsFirst = state.homeBatsFirst;
+
+    // Home score depends on batting order
+    final homeTotal = homeBatsFirst ? score1 : score2;
+    final awayTotal = homeBatsFirst ? score2 : score1;
+
     bool? homeWon;
     int coins;
     int xp;
 
-    if (homeScore > awayScore) {
+    if (homeTotal > awayTotal) {
       homeWon = true;
       coins = state.matchFormat == 'odi'
           ? AppConstants.matchWinCoins * 2
           : AppConstants.matchWinCoins;
       xp = AppConstants.matchWinXP;
-    } else if (awayScore > homeScore) {
+    } else if (awayTotal > homeTotal) {
       homeWon = false;
       coins = AppConstants.matchLoseCoins;
       xp = AppConstants.matchPlayXP;
@@ -469,7 +566,15 @@ class MatchNotifier extends StateNotifier<MatchState> {
       if (result.runs == 6) batStats.sixes++;
       if (result.isWicket) {
         batStats.isOut = true;
-        batStats.dismissalType = result.wicketType;
+        final bowlerNameForDismissal = _engine!.getBowlerName(result.bowlerCardId);
+        final fielderNameForDismissal = result.fielderCardId != null
+            ? _engine!.getBatsmanName(result.fielderCardId!)
+            : null;
+        batStats.dismissalType = _formatDismissal(
+          result.wicketType ?? 'bowled',
+          bowlerNameForDismissal,
+          fielderNameForDismissal,
+        );
       }
 
       final bowlerName = _engine!.getBowlerName(result.bowlerCardId);

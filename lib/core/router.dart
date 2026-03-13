@@ -9,6 +9,7 @@ import '../screens/pack_opening_screen.dart';
 import '../screens/collection_screen.dart';
 import '../screens/squad_builder_screen.dart';
 import '../screens/match_screen.dart';
+import '../screens/match_preview_screen.dart';
 import '../screens/live_match_screen.dart';
 import '../screens/match_history_screen.dart';
 import '../screens/market_screen.dart';
@@ -68,6 +69,13 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: AppConstants.matchRoute,
             builder: (context, state) => const MatchScreen(),
+          ),
+          GoRoute(
+            path: AppConstants.matchPreviewRoute,
+            builder: (context, state) {
+              final format = state.uri.queryParameters['format'] ?? 't20';
+              return MatchPreviewScreen(format: format);
+            },
           ),
           GoRoute(
             path: AppConstants.liveMatchRoute,

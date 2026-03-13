@@ -132,7 +132,7 @@ class DashboardScreen extends ConsumerWidget {
                     style: Theme.of(context).textTheme.bodyLarge,
                   ),
                   Text(
-                    user.displayName ?? user.username,
+                    user.username,
                     style: Theme.of(context)
                         .textTheme
                         .displayMedium
@@ -390,17 +390,23 @@ class _LiveMatchBanner extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 2),
-                      Text(
-                        '${matchState.homeScore}/${matchState.homeWickets}',
-                        style: const TextStyle(
-                          fontSize: 20, fontWeight: FontWeight.bold,
-                          color: AppTheme.accent,
+                      if (matchState.homeBatsFirst || matchState.currentInnings >= 2 || matchState.isMatchComplete) ...[
+                        Text(
+                          '${matchState.homeScore}/${matchState.homeWickets}',
+                          style: const TextStyle(
+                            fontSize: 20, fontWeight: FontWeight.bold,
+                            color: AppTheme.accent,
+                          ),
                         ),
-                      ),
-                      Text(
-                        '(${matchState.homeOvers} ov)',
-                        style: const TextStyle(fontSize: 11, color: Colors.white38),
-                      ),
+                        Text(
+                          '(${matchState.homeOvers} ov)',
+                          style: const TextStyle(fontSize: 11, color: Colors.white38),
+                        ),
+                      ] else
+                        const Text(
+                          'Yet to bat',
+                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white38),
+                        ),
                     ],
                   ),
                 ),
@@ -422,17 +428,17 @@ class _LiveMatchBanner extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        matchState.currentInnings >= 2
+                        (!matchState.homeBatsFirst || matchState.currentInnings >= 2 || matchState.isMatchComplete)
                             ? '${matchState.awayScore}/${matchState.awayWickets}'
                             : 'Yet to bat',
                         style: TextStyle(
-                          fontSize: matchState.currentInnings >= 2 ? 20 : 14,
+                          fontSize: (!matchState.homeBatsFirst || matchState.currentInnings >= 2 || matchState.isMatchComplete) ? 20 : 14,
                           fontWeight: FontWeight.bold,
-                          color: matchState.currentInnings >= 2
+                          color: (!matchState.homeBatsFirst || matchState.currentInnings >= 2 || matchState.isMatchComplete)
                               ? Colors.white : Colors.white38,
                         ),
                       ),
-                      if (matchState.currentInnings >= 2)
+                      if (!matchState.homeBatsFirst || matchState.currentInnings >= 2 || matchState.isMatchComplete)
                         Text(
                           '(${matchState.awayOvers} ov)',
                           style: const TextStyle(fontSize: 11, color: Colors.white38),
@@ -451,6 +457,26 @@ class _LiveMatchBanner extends StatelessWidget {
                 style: const TextStyle(color: Colors.white60, fontSize: 12),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
+              ),
+            ],
+
+            // Chase info during 2nd innings
+            if (isLive && matchState.currentInnings >= 2 && matchState.runsNeeded > 0) ...[
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppTheme.accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  '${matchState.runsNeeded} needed from ${matchState.ballsRemaining} balls',
+                  style: const TextStyle(
+                    color: AppTheme.accent,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 11,
+                  ),
+                ),
               ),
             ],
 

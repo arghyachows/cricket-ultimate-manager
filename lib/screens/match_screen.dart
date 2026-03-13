@@ -1,11 +1,9 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../core/theme.dart';
 import '../core/constants.dart';
 import '../providers/providers.dart';
-import '../engine/ai_opponent.dart';
 
 class MatchScreen extends ConsumerWidget {
   const MatchScreen({super.key});
@@ -199,57 +197,16 @@ class MatchScreen extends ConsumerWidget {
     );
   }
 
-  static const _pitchTypes = ['balanced', 'batting_friendly', 'bowling_friendly', 'spin_friendly', 'seam_friendly'];
-  static final _rng = Random();
-
   void _startQuickMatch(BuildContext context, WidgetRef ref, team, int chemistry) {
     final squad = team.activeSquad;
     if (squad == null) return;
-
-    final aiName = AIOpponent.randomTeamName();
-    final aiXI = AIOpponent.generateXI(difficulty: 3);
-    final aiChem = AIOpponent.randomChemistry();
-    final pitch = _pitchTypes[_rng.nextInt(_pitchTypes.length)];
-
-    ref.read(matchProvider.notifier).startMatch(
-      homeXI: squad.playingXI,
-      awayXI: aiXI,
-      homeTeamId: team.id,
-      awayTeamId: 'ai',
-      homeChemistry: chemistry,
-      awayChemistry: aiChem,
-      homeTeamName: team.teamName,
-      awayTeamName: aiName,
-      format: 't20',
-      pitchCondition: pitch,
-    );
-
-    context.go(AppConstants.liveMatchRoute);
+    context.go('${AppConstants.matchPreviewRoute}?format=t20');
   }
 
   void _startODI(BuildContext context, WidgetRef ref, team, int chemistry) {
     final squad = team.activeSquad;
     if (squad == null) return;
-
-    final aiName = AIOpponent.randomTeamName();
-    final aiXI = AIOpponent.generateXI(difficulty: 4);
-    final aiChem = AIOpponent.randomChemistry();
-    final pitch = _pitchTypes[_rng.nextInt(_pitchTypes.length)];
-
-    ref.read(matchProvider.notifier).startMatch(
-      homeXI: squad.playingXI,
-      awayXI: aiXI,
-      homeTeamId: team.id,
-      awayTeamId: 'ai',
-      homeChemistry: chemistry,
-      awayChemistry: aiChem,
-      homeTeamName: team.teamName,
-      awayTeamName: aiName,
-      format: 'odi',
-      pitchCondition: pitch,
-    );
-
-    context.go(AppConstants.liveMatchRoute);
+    context.go('${AppConstants.matchPreviewRoute}?format=odi');
   }
 }
 

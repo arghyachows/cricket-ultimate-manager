@@ -89,6 +89,7 @@ class AppConstants {
   static const String collectionRoute = '/collection';
   static const String squadBuilderRoute = '/squad';
   static const String matchRoute = '/match';
+  static const String matchPreviewRoute = '/match/preview';
   static const String liveMatchRoute = '/match/live';
   static const String marketRoute = '/market';
   static const String leaderboardRoute = '/leaderboard';
