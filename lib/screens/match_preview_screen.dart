@@ -9,8 +9,7 @@ import '../models/models.dart';
 import '../engine/ai_opponent.dart';
 
 class MatchPreviewScreen extends ConsumerStatefulWidget {
-  final String format;
-  const MatchPreviewScreen({super.key, required this.format});
+  const MatchPreviewScreen({super.key});
 
   @override
   ConsumerState<MatchPreviewScreen> createState() => _MatchPreviewScreenState();
@@ -33,13 +32,17 @@ class _MatchPreviewScreenState extends ConsumerState<MatchPreviewScreen>
     'humid',
     'windy',
   ];
+  static const _oversOptions = [5, 10, 20, 50];
+  static const _difficulties = ['Village', 'Domestic', 'International'];
 
   late final String _pitchType;
   late final String _weather;
-  late final String _aiTeamName;
-  late final List<SquadPlayer> _aiXI;
-  late final int _aiChemistry;
-  late final int _difficulty;
+  late String _aiTeamName;
+  late List<SquadPlayer> _aiXI;
+  late int _aiChemistry;
+
+  String _selectedDifficulty = 'Village';
+  int _selectedOvers = 20;
 
   bool _tossAnimating = false;
   bool _tossComplete = false;
@@ -50,21 +53,33 @@ class _MatchPreviewScreenState extends ConsumerState<MatchPreviewScreen>
   late AnimationController _coinController;
   late Animation<double> _coinAnimation;
 
+  int get _aiDifficultyLevel {
+    switch (_selectedDifficulty) {
+      case 'Village': return 2;
+      case 'Domestic': return 3;
+      case 'International': return 5;
+      default: return 3;
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     _pitchType = _pitchTypes[_rng.nextInt(_pitchTypes.length)];
     _weather = _weatherConditions[_rng.nextInt(_weatherConditions.length)];
-    _difficulty = widget.format == 'odi' ? 4 : 3;
-    _aiTeamName = AIOpponent.randomTeamName();
-    _aiXI = AIOpponent.generateXI(difficulty: _difficulty);
-    _aiChemistry = AIOpponent.randomChemistry();
+    _regenerateAI();
 
     _coinController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     );
     _coinAnimation = CurvedAnimation(parent: _coinController, curve: Curves.easeOut);
+  }
+
+  void _regenerateAI() {
+    _aiTeamName = AIOpponent.randomTeamName();
+    _aiXI = AIOpponent.generateXI(difficulty: _aiDifficultyLevel);
+    _aiChemistry = AIOpponent.randomChemistry();
   }
 
   @override
@@ -119,7 +134,8 @@ class _MatchPreviewScreenState extends ConsumerState<MatchPreviewScreen>
       awayChemistry: _aiChemistry,
       homeTeamName: team.teamName,
       awayTeamName: _aiTeamName,
-      format: widget.format,
+      overs: _selectedOvers,
+      difficulty: _selectedDifficulty,
       pitchCondition: _pitchType,
       weatherCondition: _weather,
       userWonToss: _userWonToss,
@@ -136,7 +152,7 @@ class _MatchPreviewScreenState extends ConsumerState<MatchPreviewScreen>
 
     return Scaffold(
       backgroundColor: AppTheme.background,
-      appBar: AppBar(title: Text('${widget.format.toUpperCase()} PREVIEW')),
+      appBar: AppBar(title: const Text('MATCH PREVIEW')),
       body: teamAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Error: $e')),
@@ -180,7 +196,7 @@ class _MatchPreviewScreenState extends ConsumerState<MatchPreviewScreen>
       child: Column(
         children: [
           Text(
-            widget.format.toUpperCase(),
+            '$_selectedOvers OVERS · $_selectedDifficulty'.toUpperCase(),
             style: const TextStyle(
               color: AppTheme.accent,
               fontSize: 12,
@@ -283,31 +299,161 @@ class _MatchPreviewScreenState extends ConsumerState<MatchPreviewScreen>
               )),
             ],
           ),
+          const SizedBox(height: 16),
+
+          // Difficulty selector
+          const Text(
+            'DIFFICULTY',
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1, color: Colors.white54),
+          ),
           const SizedBox(height: 8),
           Row(
-            children: [
-              Expanded(child: _conditionTile(
-                Icons.sports_cricket,
-                'Format',
-                widget.format == 'odi' ? '50 OVERS' : '20 OVERS',
-                AppTheme.primaryLight,
-              )),
-              const SizedBox(width: 12),
-              Expanded(child: _conditionTile(
-                Icons.speed,
-                'Difficulty',
-                _difficulty <= 2 ? 'EASY' : _difficulty <= 3 ? 'MEDIUM' : 'HARD',
-                _difficulty <= 2
-                    ? Colors.greenAccent
-                    : _difficulty <= 3
-                        ? Colors.orangeAccent
-                        : Colors.redAccent,
-              )),
-            ],
+            children: _difficulties.map((d) {
+              final selected = _selectedDifficulty == d;
+              final color = d == 'Village'
+                  ? Colors.greenAccent
+                  : d == 'Domestic'
+                      ? Colors.orangeAccent
+                      : Colors.redAccent;
+              return Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(right: d != 'International' ? 8 : 0),
+                  child: GestureDetector(
+                    onTap: () => setState(() {
+                      _selectedDifficulty = d;
+                      _regenerateAI();
+                    }),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: selected ? color.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.05),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: selected ? color : Colors.white12,
+                          width: selected ? 1.5 : 1,
+                        ),
+                      ),
+                      child: Column(
+                        children: [
+                          Icon(
+                            d == 'Village' ? Icons.park : d == 'Domestic' ? Icons.stadium : Icons.public,
+                            color: selected ? color : Colors.white38,
+                            size: 20,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            d.toUpperCase(),
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: selected ? color : Colors.white38,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 16),
+
+          // Overs selector
+          const Text(
+            'OVERS',
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1, color: Colors.white54),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: _oversOptions.map((o) {
+              final selected = _selectedOvers == o;
+              final isLast = o == _oversOptions.last;
+              return Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(right: isLast ? 0 : 8),
+                  child: GestureDetector(
+                    onTap: () => setState(() {
+                      _selectedOvers = o;
+                    }),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      decoration: BoxDecoration(
+                        color: selected
+                            ? AppTheme.accent.withValues(alpha: 0.2)
+                            : Colors.white.withValues(alpha: 0.05),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: selected ? AppTheme.accent : Colors.white12,
+                          width: selected ? 1.5 : 1,
+                        ),
+                      ),
+                      child: Center(
+                        child: Text(
+                          '$o',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: selected ? AppTheme.accent : Colors.white38,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 12),
+
+          // Coin reward preview
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppTheme.cardGold.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppTheme.cardGold.withValues(alpha: 0.3)),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.monetization_on, color: AppTheme.cardGold, size: 18),
+                const SizedBox(width: 6),
+                Text(
+                  'Win reward: ${_calculateWinCoins()} coins',
+                  style: const TextStyle(
+                    color: AppTheme.cardGold,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
     );
+  }
+
+  int _calculateWinCoins() {
+    double diffMultiplier;
+    switch (_selectedDifficulty) {
+      case 'Village': diffMultiplier = 0.5; break;
+      case 'Domestic': diffMultiplier = 1.0; break;
+      case 'International': diffMultiplier = 2.0; break;
+      default: diffMultiplier = 1.0;
+    }
+    double oversMultiplier;
+    switch (_selectedOvers) {
+      case 5: oversMultiplier = 0.25; break;
+      case 10: oversMultiplier = 0.5; break;
+      case 20: oversMultiplier = 1.0; break;
+      case 50: oversMultiplier = 2.0; break;
+      default: oversMultiplier = 1.0;
+    }
+    return (AppConstants.matchWinCoins * diffMultiplier * oversMultiplier).round();
   }
 
   Widget _conditionTile(IconData icon, String label, String value, Color color) {

@@ -24,6 +24,8 @@ class MatchState {
   final String homeTeamName;
   final String awayTeamName;
   final String matchFormat;
+  final int matchOvers;
+  final String matchDifficulty;
   /// true = home won, false = away won, null = tie or not finished
   final bool? homeWon;
   final int coinsAwarded;
@@ -47,6 +49,8 @@ class MatchState {
     this.homeTeamName = '',
     this.awayTeamName = '',
     this.matchFormat = 't20',
+    this.matchOvers = 20,
+    this.matchDifficulty = 'Village',
     this.homeWon,
     this.coinsAwarded = 0,
     this.xpAwarded = 0,
@@ -161,6 +165,8 @@ class MatchState {
     String? homeTeamName,
     String? awayTeamName,
     String? matchFormat,
+    int? matchOvers,
+    String? matchDifficulty,
     bool? homeWon,
     int? coinsAwarded,
     int? xpAwarded,
@@ -183,6 +189,8 @@ class MatchState {
       homeTeamName: homeTeamName ?? this.homeTeamName,
       awayTeamName: awayTeamName ?? this.awayTeamName,
       matchFormat: matchFormat ?? this.matchFormat,
+      matchOvers: matchOvers ?? this.matchOvers,
+      matchDifficulty: matchDifficulty ?? this.matchDifficulty,
       homeWon: homeWon ?? this.homeWon,
       coinsAwarded: coinsAwarded ?? this.coinsAwarded,
       xpAwarded: xpAwarded ?? this.xpAwarded,
@@ -313,7 +321,8 @@ class MatchNotifier extends StateNotifier<MatchState> {
     required int awayChemistry,
     required String homeTeamName,
     required String awayTeamName,
-    String format = 't20',
+    int overs = 20,
+    String difficulty = 'Village',
     String pitchCondition = 'balanced',
     String weatherCondition = 'clear',
     bool userWonToss = true,
@@ -325,7 +334,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
       awayXI: awayXI,
       homeChemistry: homeChemistry,
       awayChemistry: awayChemistry,
-      format: format,
+      overs: overs,
       pitchCondition: pitchCondition,
       homeTeamName: homeTeamName,
       awayTeamName: awayTeamName,
@@ -336,7 +345,9 @@ class MatchNotifier extends StateNotifier<MatchState> {
       isSimulating: true,
       homeTeamName: homeTeamName,
       awayTeamName: awayTeamName,
-      matchFormat: format,
+      matchFormat: overs >= 50 ? 'odi' : overs >= 20 ? 't20' : 'quick',
+      matchOvers: overs,
+      matchDifficulty: difficulty,
       pitchCondition: pitchCondition,
       weatherCondition: weatherCondition,
       userWonToss: userWonToss,
@@ -459,19 +470,34 @@ class MatchNotifier extends StateNotifier<MatchState> {
     int coins;
     int xp;
 
+    // Coin multipliers based on difficulty and overs
+    double diffMultiplier;
+    switch (state.matchDifficulty) {
+      case 'Village': diffMultiplier = 0.5; break;
+      case 'Domestic': diffMultiplier = 1.0; break;
+      case 'International': diffMultiplier = 2.0; break;
+      default: diffMultiplier = 1.0;
+    }
+    double oversMultiplier;
+    switch (state.matchOvers) {
+      case 5: oversMultiplier = 0.25; break;
+      case 10: oversMultiplier = 0.5; break;
+      case 20: oversMultiplier = 1.0; break;
+      case 50: oversMultiplier = 2.0; break;
+      default: oversMultiplier = 1.0;
+    }
+
     if (homeTotal > awayTotal) {
       homeWon = true;
-      coins = state.matchFormat == 'odi'
-          ? AppConstants.matchWinCoins * 2
-          : AppConstants.matchWinCoins;
+      coins = (AppConstants.matchWinCoins * diffMultiplier * oversMultiplier).round();
       xp = AppConstants.matchWinXP;
     } else if (awayTotal > homeTotal) {
       homeWon = false;
-      coins = AppConstants.matchLoseCoins;
+      coins = (AppConstants.matchLoseCoins * diffMultiplier * oversMultiplier).round();
       xp = AppConstants.matchPlayXP;
     } else {
       homeWon = null;
-      coins = AppConstants.matchDrawCoins;
+      coins = (AppConstants.matchDrawCoins * diffMultiplier * oversMultiplier).round();
       xp = AppConstants.matchPlayXP + 20;
     }
 

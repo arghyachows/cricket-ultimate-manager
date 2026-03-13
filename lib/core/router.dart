@@ -73,8 +73,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: AppConstants.matchPreviewRoute,
             builder: (context, state) {
-              final format = state.uri.queryParameters['format'] ?? 't20';
-              return MatchPreviewScreen(format: format);
+              return const MatchPreviewScreen();
             },
           ),
           GoRoute(

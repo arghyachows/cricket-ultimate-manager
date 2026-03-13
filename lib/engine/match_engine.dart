@@ -9,7 +9,7 @@ class MatchEngine {
   final List<SquadPlayer> awayXI;
   final int homeChemistry;
   final int awayChemistry;
-  final String format;
+  final int overs;
   final String pitchCondition;
   final String homeTeamName;
   final String awayTeamName;
@@ -50,7 +50,7 @@ class MatchEngine {
     required this.awayXI,
     required this.homeChemistry,
     required this.awayChemistry,
-    required this.format,
+    required this.overs,
     required this.pitchCondition,
     this.homeTeamName = 'Home',
     this.awayTeamName = 'Away',
@@ -81,7 +81,7 @@ class MatchEngine {
     _currentBowlerIndex = 0;
   }
 
-  int get maxOvers => format == 'odi' ? 50 : 20;
+  int get maxOvers => overs;
 
   bool get isFirstInnings => _innings == 1;
 

@@ -94,23 +94,12 @@ class MatchScreen extends ConsumerWidget {
 
               _MatchModeCard(
                 title: 'QUICK MATCH',
-                subtitle: 'Play a T20 against AI opponent',
+                subtitle: 'Play against an AI opponent',
                 icon: Icons.flash_on,
                 color: AppTheme.primaryLight,
-                reward: '500 coins',
+                reward: 'Varies',
                 enabled: xi.length == 11 && !hasActiveMatch,
                 onTap: () => _startQuickMatch(context, ref, team, chemistry),
-              ),
-              const SizedBox(height: 12),
-
-              _MatchModeCard(
-                title: 'ODI CHALLENGE',
-                subtitle: '50-over match for bigger rewards',
-                icon: Icons.sports_cricket,
-                color: AppTheme.cardGold,
-                reward: '1000 coins',
-                enabled: xi.length == 11 && !hasActiveMatch,
-                onTap: () => _startODI(context, ref, team, chemistry),
               ),
               const SizedBox(height: 12),
 
@@ -262,13 +251,7 @@ class MatchScreen extends ConsumerWidget {
   void _startQuickMatch(BuildContext context, WidgetRef ref, team, int chemistry) {
     final squad = team.activeSquad;
     if (squad == null) return;
-    context.go('${AppConstants.matchPreviewRoute}?format=t20');
-  }
-
-  void _startODI(BuildContext context, WidgetRef ref, team, int chemistry) {
-    final squad = team.activeSquad;
-    if (squad == null) return;
-    context.go('${AppConstants.matchPreviewRoute}?format=odi');
+    context.go(AppConstants.matchPreviewRoute);
   }
 }
 
