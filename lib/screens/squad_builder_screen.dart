@@ -184,6 +184,10 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen> {
       roleCount[role] = (roleCount[role] ?? 0) + 1;
     }
 
+    final avgRating = xi.isEmpty
+        ? 0
+        : xi.fold<int>(0, (sum, p) => sum + (p.userCard?.playerCard?.rating ?? 0)) ~/ xi.length;
+
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -211,7 +215,7 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'OVR ${team.overallRating} | ${xi.length}/11 selected',
+                      'OVR $avgRating | ${xi.length}/11 selected',
                       style: const TextStyle(color: Colors.white54),
                     ),
                   ],
@@ -546,12 +550,13 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen> {
             final team = ref.read(teamProvider).valueOrNull;
             final squad = team?.activeSquad;
 
-            // Collect assigned user-card IDs AND player-card IDs (prevent same player twice)
-            final assignedUserCardIds = squad?.players.map((p) => p.userCardId).toSet() ?? {};
-            final assignedPlayerCardIds = squad?.players
+            // Collect assigned user-card IDs AND player-card IDs from Playing XI only
+            final xiPlayers = squad?.players.where((p) => p.isPlayingXI) ?? [];
+            final assignedUserCardIds = xiPlayers.map((p) => p.userCardId).toSet();
+            final assignedPlayerCardIds = xiPlayers
                 .where((p) => p.userCard?.playerCard != null)
                 .map((p) => p.userCard!.cardId)
-                .toSet() ?? {};
+                .toSet();
 
             var cards = allCards.where((c) {
               if (assignedUserCardIds.contains(c.id)) return false;

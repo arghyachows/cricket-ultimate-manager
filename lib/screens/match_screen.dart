@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../core/theme.dart';
 import '../core/constants.dart';
 import '../providers/providers.dart';
+import '../models/models.dart';
 
 class MatchScreen extends ConsumerWidget {
   const MatchScreen({super.key});
@@ -12,6 +13,8 @@ class MatchScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final teamAsync = ref.watch(teamProvider);
     final chemistry = ref.watch(chemistryProvider);
+    final matchState = ref.watch(matchProvider);
+    final hasActiveMatch = matchState.hasActiveMatch;
 
     return Scaffold(
       appBar: AppBar(
@@ -41,7 +44,7 @@ class MatchScreen extends ConsumerWidget {
             padding: const EdgeInsets.all(16),
             children: [
               // Team card
-              _buildTeamCard(context, team, chemistry, xi.length),
+              _buildTeamCard(context, team, chemistry, xi),
               const SizedBox(height: 24),
 
               // Match modes
@@ -51,13 +54,51 @@ class MatchScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 12),
 
+              if (hasActiveMatch) ...[
+                GestureDetector(
+                  onTap: () => context.go(AppConstants.liveMatchRoute),
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: AppTheme.accent.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppTheme.accent.withValues(alpha: 0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.sports_cricket, color: AppTheme.accent),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                matchState.isSimulating ? 'Match in progress' : 'Match completed',
+                                style: const TextStyle(color: AppTheme.accent, fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(height: 2),
+                              const Text(
+                                'Tap to view the current match',
+                                style: TextStyle(color: Colors.white54, fontSize: 12),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Icon(Icons.arrow_forward_ios, color: AppTheme.accent, size: 16),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+
               _MatchModeCard(
                 title: 'QUICK MATCH',
                 subtitle: 'Play a T20 against AI opponent',
                 icon: Icons.flash_on,
                 color: AppTheme.primaryLight,
                 reward: '500 coins',
-                enabled: xi.length == 11,
+                enabled: xi.length == 11 && !hasActiveMatch,
                 onTap: () => _startQuickMatch(context, ref, team, chemistry),
               ),
               const SizedBox(height: 12),
@@ -68,7 +109,7 @@ class MatchScreen extends ConsumerWidget {
                 icon: Icons.sports_cricket,
                 color: AppTheme.cardGold,
                 reward: '1000 coins',
-                enabled: xi.length == 11,
+                enabled: xi.length == 11 && !hasActiveMatch,
                 onTap: () => _startODI(context, ref, team, chemistry),
               ),
               const SizedBox(height: 12),
@@ -79,7 +120,7 @@ class MatchScreen extends ConsumerWidget {
                 icon: Icons.emoji_events,
                 color: AppTheme.cardElite,
                 reward: 'Varies',
-                enabled: xi.length == 11,
+                enabled: xi.length == 11 && !hasActiveMatch,
                 onTap: () => context.go(AppConstants.tournamentsRoute),
               ),
               const SizedBox(height: 12),
@@ -90,7 +131,7 @@ class MatchScreen extends ConsumerWidget {
                 icon: Icons.military_tech,
                 color: AppTheme.cardLegend,
                 reward: 'Premium packs',
-                enabled: xi.length == 11,
+                enabled: xi.length == 11 && !hasActiveMatch,
                 onTap: () {},
               ),
 
@@ -103,14 +144,31 @@ class MatchScreen extends ConsumerWidget {
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: AppTheme.error.withValues(alpha: 0.3)),
                   ),
-                  child: Row(
+                  child: Column(
                     children: [
-                      const Icon(Icons.warning_amber, color: AppTheme.error),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          'You need 11 players in your Playing XI. Currently: ${xi.length}/11',
-                          style: const TextStyle(color: AppTheme.error),
+                      Row(
+                        children: [
+                          const Icon(Icons.warning_amber, color: AppTheme.error),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'You need 11 players in your Playing XI. Currently: ${xi.length}/11',
+                              style: const TextStyle(color: AppTheme.error),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () => context.go(AppConstants.squadBuilderRoute),
+                          icon: const Icon(Icons.groups, size: 18),
+                          label: const Text('GO TO SQUAD BUILDER'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.accent,
+                            foregroundColor: Colors.black,
+                          ),
                         ),
                       ),
                     ],
@@ -124,7 +182,11 @@ class MatchScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildTeamCard(BuildContext context, team, int chemistry, int xiCount) {
+  Widget _buildTeamCard(BuildContext context, team, int chemistry, List<SquadPlayer> xi) {
+    final xiCount = xi.length;
+    final avgRating = xi.isEmpty
+        ? 0
+        : (xi.fold<int>(0, (sum, p) => sum + (p.userCard?.playerCard?.rating ?? 0)) ~/ xi.length);
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -151,7 +213,7 @@ class MatchScreen extends ConsumerWidget {
                       style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
                     ),
                     Text(
-                      'OVR ${team.overallRating}',
+                      'OVR $avgRating',
                       style: const TextStyle(color: AppTheme.accent, fontSize: 16),
                     ),
                   ],
