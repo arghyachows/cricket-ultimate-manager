@@ -140,8 +140,62 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
     final item = reordered.removeAt(oldIndex);
     reordered.insert(newIndex, item);
 
-    // Move all affected players to temp positions (100+) first
-    // to avoid UNIQUE(squad_id, position) constraint violations
+    // Build new position map
+    final positionUpdates = <String, int>{};
+    for (int i = 0; i < reordered.length; i++) {
+      positionUpdates[reordered[i].id] = i + 1;
+    }
+
+    // Optimistically update local state so the UI doesn't snap back
+    final team = state.valueOrNull;
+    if (team != null) {
+      final squad = team.activeSquad;
+      if (squad != null) {
+        final updatedPlayers = squad.players.map((p) {
+          final newPos = positionUpdates[p.id];
+          if (newPos != null && newPos != p.position) {
+            return SquadPlayer(
+              id: p.id,
+              squadId: p.squadId,
+              userCardId: p.userCardId,
+              position: newPos,
+              isPlayingXI: p.isPlayingXI,
+              isCaptain: p.isCaptain,
+              isViceCaptain: p.isViceCaptain,
+              battingOrder: p.battingOrder,
+              bowlingOrder: p.bowlingOrder,
+              userCard: p.userCard,
+            );
+          }
+          return p;
+        }).toList();
+        final updatedSquads = team.squads.map((s) {
+          if (s.id == squad.id) {
+            return Squad(
+              id: s.id,
+              teamId: s.teamId,
+              squadName: s.squadName,
+              formation: s.formation,
+              isActive: s.isActive,
+              players: updatedPlayers,
+            );
+          }
+          return s;
+        }).toList();
+        state = AsyncValue.data(Team(
+          id: team.id,
+          userId: team.userId,
+          teamName: team.teamName,
+          logoUrl: team.logoUrl,
+          chemistry: team.chemistry,
+          overallRating: team.overallRating,
+          isActive: team.isActive,
+          squads: updatedSquads,
+        ));
+      }
+    }
+
+    // Persist to DB — move to temp positions first to avoid UNIQUE constraint
     for (int i = 0; i < reordered.length; i++) {
       if (reordered[i].position != i + 1) {
         await SupabaseService.client
