@@ -5,6 +5,7 @@ import '../core/constants.dart';
 import '../models/models.dart';
 import '../engine/match_engine.dart';
 import 'auth_provider.dart';
+import 'career_stats_provider.dart';
 
 // Match state
 final matchProvider =
@@ -556,6 +557,9 @@ class MatchNotifier extends StateNotifier<MatchState> {
 
     // Persist to database
     _persistMatchRewards(coins, xp, homeWon == true);
+
+    // Persist player career stats
+    ref.read(careerStatsNotifierProvider.notifier).persistMatchStats(_matchHistory.first);
   }
 
   Future<void> _persistMatchRewards(int coins, int xp, bool won) async {

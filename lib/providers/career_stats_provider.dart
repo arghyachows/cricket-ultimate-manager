@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../core/supabase_service.dart';
 import 'match_provider.dart';
 
 /// Aggregated career stats for a single player card across all matches.
@@ -39,105 +40,171 @@ class PlayerCareerStats {
     final overs = ballsBowled / 6;
     return overs > 0 ? runsConceded / overs : 0;
   }
+
+  factory PlayerCareerStats.fromJson(Map<String, dynamic> json) {
+    return PlayerCareerStats(
+      userCardId: json['user_card_id'] ?? '',
+      playerName: json['player_name'] ?? '',
+      matches: json['matches'] ?? 0,
+      runs: json['runs'] ?? 0,
+      ballsFaced: json['balls_faced'] ?? 0,
+      fours: json['fours'] ?? 0,
+      sixes: json['sixes'] ?? 0,
+      wickets: json['wickets'] ?? 0,
+      ballsBowled: json['balls_bowled'] ?? 0,
+      runsConceded: json['runs_conceded'] ?? 0,
+      catches: json['catches'] ?? 0,
+      highScore: json['high_score'] ?? 0,
+      bestBowlingWickets: json['best_bowling_wickets'] ?? 0,
+    );
+  }
 }
 
 enum StatsSortField { runs, wickets, fours, sixes, catches, matches }
 
-/// Aggregates career stats from in-memory match history for all user players.
-final careerStatsProvider = Provider.family<List<PlayerCareerStats>, StatsSortField>((ref, sortField) {
-  final history = ref.watch(matchHistoryProvider);
-  final statsMap = <String, PlayerCareerStats>{};
+/// Notifier that loads career stats from Supabase and persists after matches.
+class CareerStatsNotifier extends StateNotifier<List<PlayerCareerStats>> {
+  CareerStatsNotifier() : super([]) {
+    loadFromDb();
+  }
 
-  for (final match in history) {
-    // Track which userCardIds appeared in this match (to count matches played)
-    final matchPlayers = <String>{};
+  Future<void> loadFromDb() async {
+    try {
+      final userId = SupabaseService.currentUserId;
+      if (userId == null) return;
+      final rows = await SupabaseService.client
+          .from('user_player_stats')
+          .select()
+          .eq('user_id', userId)
+          .order('runs', ascending: false);
+      state = (rows as List).map((r) => PlayerCareerStats.fromJson(r)).toList();
+    } catch (_) {
+      // Table may not exist yet; keep empty
+    }
+  }
 
-    // Aggregate batting stats
+  /// Persist stats delta from a single completed match.
+  Future<void> persistMatchStats(MatchSummary match) async {
+    final userId = SupabaseService.currentUserId;
+    if (userId == null) return;
+
+    // Aggregate per-player deltas from this match
+    final deltas = <String, PlayerCareerStats>{};
+
+    // Batting stats
     for (final entry in match.batsmanStats.entries) {
-      // Key format: "${innings}_${userCardId}"
       final parts = entry.key.split('_');
       if (parts.length < 2) continue;
       final userCardId = parts.sublist(1).join('_');
-      // Skip AI players
-      if (userCardId.startsWith('ai_')) continue;
+      if (userCardId.startsWith('ai')) continue;
 
       final bat = entry.value;
-      final stats = statsMap.putIfAbsent(
+      final d = deltas.putIfAbsent(
         userCardId,
         () => PlayerCareerStats(userCardId: userCardId, playerName: bat.name),
       );
-      matchPlayers.add(userCardId);
-      stats.runs += bat.runs;
-      stats.ballsFaced += bat.balls;
-      stats.fours += bat.fours;
-      stats.sixes += bat.sixes;
-      if (bat.runs > stats.highScore) stats.highScore = bat.runs;
+      d.runs += bat.runs;
+      d.ballsFaced += bat.balls;
+      d.fours += bat.fours;
+      d.sixes += bat.sixes;
+      if (bat.runs > d.highScore) d.highScore = bat.runs;
     }
 
-    // Aggregate bowling stats
+    // Bowling stats
     for (final entry in match.bowlerStats.entries) {
       final parts = entry.key.split('_');
       if (parts.length < 2) continue;
       final userCardId = parts.sublist(1).join('_');
-      if (userCardId.startsWith('ai_')) continue;
+      if (userCardId.startsWith('ai')) continue;
 
       final bowl = entry.value;
-      final stats = statsMap.putIfAbsent(
+      final d = deltas.putIfAbsent(
         userCardId,
         () => PlayerCareerStats(userCardId: userCardId, playerName: bowl.name),
       );
-      matchPlayers.add(userCardId);
-      stats.wickets += bowl.wickets;
-      stats.ballsBowled += bowl.balls;
-      stats.runsConceded += bowl.runs;
-      if (bowl.wickets > stats.bestBowlingWickets) {
-        stats.bestBowlingWickets = bowl.wickets;
-      }
+      d.wickets += bowl.wickets;
+      d.ballsBowled += bowl.balls;
+      d.runsConceded += bowl.runs;
+      if (bowl.wickets > d.bestBowlingWickets) d.bestBowlingWickets = bowl.wickets;
     }
 
-    // Count catches from events
+    // Catches
     for (final event in match.events) {
       if (event.isWicket && event.fielderCardId != null) {
         final fid = event.fielderCardId!;
-        if (fid.startsWith('ai_')) continue;
+        if (fid.startsWith('ai')) continue;
         final wicketType = event.wicketType ?? '';
         if (wicketType == 'caught' || wicketType == 'caught_behind') {
-          final stats = statsMap[fid];
-          if (stats != null) {
-            stats.catches++;
-          }
+          final d = deltas[fid];
+          if (d != null) d.catches++;
         }
       }
     }
 
-    // Increment matches played
-    for (final id in matchPlayers) {
-      statsMap[id]!.matches++;
+    // Mark matches played
+    for (final d in deltas.values) {
+      d.matches = 1;
     }
-  }
 
-  // Sort
-  final list = statsMap.values.toList();
+    // Upsert each player to DB
+    for (final d in deltas.values) {
+      try {
+        await SupabaseService.client.rpc('upsert_player_stats', params: {
+          'p_user_id': userId,
+          'p_user_card_id': d.userCardId,
+          'p_player_name': d.playerName,
+          'p_matches': d.matches,
+          'p_runs': d.runs,
+          'p_balls_faced': d.ballsFaced,
+          'p_fours': d.fours,
+          'p_sixes': d.sixes,
+          'p_wickets': d.wickets,
+          'p_balls_bowled': d.ballsBowled,
+          'p_runs_conceded': d.runsConceded,
+          'p_catches': d.catches,
+          'p_high_score': d.highScore,
+          'p_best_bowling_wickets': d.bestBowlingWickets,
+        });
+      } catch (_) {
+        // Silently fail for individual players
+      }
+    }
+
+    // Reload from DB to get fresh totals
+    await loadFromDb();
+  }
+}
+
+final careerStatsNotifierProvider =
+    StateNotifierProvider<CareerStatsNotifier, List<PlayerCareerStats>>(
+  (ref) => CareerStatsNotifier(),
+);
+
+/// Sorted view of career stats.
+final careerStatsProvider =
+    Provider.family<List<PlayerCareerStats>, StatsSortField>((ref, sortField) {
+  final stats = List<PlayerCareerStats>.from(ref.watch(careerStatsNotifierProvider));
+
   switch (sortField) {
     case StatsSortField.runs:
-      list.sort((a, b) => b.runs.compareTo(a.runs));
+      stats.sort((a, b) => b.runs.compareTo(a.runs));
       break;
     case StatsSortField.wickets:
-      list.sort((a, b) => b.wickets.compareTo(a.wickets));
+      stats.sort((a, b) => b.wickets.compareTo(a.wickets));
       break;
     case StatsSortField.fours:
-      list.sort((a, b) => b.fours.compareTo(a.fours));
+      stats.sort((a, b) => b.fours.compareTo(a.fours));
       break;
     case StatsSortField.sixes:
-      list.sort((a, b) => b.sixes.compareTo(a.sixes));
+      stats.sort((a, b) => b.sixes.compareTo(a.sixes));
       break;
     case StatsSortField.catches:
-      list.sort((a, b) => b.catches.compareTo(a.catches));
+      stats.sort((a, b) => b.catches.compareTo(a.catches));
       break;
     case StatsSortField.matches:
-      list.sort((a, b) => b.matches.compareTo(a.matches));
+      stats.sort((a, b) => b.matches.compareTo(a.matches));
       break;
   }
 
-  return list;
+  return stats;
 });
