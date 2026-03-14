@@ -257,7 +257,7 @@ class _ScorecardSheet extends StatelessWidget {
 
         // Innings 1
         if (inn1Batsmen.isNotEmpty) ...[
-          _inningsHeader('${match.homeTeamName} Batting', match.homeScore, match.homeWickets, match.homeOvers),
+          _inningsHeader('${match.battingFirstName} Batting', match.inn1Score, match.inn1Wickets, match.inn1Overs),
           _battingTable(inn1Batsmen),
           const SizedBox(height: 4),
           _bowlingTable(inn1Bowlers),
@@ -266,7 +266,7 @@ class _ScorecardSheet extends StatelessWidget {
 
         // Innings 2
         if (inn2Batsmen.isNotEmpty) ...[
-          _inningsHeader('${match.awayTeamName} Batting', match.awayScore, match.awayWickets, match.awayOvers),
+          _inningsHeader('${match.battingSecondName} Batting', match.inn2Score, match.inn2Wickets, match.inn2Overs),
           _battingTable(inn2Batsmen),
           const SizedBox(height: 4),
           _bowlingTable(inn2Bowlers),

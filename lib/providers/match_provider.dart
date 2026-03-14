@@ -263,6 +263,7 @@ class MatchSummary {
   final Map<String, BatsmanStats> batsmanStats;
   final Map<String, BowlerStats> bowlerStats;
   final List<MatchEvent> events;
+  final bool homeBatsFirst;
 
   const MatchSummary({
     required this.homeTeamName,
@@ -281,7 +282,21 @@ class MatchSummary {
     required this.batsmanStats,
     required this.bowlerStats,
     required this.events,
+    this.homeBatsFirst = true,
   });
+
+  /// Team that batted first
+  String get battingFirstName => homeBatsFirst ? homeTeamName : awayTeamName;
+  /// Team that batted second
+  String get battingSecondName => homeBatsFirst ? awayTeamName : homeTeamName;
+  /// Innings 1 score (batting-first team)
+  int get inn1Score => homeBatsFirst ? homeScore : awayScore;
+  int get inn1Wickets => homeBatsFirst ? homeWickets : awayWickets;
+  String get inn1Overs => homeBatsFirst ? homeOvers : awayOvers;
+  /// Innings 2 score (batting-second team)
+  int get inn2Score => homeBatsFirst ? awayScore : homeScore;
+  int get inn2Wickets => homeBatsFirst ? awayWickets : homeWickets;
+  String get inn2Overs => homeBatsFirst ? awayOvers : homeOvers;
 
   String get resultText {
     if (homeWon == true) {
@@ -531,6 +546,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
       batsmanStats: Map.from(state.batsmanStats),
       bowlerStats: Map.from(state.bowlerStats),
       events: List.from(state.events),
+      homeBatsFirst: state.homeBatsFirst,
     ));
 
     // Update local user state immediately

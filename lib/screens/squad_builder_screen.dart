@@ -11,12 +11,22 @@ class SquadBuilderScreen extends ConsumerStatefulWidget {
   ConsumerState<SquadBuilderScreen> createState() => _SquadBuilderScreenState();
 }
 
-class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen> {
+class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
+    with SingleTickerProviderStateMixin {
   final _teamNameController = TextEditingController();
+  late TabController _tabController;
+  StatsSortField _sortField = StatsSortField.runs;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
 
   @override
   void dispose() {
     _teamNameController.dispose();
+    _tabController.dispose();
     super.dispose();
   }
 
@@ -30,6 +40,19 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('SQUAD BUILDER'),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(40),
+          child: TabBar(
+            controller: _tabController,
+            indicatorColor: AppTheme.accent,
+            labelColor: AppTheme.accent,
+            unselectedLabelColor: Colors.white54,
+            tabs: const [
+              Tab(text: 'PLAYING XI'),
+              Tab(text: 'STATS'),
+            ],
+          ),
+        ),
         actions: [
           // Chemistry indicator
           Container(
@@ -75,7 +98,13 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen> {
           if (team == null) {
             return _buildCreateTeam();
           }
-          return _buildPlayingXI(team);
+          return TabBarView(
+            controller: _tabController,
+            children: [
+              _buildPlayingXI(team),
+              _buildStatsTab(),
+            ],
+          );
         },
       ),
     );
@@ -756,4 +785,206 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen> {
   }
 
   // ─── Tactics Tab ─────────────────────────────────────────────────────────
+
+  // ─── Stats Tab ───────────────────────────────────────────────────────────
+
+  Widget _buildStatsTab() {
+    final stats = ref.watch(careerStatsProvider(_sortField));
+
+    return Column(
+      children: [
+        // Sort chips
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          color: AppTheme.surface,
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                const Text('SORT BY  ', style: TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.bold)),
+                _sortChip('Runs', StatsSortField.runs),
+                _sortChip('Wickets', StatsSortField.wickets),
+                _sortChip('4s', StatsSortField.fours),
+                _sortChip('6s', StatsSortField.sixes),
+                _sortChip('Catches', StatsSortField.catches),
+                _sortChip('Matches', StatsSortField.matches),
+              ],
+            ),
+          ),
+        ),
+
+        if (stats.isEmpty)
+          const Expanded(
+            child: Center(
+              child: Padding(
+                padding: EdgeInsets.all(40),
+                child: Text(
+                  'No match stats yet.\nPlay some matches to see player performance!',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.white38, fontSize: 14),
+                ),
+              ),
+            ),
+          )
+        else
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              itemCount: stats.length,
+              itemBuilder: (context, index) {
+                final s = stats[index];
+                return _buildStatRow(s, index + 1);
+              },
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _sortChip(String label, StatsSortField field) {
+    final isSelected = _sortField == field;
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: GestureDetector(
+        onTap: () => setState(() => _sortField = field),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: isSelected ? AppTheme.accent.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.05),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isSelected ? AppTheme.accent : Colors.white24,
+            ),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: isSelected ? AppTheme.accent : Colors.white54,
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatRow(PlayerCareerStats s, int rank) {
+    // Highlight the primary sorted stat
+    String primaryValue;
+    switch (_sortField) {
+      case StatsSortField.runs:
+        primaryValue = '${s.runs} runs';
+        break;
+      case StatsSortField.wickets:
+        primaryValue = '${s.wickets} wkts';
+        break;
+      case StatsSortField.fours:
+        primaryValue = '${s.fours} fours';
+        break;
+      case StatsSortField.sixes:
+        primaryValue = '${s.sixes} sixes';
+        break;
+      case StatsSortField.catches:
+        primaryValue = '${s.catches} catches';
+        break;
+      case StatsSortField.matches:
+        primaryValue = '${s.matches} matches';
+        break;
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Name row
+          Row(
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: rank <= 3 ? AppTheme.accent.withValues(alpha: 0.2) : Colors.white10,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Center(
+                  child: Text(
+                    '$rank',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                      color: rank <= 3 ? AppTheme.accent : Colors.white54,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  s.playerName,
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppTheme.accent.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  primaryValue,
+                  style: const TextStyle(color: AppTheme.accent, fontWeight: FontWeight.bold, fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // Stat chips row
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              _miniStat('M', '${s.matches}', Colors.white70),
+              _miniStat('R', '${s.runs}', Colors.blueAccent),
+              _miniStat('HS', '${s.highScore}', Colors.lightBlueAccent),
+              _miniStat('4s', '${s.fours}', Colors.orangeAccent),
+              _miniStat('6s', '${s.sixes}', Colors.purpleAccent),
+              _miniStat('W', '${s.wickets}', Colors.redAccent),
+              _miniStat('CT', '${s.catches}', Colors.tealAccent),
+              if (s.ballsFaced > 0)
+                _miniStat('SR', s.strikeRate.toStringAsFixed(1), Colors.white54),
+              if (s.ballsBowled > 0)
+                _miniStat('ECO', s.bowlingEconomy.toStringAsFixed(1), Colors.white54),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _miniStat(String label, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label, style: TextStyle(fontSize: 10, color: color.withValues(alpha: 0.7), fontWeight: FontWeight.bold)),
+          const SizedBox(width: 3),
+          Text(value, style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
 }

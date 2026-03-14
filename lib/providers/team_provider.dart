@@ -197,13 +197,14 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
       }
     }
 
-    // Persist to DB — move to temp positions first to avoid UNIQUE constraint
+    // Persist to DB — move to temp positions first to avoid UNIQUE constraint.
+    // Position CHECK constraint allows 1-30, so use 20+i as temp values.
     for (int i = 0; i < reordered.length; i++) {
       final targetPos = i + 1;
       if (oldPositions[reordered[i].id] != targetPos) {
         await SupabaseService.client
             .from('squad_players')
-            .update({'position': 100 + i}).eq('id', reordered[i].id);
+            .update({'position': 20 + i}).eq('id', reordered[i].id);
       }
     }
     // Now assign final positions
