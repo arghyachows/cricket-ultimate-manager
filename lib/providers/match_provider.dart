@@ -373,7 +373,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
 
     // Simulate ball by ball with delay for UX
     _simulationTimer = Timer.periodic(
-      const Duration(milliseconds: 800),
+      const Duration(milliseconds: 2000),
       (_) => _simulateNextBall(),
     );
   }

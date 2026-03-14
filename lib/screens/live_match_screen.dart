@@ -37,13 +37,7 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen>
       backgroundColor: AppTheme.background,
       appBar: AppBar(
         title: const Text('LIVE MATCH'),
-        actions: [
-          if (matchState.isSimulating)
-            TextButton(
-              onPressed: () => ref.read(matchProvider.notifier).skipToEnd(),
-              child: const Text('SKIP TO END', style: TextStyle(color: AppTheme.accent)),
-            ),
-        ],
+        actions: const [],
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: AppTheme.accent,

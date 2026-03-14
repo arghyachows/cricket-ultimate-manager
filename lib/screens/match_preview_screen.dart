@@ -324,10 +324,12 @@ class _MatchPreviewScreenState extends ConsumerState<MatchPreviewScreen>
                 child: Padding(
                   padding: EdgeInsets.only(right: d != 'International' ? 8 : 0),
                   child: GestureDetector(
-                    onTap: () {
-                      setState(() => _selectedDifficulty = d);
-                      _loadAI();
-                    },
+                      onTap: !_tossComplete
+                          ? () {
+                              setState(() => _selectedDifficulty = d);
+                              _loadAI();
+                            }
+                          : null,
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 10),
                       decoration: BoxDecoration(
@@ -379,9 +381,11 @@ class _MatchPreviewScreenState extends ConsumerState<MatchPreviewScreen>
                 child: Padding(
                   padding: EdgeInsets.only(right: isLast ? 0 : 8),
                   child: GestureDetector(
-                    onTap: () => setState(() {
-                      _selectedOvers = o;
-                    }),
+                      onTap: !_tossComplete
+                          ? () => setState(() {
+                              _selectedOvers = o;
+                            })
+                          : null,
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 10),
                       decoration: BoxDecoration(
