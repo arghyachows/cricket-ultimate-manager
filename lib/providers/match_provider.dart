@@ -138,12 +138,12 @@ class MatchState {
 
   /// Balls remaining in current innings
   int get ballsRemaining {
-    if (events.isEmpty) return maxOversForFormat * 6;
+    if (events.isEmpty) return matchOvers * 6;
     final inningsEvents = events.where((e) => e.innings == currentInnings);
-    if (inningsEvents.isEmpty) return maxOversForFormat * 6;
+    if (inningsEvents.isEmpty) return matchOvers * 6;
     final last = inningsEvents.last;
     final ballsBowled = last.overNumber * 6 + last.ballNumber;
-    return (maxOversForFormat * 6) - ballsBowled;
+    return (matchOvers * 6) - ballsBowled;
   }
 
   int get maxOversForFormat => matchFormat == 'odi' ? 50 : 20;

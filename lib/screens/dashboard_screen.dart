@@ -140,24 +140,38 @@ class DashboardScreen extends ConsumerWidget {
                   ),
                 ],
               ),
-              // Level badge
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [AppTheme.accent, AppTheme.cardGold],
+              Row(
+                children: [
+                  // Profile button
+                  IconButton(
+                    onPressed: () => context.go(AppConstants.profileRoute),
+                    icon: const Icon(Icons.person_rounded),
+                    color: AppTheme.accent,
+                    style: IconButton.styleFrom(
+                      backgroundColor: AppTheme.surface,
+                    ),
                   ),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  'LV ${user.level}',
-                  style: const TextStyle(
-                    color: Colors.black,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
+                  const SizedBox(width: 8),
+                  // Level badge
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [AppTheme.accent, AppTheme.cardGold],
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      'LV ${user.level}',
+                      style: const TextStyle(
+                        color: Colors.black,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
                   ),
-                ),
+                ],
               ),
             ],
           ),

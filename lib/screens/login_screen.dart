@@ -27,6 +27,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     super.dispose();
   }
 
+  void _toggleMode() {
+    setState(() {
+      _isSignUp = !_isSignUp;
+      // Clear fields when switching modes
+      _emailController.clear();
+      _passwordController.clear();
+      _usernameController.clear();
+    });
+  }
+
   Future<void> _handleSubmit() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
@@ -206,7 +216,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                   // Toggle
                   TextButton(
-                    onPressed: () => setState(() => _isSignUp = !_isSignUp),
+                    onPressed: _toggleMode,
                     child: Text(
                       _isSignUp
                           ? 'Already have an account? Sign In'

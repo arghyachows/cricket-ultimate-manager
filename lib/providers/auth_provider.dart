@@ -28,6 +28,18 @@ class CurrentUserNotifier extends StateNotifier<AsyncValue<UserModel?>> {
   final Ref ref;
 
   CurrentUserNotifier(this.ref) : super(const AsyncValue.loading()) {
+    // Listen to auth state changes
+    ref.listen(authStateProvider, (previous, next) {
+      next.whenData((authState) {
+        if (authState.session == null) {
+          // User logged out, clear the state
+          state = const AsyncValue.data(null);
+        } else {
+          // User logged in, load user data
+          loadUser();
+        }
+      });
+    });
     loadUser();
   }
 
@@ -123,6 +135,8 @@ class AuthController extends StateNotifier<AsyncValue<void>> {
 
   Future<void> signOut() async {
     await SupabaseService.signOut();
+    // Reset the current user state
+    ref.read(currentUserProvider.notifier).state = const AsyncValue.data(null);
     state = const AsyncValue.data(null);
   }
 }

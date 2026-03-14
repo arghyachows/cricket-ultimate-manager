@@ -22,7 +22,7 @@ class SupabaseService {
   }
 
   static Future<void> signOut() async {
-    await auth.signOut();
+    await auth.signOut(scope: SignOutScope.global);
   }
 
   static String? get currentUserId => auth.currentUser?.id;

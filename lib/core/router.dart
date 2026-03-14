@@ -16,6 +16,7 @@ import '../screens/market_screen.dart';
 import '../screens/leaderboard_screen.dart';
 import '../screens/tournament_screen.dart';
 import '../screens/card_detail_screen.dart';
+import '../screens/profile_screen.dart';
 import '../screens/shell_screen.dart';
 import 'constants.dart';
 
@@ -102,6 +103,10 @@ final routerProvider = Provider<GoRouter>((ref) {
               final cardId = state.pathParameters['cardId']!;
               return CardDetailScreen(cardId: cardId);
             },
+          ),
+          GoRoute(
+            path: AppConstants.profileRoute,
+            builder: (context, state) => const ProfileScreen(),
           ),
         ],
       ),
