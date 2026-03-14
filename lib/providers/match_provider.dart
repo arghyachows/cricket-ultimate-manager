@@ -531,6 +531,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
     // Update local user state immediately
     final userNotifier = ref.read(currentUserProvider.notifier);
     userNotifier.updateCoins(coins);
+    userNotifier.updateXpAndLevel(xp);
 
     // Persist to database
     _persistMatchRewards(coins, xp, homeWon == true);
@@ -553,9 +554,12 @@ class MatchNotifier extends StateNotifier<MatchState> {
         if (userId == null) return;
         final user = ref.read(currentUserProvider).valueOrNull;
         if (user == null) return;
+        final newXp = user.xp;
+        final newLevel = (newXp ~/ AppConstants.xpPerLevel) + 1;
         await SupabaseService.client.from('users').update({
           'coins': user.coins,
-          'xp': user.xp + xp,
+          'xp': newXp,
+          'level': newLevel > AppConstants.maxLevel ? AppConstants.maxLevel : newLevel,
           'matches_played': user.matchesPlayed + 1,
           if (won) 'matches_won': user.matchesWon + 1,
         }).eq('id', userId);

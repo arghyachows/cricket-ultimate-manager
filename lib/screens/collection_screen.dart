@@ -66,10 +66,10 @@ class CollectionScreen extends ConsumerWidget {
           return GridView.builder(
             padding: const EdgeInsets.all(12),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
+              crossAxisCount: 6,
               childAspectRatio: 0.65,
-              crossAxisSpacing: 8,
-              mainAxisSpacing: 8,
+              crossAxisSpacing: 6,
+              mainAxisSpacing: 6,
             ),
             itemCount: cards.length,
             itemBuilder: (context, index) {
@@ -99,87 +99,92 @@ class CollectionScreen extends ConsumerWidget {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'FILTER & SORT',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 16),
-              const Text('Rarity', style: TextStyle(color: Colors.white70)),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
+        return Consumer(
+          builder: (context, ref, _) {
+            final filter = ref.watch(cardFilterProvider);
+            return Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _FilterChip(
-                    label: 'All',
-                    selected: filter.rarity == null,
-                    color: Colors.white,
-                    onTap: () =>
-                        ref.read(cardFilterProvider.notifier).state =
-                            filter.copyWith(rarity: null),
+                  const Text(
+                    'FILTER & SORT',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                   ),
-                  ...['bronze', 'silver', 'gold', 'elite', 'legend'].map(
-                    (r) => _FilterChip(
-                      label: r.toUpperCase(),
-                      selected: filter.rarity == r,
-                      color: AppTheme.getRarityColor(r),
-                      onTap: () =>
-                          ref.read(cardFilterProvider.notifier).state =
-                              filter.copyWith(rarity: r),
-                    ),
+                  const SizedBox(height: 16),
+                  const Text('Rarity', style: TextStyle(color: Colors.white70)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      _FilterChip(
+                        label: 'All',
+                        selected: filter.rarity == null,
+                        color: Colors.white,
+                        onTap: () =>
+                            ref.read(cardFilterProvider.notifier).state =
+                                filter.copyWith(rarity: null),
+                      ),
+                      ...['bronze', 'silver', 'gold', 'elite', 'legend'].map(
+                        (r) => _FilterChip(
+                          label: r.toUpperCase(),
+                          selected: filter.rarity == r,
+                          color: AppTheme.getRarityColor(r),
+                          onTap: () =>
+                              ref.read(cardFilterProvider.notifier).state =
+                                  filter.copyWith(rarity: r),
+                        ),
+                      ),
+                    ],
                   ),
+                  const SizedBox(height: 16),
+                  const Text('Role', style: TextStyle(color: Colors.white70)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      _FilterChip(
+                        label: 'All',
+                        selected: filter.role == null,
+                        color: Colors.white,
+                        onTap: () =>
+                            ref.read(cardFilterProvider.notifier).state =
+                                filter.copyWith(role: null),
+                      ),
+                      ...['batsman', 'bowler', 'all_rounder', 'wicket_keeper'].map(
+                        (r) => _FilterChip(
+                          label: r.replaceAll('_', ' ').toUpperCase(),
+                          selected: filter.role == r,
+                          color: Colors.blueAccent,
+                          onTap: () =>
+                              ref.read(cardFilterProvider.notifier).state =
+                                  filter.copyWith(role: r),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  const Text('Sort By', style: TextStyle(color: Colors.white70)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    children: ['rating', 'batting', 'bowling', 'name'].map(
+                      (s) => _FilterChip(
+                        label: s.toUpperCase(),
+                        selected: filter.sortBy == s,
+                        color: AppTheme.accent,
+                        onTap: () =>
+                            ref.read(cardFilterProvider.notifier).state =
+                                filter.copyWith(sortBy: s),
+                      ),
+                    ).toList(),
+                  ),
+                  const SizedBox(height: 24),
                 ],
               ),
-              const SizedBox(height: 16),
-              const Text('Role', style: TextStyle(color: Colors.white70)),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                children: [
-                  _FilterChip(
-                    label: 'All',
-                    selected: filter.role == null,
-                    color: Colors.white,
-                    onTap: () =>
-                        ref.read(cardFilterProvider.notifier).state =
-                            filter.copyWith(role: null),
-                  ),
-                  ...['batsman', 'bowler', 'all_rounder', 'wicket_keeper'].map(
-                    (r) => _FilterChip(
-                      label: r.replaceAll('_', ' ').toUpperCase(),
-                      selected: filter.role == r,
-                      color: Colors.blueAccent,
-                      onTap: () =>
-                          ref.read(cardFilterProvider.notifier).state =
-                              filter.copyWith(role: r),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              const Text('Sort By', style: TextStyle(color: Colors.white70)),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                children: ['rating', 'batting', 'bowling', 'name'].map(
-                  (s) => _FilterChip(
-                    label: s.toUpperCase(),
-                    selected: filter.sortBy == s,
-                    color: AppTheme.accent,
-                    onTap: () =>
-                        ref.read(cardFilterProvider.notifier).state =
-                            filter.copyWith(sortBy: s),
-                  ),
-                ).toList(),
-              ),
-              const SizedBox(height: 24),
-            ],
-          ),
+            );
+          },
         );
       },
     );

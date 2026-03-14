@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/supabase_service.dart';
+import '../core/constants.dart';
 import '../models/models.dart';
 
 // Auth state
@@ -60,6 +61,18 @@ class CurrentUserNotifier extends StateNotifier<AsyncValue<UserModel?>> {
     final user = state.valueOrNull;
     if (user != null) {
       state = AsyncValue.data(user.copyWith(coins: user.coins + delta));
+    }
+  }
+
+  void updateXpAndLevel(int xpDelta) {
+    final user = state.valueOrNull;
+    if (user != null) {
+      final newXp = user.xp + xpDelta;
+      final newLevel = (newXp ~/ AppConstants.xpPerLevel) + 1;
+      state = AsyncValue.data(user.copyWith(
+        xp: newXp,
+        level: newLevel > AppConstants.maxLevel ? AppConstants.maxLevel : newLevel,
+      ));
     }
   }
 

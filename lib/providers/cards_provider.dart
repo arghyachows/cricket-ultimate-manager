@@ -48,15 +48,17 @@ class CardFilter {
 
   const CardFilter({this.rarity, this.role, this.sortBy, this.ascending = false});
 
+  static const _sentinel = Object();
+
   CardFilter copyWith({
-    String? rarity,
-    String? role,
+    Object? rarity = _sentinel,
+    Object? role = _sentinel,
     String? sortBy,
     bool? ascending,
   }) {
     return CardFilter(
-      rarity: rarity,
-      role: role,
+      rarity: rarity == _sentinel ? this.rarity : rarity as String?,
+      role: role == _sentinel ? this.role : role as String?,
       sortBy: sortBy ?? this.sortBy,
       ascending: ascending ?? this.ascending,
     );
