@@ -400,43 +400,48 @@ class MatchNotifier extends StateNotifier<MatchState> {
     final batsmanStats = Map<String, BatsmanStats>.from(state.batsmanStats);
     final bowlerStats = Map<String, BowlerStats>.from(state.bowlerStats);
 
-    // Use compound key: innings_cardId to separate per-innings stats
-    final batKey = '${result.innings}_${result.batsmanCardId}';
-    final bowlKey = '${result.innings}_${result.bowlerCardId}';
+    // Skip stats processing for innings-break synthetic events
+    if (result.eventType != 'innings_break') {
+      final isExtra = result.eventType == 'wide' || result.eventType == 'no_ball';
 
-    // Update batsman stats
-    final batsmanName =
-        _engine!.getBatsmanName(result.batsmanCardId);
-    batsmanStats.putIfAbsent(
-        batKey, () => BatsmanStats(name: batsmanName, innings: result.innings));
-    final batStats = batsmanStats[batKey]!;
-    batStats.balls++;
-    batStats.runs += result.runs;
-    if (result.runs == 4) batStats.fours++;
-    if (result.runs == 6) batStats.sixes++;
-    if (result.isWicket) {
-      batStats.isOut = true;
-      final bowlerNameForDismissal = _engine!.getBowlerName(result.bowlerCardId);
-      final fielderNameForDismissal = result.fielderCardId != null
-          ? _engine!.getBatsmanName(result.fielderCardId!)
-          : null;
-      batStats.dismissalType = _formatDismissal(
-        result.wicketType ?? 'bowled',
-        bowlerNameForDismissal,
-        fielderNameForDismissal,
-      );
-    }
+      // Use compound key: innings_cardId to separate per-innings stats
+      final batKey = '${result.innings}_${result.batsmanCardId}';
+      final bowlKey = '${result.innings}_${result.bowlerCardId}';
 
-    // Update bowler stats
-    final bowlerName = _engine!.getBowlerName(result.bowlerCardId);
-    bowlerStats.putIfAbsent(
-        bowlKey, () => BowlerStats(name: bowlerName, innings: result.innings));
-    final bowlStats = bowlerStats[bowlKey]!;
-    bowlStats.balls++;
-    bowlStats.runs += result.runs;
-    if (result.isWicket) bowlStats.wickets++;
-    if (result.runs == 0 && !result.isWicket && result.eventType != 'wide' && result.eventType != 'no_ball') {
-      bowlStats.dotBalls++;
+      // Update batsman stats
+      final batsmanName =
+          _engine!.getBatsmanName(result.batsmanCardId);
+      batsmanStats.putIfAbsent(
+          batKey, () => BatsmanStats(name: batsmanName, innings: result.innings));
+      final batStats = batsmanStats[batKey]!;
+      if (result.eventType != 'wide') batStats.balls++; // wides don't count as balls faced
+      batStats.runs += result.runs;
+      if (result.runs == 4) batStats.fours++;
+      if (result.runs == 6) batStats.sixes++;
+      if (result.isWicket) {
+        batStats.isOut = true;
+        final bowlerNameForDismissal = _engine!.getBowlerName(result.bowlerCardId);
+        final fielderNameForDismissal = result.fielderCardId != null
+            ? _engine!.getBatsmanName(result.fielderCardId!)
+            : null;
+        batStats.dismissalType = _formatDismissal(
+          result.wicketType ?? 'bowled',
+          bowlerNameForDismissal,
+          fielderNameForDismissal,
+        );
+      }
+
+      // Update bowler stats
+      final bowlerName = _engine!.getBowlerName(result.bowlerCardId);
+      bowlerStats.putIfAbsent(
+          bowlKey, () => BowlerStats(name: bowlerName, innings: result.innings));
+      final bowlStats = bowlerStats[bowlKey]!;
+      if (!isExtra) bowlStats.balls++; // wides/no-balls are not legal deliveries
+      bowlStats.runs += result.runs;
+      if (result.isWicket) bowlStats.wickets++;
+      if (result.runs == 0 && !result.isWicket && !isExtra) {
+        bowlStats.dotBalls++;
+      }
     }
 
     // Track target when innings changes to 2nd (target = innings 1 score)
@@ -582,40 +587,44 @@ class MatchNotifier extends StateNotifier<MatchState> {
       if (result == null) break;
       allEvents.add(result);
 
-      // Update stats for skipped events
-      final batKey = '${result.innings}_${result.batsmanCardId}';
-      final bowlKey = '${result.innings}_${result.bowlerCardId}';
+      // Skip stats processing for innings-break synthetic events
+      if (result.eventType != 'innings_break') {
+        final isExtra = result.eventType == 'wide' || result.eventType == 'no_ball';
 
-      final batsmanName = _engine!.getBatsmanName(result.batsmanCardId);
-      batsmanStats.putIfAbsent(
-          batKey, () => BatsmanStats(name: batsmanName, innings: result.innings));
-      final batStats = batsmanStats[batKey]!;
-      batStats.balls++;
-      batStats.runs += result.runs;
-      if (result.runs == 4) batStats.fours++;
-      if (result.runs == 6) batStats.sixes++;
-      if (result.isWicket) {
-        batStats.isOut = true;
-        final bowlerNameForDismissal = _engine!.getBowlerName(result.bowlerCardId);
-        final fielderNameForDismissal = result.fielderCardId != null
-            ? _engine!.getBatsmanName(result.fielderCardId!)
-            : null;
-        batStats.dismissalType = _formatDismissal(
-          result.wicketType ?? 'bowled',
-          bowlerNameForDismissal,
-          fielderNameForDismissal,
-        );
-      }
+        final batKey = '${result.innings}_${result.batsmanCardId}';
+        final bowlKey = '${result.innings}_${result.bowlerCardId}';
 
-      final bowlerName = _engine!.getBowlerName(result.bowlerCardId);
-      bowlerStats.putIfAbsent(
-          bowlKey, () => BowlerStats(name: bowlerName, innings: result.innings));
-      final bowlStats = bowlerStats[bowlKey]!;
-      bowlStats.balls++;
-      bowlStats.runs += result.runs;
-      if (result.isWicket) bowlStats.wickets++;
-      if (result.runs == 0 && !result.isWicket && result.eventType != 'wide' && result.eventType != 'no_ball') {
-        bowlStats.dotBalls++;
+        final batsmanName = _engine!.getBatsmanName(result.batsmanCardId);
+        batsmanStats.putIfAbsent(
+            batKey, () => BatsmanStats(name: batsmanName, innings: result.innings));
+        final batStats = batsmanStats[batKey]!;
+        if (result.eventType != 'wide') batStats.balls++;
+        batStats.runs += result.runs;
+        if (result.runs == 4) batStats.fours++;
+        if (result.runs == 6) batStats.sixes++;
+        if (result.isWicket) {
+          batStats.isOut = true;
+          final bowlerNameForDismissal = _engine!.getBowlerName(result.bowlerCardId);
+          final fielderNameForDismissal = result.fielderCardId != null
+              ? _engine!.getBatsmanName(result.fielderCardId!)
+              : null;
+          batStats.dismissalType = _formatDismissal(
+            result.wicketType ?? 'bowled',
+            bowlerNameForDismissal,
+            fielderNameForDismissal,
+          );
+        }
+
+        final bowlerName = _engine!.getBowlerName(result.bowlerCardId);
+        bowlerStats.putIfAbsent(
+            bowlKey, () => BowlerStats(name: bowlerName, innings: result.innings));
+        final bowlStats = bowlerStats[bowlKey]!;
+        if (!isExtra) bowlStats.balls++;
+        bowlStats.runs += result.runs;
+        if (result.isWicket) bowlStats.wickets++;
+        if (result.runs == 0 && !result.isWicket && !isExtra) {
+          bowlStats.dotBalls++;
+        }
       }
     }
 

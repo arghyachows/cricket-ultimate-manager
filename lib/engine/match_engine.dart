@@ -262,9 +262,23 @@ class MatchEngine {
   MatchEvent? _endInnings() {
     if (isFirstInnings) {
       _target = _score1;
-      // Save final over state before resetting for innings 2
-      final endOver = _overNumber;
-      final endBall = _ballNumber;
+
+      // Correct end-of-innings over/ball:
+      // _ballNumber was already incremented for the next (non-existent) ball.
+      int endOver, endBall;
+      if (_ballNumber == 1 && _overNumber > 0) {
+        // Rolled over from ball 6 → complete over boundary
+        endOver = _overNumber;
+        endBall = 0;
+      } else {
+        endOver = _overNumber;
+        endBall = _ballNumber > 0 ? _ballNumber - 1 : 0;
+      }
+
+      // Save innings 1 player IDs before swapping to innings 2
+      final lastBatsmanId = _currentBatting[_currentBatsmanIndex].userCardId;
+      final lastBowlerId = _currentBowling[_currentBowlerIndex % _currentBowling.length].userCardId;
+
       _innings = 2;
       _overNumber = 0;
       _ballNumber = 0;
@@ -283,9 +297,9 @@ class MatchEngine {
         ballNumber: endBall,
         battingTeamId: '',
         bowlingTeamId: '',
-        batsmanCardId: _currentBatting[0].userCardId,
-        bowlerCardId: _currentBowling[0].userCardId,
-        eventType: 'dot_ball',
+        batsmanCardId: lastBatsmanId,
+        bowlerCardId: lastBowlerId,
+        eventType: 'innings_break',
         runs: 0,
         commentary:
             'End of first innings. Score: $_score1/$_wickets1. Target: ${_target + 1}',

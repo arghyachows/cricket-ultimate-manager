@@ -44,6 +44,7 @@ class _MatchPreviewScreenState extends ConsumerState<MatchPreviewScreen>
   String _selectedDifficulty = 'Village';
   int _selectedOvers = 20;
 
+  bool _aiLoading = true;
   bool _tossAnimating = false;
   bool _tossComplete = false;
   bool _userWonToss = false;
@@ -53,21 +54,15 @@ class _MatchPreviewScreenState extends ConsumerState<MatchPreviewScreen>
   late AnimationController _coinController;
   late Animation<double> _coinAnimation;
 
-  int get _aiDifficultyLevel {
-    switch (_selectedDifficulty) {
-      case 'Village': return 2;
-      case 'Domestic': return 3;
-      case 'International': return 5;
-      default: return 3;
-    }
-  }
-
   @override
   void initState() {
     super.initState();
     _pitchType = _pitchTypes[_rng.nextInt(_pitchTypes.length)];
     _weather = _weatherConditions[_rng.nextInt(_weatherConditions.length)];
-    _regenerateAI();
+    _aiTeamName = AIOpponent.randomTeamName();
+    _aiChemistry = AIOpponent.randomChemistry();
+    _aiXI = [];
+    _loadAI();
 
     _coinController = AnimationController(
       vsync: this,
@@ -76,10 +71,12 @@ class _MatchPreviewScreenState extends ConsumerState<MatchPreviewScreen>
     _coinAnimation = CurvedAnimation(parent: _coinController, curve: Curves.easeOut);
   }
 
-  void _regenerateAI() {
+  Future<void> _loadAI() async {
+    setState(() => _aiLoading = true);
     _aiTeamName = AIOpponent.randomTeamName();
-    _aiXI = AIOpponent.generateXI(difficulty: _aiDifficultyLevel);
     _aiChemistry = AIOpponent.randomChemistry();
+    _aiXI = await AIOpponent.generateXI(difficulty: _selectedDifficulty);
+    if (mounted) setState(() => _aiLoading = false);
   }
 
   @override
@@ -169,13 +166,21 @@ class _MatchPreviewScreenState extends ConsumerState<MatchPreviewScreen>
               _buildConditionsCard(),
               const SizedBox(height: 20),
 
-              // Toss section
-              _buildTossSection(),
-              const SizedBox(height: 20),
+              // Loading AI team
+              if (_aiLoading)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else ...[
+                // Toss section
+                _buildTossSection(),
+                const SizedBox(height: 20),
 
-              // Start match button
-              if (_tossDecision != null)
-                _buildStartButton(),
+                // Start match button
+                if (_tossDecision != null)
+                  _buildStartButton(),
+              ],
             ],
           );
         },
@@ -319,10 +324,10 @@ class _MatchPreviewScreenState extends ConsumerState<MatchPreviewScreen>
                 child: Padding(
                   padding: EdgeInsets.only(right: d != 'International' ? 8 : 0),
                   child: GestureDetector(
-                    onTap: () => setState(() {
-                      _selectedDifficulty = d;
-                      _regenerateAI();
-                    }),
+                    onTap: () {
+                      setState(() => _selectedDifficulty = d);
+                      _loadAI();
+                    },
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 10),
                       decoration: BoxDecoration(
