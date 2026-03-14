@@ -316,8 +316,11 @@ class MatchNotifier extends StateNotifier<MatchState> {
   final Ref ref;
   Timer? _simulationTimer;
   MatchEngine? _engine;
+  String? _activeMatchId;
 
-  MatchNotifier(this.ref) : super(const MatchState());
+  MatchNotifier(this.ref) : super(const MatchState()) {
+    _loadActiveMatch();
+  }
 
   static int _inningsScoreFromEvents(List<MatchEvent> events, int inn) {
     final inns = events.where((e) => e.innings == inn);
@@ -327,6 +330,118 @@ class MatchNotifier extends StateNotifier<MatchState> {
   /// In-memory match history
   final List<MatchSummary> _matchHistory = [];
   List<MatchSummary> get matchHistory => List.unmodifiable(_matchHistory);
+
+  /// Load active match from database on init - only to display, not resume
+  Future<void> _loadActiveMatch() async {
+    try {
+      final userId = SupabaseService.currentUserId;
+      if (userId == null) return;
+
+      final matchData = await SupabaseService.client
+          .from('active_matches')
+          .select('*, active_match_events(*), active_match_squads(*)')
+          .eq('user_id', userId)
+          .eq('is_complete', false)
+          .maybeSingle();
+
+      if (matchData != null) {
+        await _restoreMatchDisplay(matchData);
+      }
+    } catch (e) {
+      // Ignore errors on load
+    }
+  }
+
+  /// Restore match display from database (read-only view)
+  Future<void> _restoreMatchDisplay(Map<String, dynamic> data) async {
+    try {
+      _activeMatchId = data['id'];
+      
+      final events = (data['active_match_events'] as List)
+          .map((e) => MatchEvent(
+                id: e['id'],
+                matchId: e['match_id'],
+                innings: e['innings'],
+                overNumber: e['over_number'],
+                ballNumber: e['ball_number'],
+                battingTeamId: '',
+                bowlingTeamId: '',
+                batsmanCardId: e['batsman_card_id'],
+                bowlerCardId: e['bowler_card_id'],
+                eventType: e['event_type'],
+                runs: e['runs'],
+                isBoundary: e['is_boundary'],
+                isWicket: e['is_wicket'],
+                wicketType: e['wicket_type'],
+                fielderCardId: e['fielder_card_id'],
+                commentary: e['commentary'],
+                scoreAfter: e['score_after'],
+                wicketsAfter: e['wickets_after'],
+              ))
+          .toList();
+
+      // Rebuild stats from events
+      final batsmanStats = <String, BatsmanStats>{};
+      final bowlerStats = <String, BowlerStats>{};
+      
+      for (final event in events) {
+        if (event.eventType == 'innings_break') continue;
+        
+        final batKey = '${event.innings}_${event.batsmanCardId}';
+        final bowlKey = '${event.innings}_${event.bowlerCardId}';
+        
+        // Batsman stats (simplified - just accumulate)
+        batsmanStats.putIfAbsent(
+          batKey,
+          () => BatsmanStats(name: 'Player ${event.batsmanCardId}', innings: event.innings),
+        );
+        final batStats = batsmanStats[batKey]!;
+        if (event.eventType != 'wide') batStats.balls++;
+        batStats.runs += event.runs;
+        if (event.runs == 4) batStats.fours++;
+        if (event.runs == 6) batStats.sixes++;
+        if (event.isWicket) batStats.isOut = true;
+        
+        // Bowler stats
+        bowlerStats.putIfAbsent(
+          bowlKey,
+          () => BowlerStats(name: 'Player ${event.bowlerCardId}', innings: event.innings),
+        );
+        final bowlStats = bowlerStats[bowlKey]!;
+        final isExtra = event.eventType == 'wide' || event.eventType == 'no_ball';
+        if (!isExtra) bowlStats.balls++;
+        bowlStats.runs += event.runs;
+        if (event.isWicket) bowlStats.wickets++;
+        if (event.runs == 0 && !event.isWicket && !isExtra) bowlStats.dotBalls++;
+      }
+
+      state = MatchState(
+        isSimulating: false,
+        events: events,
+        currentInnings: data['current_innings'],
+        homeTeamName: data['home_team_name'],
+        awayTeamName: data['away_team_name'],
+        matchFormat: data['match_format'],
+        matchOvers: data['match_overs'],
+        matchDifficulty: data['match_difficulty'],
+        pitchCondition: data['pitch_condition'],
+        weatherCondition: data['weather_condition'],
+        userWonToss: data['user_won_toss'],
+        tossDecision: data['toss_decision'],
+        homeBatsFirst: data['home_bats_first'],
+        target: data['target'],
+        isMatchComplete: data['is_complete'],
+        homeWon: data['home_won'],
+        coinsAwarded: data['coins_awarded'] ?? 0,
+        xpAwarded: data['xp_awarded'] ?? 0,
+        batsmanStats: batsmanStats,
+        bowlerStats: bowlerStats,
+        currentCommentary: events.isNotEmpty ? events.last.commentary : null,
+      );
+    } catch (e) {
+      // Ignore restore errors
+    }
+  }
 
   Future<void> startMatch({
     required List<SquadPlayer> homeXI,
@@ -345,6 +460,9 @@ class MatchNotifier extends StateNotifier<MatchState> {
     String tossDecision = 'bat',
     bool homeBatsFirst = true,
   }) async {
+    // Delete any existing active match
+    await _deleteActiveMatch();
+
     _engine = MatchEngine(
       homeXI: homeXI,
       awayXI: awayXI,
@@ -369,6 +487,14 @@ class MatchNotifier extends StateNotifier<MatchState> {
       userWonToss: userWonToss,
       tossDecision: tossDecision,
       homeBatsFirst: homeBatsFirst,
+    );
+
+    // Save initial match state to database
+    await _saveMatchToDatabase(
+      homeXI: homeXI,
+      awayXI: awayXI,
+      homeChemistry: homeChemistry,
+      awayChemistry: awayChemistry,
     );
 
     // Simulate ball by ball with delay for UX
@@ -397,7 +523,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
     }
   }
 
-  void _simulateNextBall() {
+  Future<void> _simulateNextBall() async {
     if (_engine == null) return;
 
     final result = _engine!.simulateNextBall();
@@ -408,7 +534,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
         isSimulating: false,
         currentCommentary: _engine!.getMatchResult(),
       );
-      _onMatchComplete();
+      await _onMatchComplete();
       return;
     }
 
@@ -473,9 +599,12 @@ class MatchNotifier extends StateNotifier<MatchState> {
       bowlerStats: bowlerStats,
       target: newTarget,
     );
+
+    // Save event to database
+    await _saveEventToDatabase(result);
   }
 
-  void _onMatchComplete() {
+  Future<void> _onMatchComplete() async {
     if (_engine == null) return;
 
     // Determine winner — score1 is batting-first team, score2 is batting-second
@@ -528,6 +657,20 @@ class MatchNotifier extends StateNotifier<MatchState> {
       xpAwarded: xp,
       isMatchComplete: true,
     );
+
+    // Mark match as complete in database
+    if (_activeMatchId != null) {
+      try {
+        await SupabaseService.client.from('active_matches').update({
+          'is_complete': true,
+          'home_won': homeWon,
+          'coins_awarded': coins,
+          'xp_awarded': xp,
+        }).eq('id', _activeMatchId!);
+      } catch (e) {
+        // Ignore
+      }
+    }
 
     // Save to match history
     _matchHistory.insert(0, MatchSummary(
@@ -659,10 +802,127 @@ class MatchNotifier extends StateNotifier<MatchState> {
     _onMatchComplete();
   }
 
-  void reset() {
+  Future<void> reset() async {
     _simulationTimer?.cancel();
     _engine = null;
+    await _deleteActiveMatch();
     state = const MatchState();
+  }
+
+  /// Save match to database
+  Future<void> _saveMatchToDatabase({
+    required List<SquadPlayer> homeXI,
+    required List<SquadPlayer> awayXI,
+    required int homeChemistry,
+    required int awayChemistry,
+  }) async {
+    try {
+      final userId = SupabaseService.currentUserId;
+      if (userId == null) return;
+
+      final matchData = await SupabaseService.client
+          .from('active_matches')
+          .insert({
+            'user_id': userId,
+            'match_format': state.matchFormat,
+            'match_overs': state.matchOvers,
+            'match_difficulty': state.matchDifficulty,
+            'home_team_name': state.homeTeamName,
+            'away_team_name': state.awayTeamName,
+            'home_bats_first': state.homeBatsFirst,
+            'pitch_condition': state.pitchCondition,
+            'weather_condition': state.weatherCondition,
+            'user_won_toss': state.userWonToss,
+            'toss_decision': state.tossDecision,
+            'current_innings': state.currentInnings,
+            'target': state.target,
+          })
+          .select()
+          .single();
+
+      _activeMatchId = matchData['id'];
+
+      // Save squads
+      final homeSquadData = homeXI
+          .asMap()
+          .entries
+          .map((e) => {
+                'match_id': _activeMatchId,
+                'team_type': 'home',
+                'user_card_id': e.value.userCardId,
+                'position': e.key + 1,
+                'chemistry': homeChemistry,
+              })
+          .toList();
+
+      final awaySquadData = awayXI
+          .asMap()
+          .entries
+          .map((e) => {
+                'match_id': _activeMatchId,
+                'team_type': 'away',
+                'user_card_id': e.value.userCardId,
+                'position': e.key + 1,
+                'chemistry': awayChemistry,
+              })
+          .toList();
+
+      await SupabaseService.client
+          .from('active_match_squads')
+          .insert([...homeSquadData, ...awaySquadData]);
+    } catch (e) {
+      // Ignore save errors
+    }
+  }
+
+  /// Save event to database
+  Future<void> _saveEventToDatabase(MatchEvent event) async {
+    try {
+      if (_activeMatchId == null) return;
+
+      await SupabaseService.client.from('active_match_events').insert({
+        'match_id': _activeMatchId,
+        'innings': event.innings,
+        'over_number': event.overNumber,
+        'ball_number': event.ballNumber,
+        'batsman_card_id': event.batsmanCardId,
+        'bowler_card_id': event.bowlerCardId,
+        'event_type': event.eventType,
+        'runs': event.runs,
+        'is_boundary': event.isBoundary,
+        'is_wicket': event.isWicket,
+        'wicket_type': event.wicketType,
+        'fielder_card_id': event.fielderCardId,
+        'commentary': event.commentary,
+        'score_after': event.scoreAfter,
+        'wickets_after': event.wicketsAfter,
+      });
+
+      // Update match state
+      await SupabaseService.client.from('active_matches').update({
+        'current_innings': state.currentInnings,
+        'target': state.target,
+      }).eq('id', _activeMatchId!);
+    } catch (e) {
+      // Ignore save errors
+    }
+  }
+
+  /// Delete active match from database
+  Future<void> _deleteActiveMatch() async {
+    try {
+      final userId = SupabaseService.currentUserId;
+      if (userId == null) return;
+
+      await SupabaseService.client
+          .from('active_matches')
+          .delete()
+          .eq('user_id', userId);
+
+      _activeMatchId = null;
+    } catch (e) {
+      // Ignore delete errors
+    }
   }
 
   @override
