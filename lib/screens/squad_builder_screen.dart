@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/theme.dart';
+import '../core/profanity_filter.dart';
 import '../providers/providers.dart';
 import '../models/models.dart';
 
@@ -134,18 +135,29 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 24),
-            TextField(
+            TextFormField(
               controller: _teamNameController,
               decoration: const InputDecoration(
                 hintText: 'Team Name',
                 prefixIcon: Icon(Icons.shield_outlined),
               ),
               textCapitalization: TextCapitalization.words,
+              autovalidateMode: AutovalidateMode.onUserInteraction,
+              validator: ProfanityFilter.validateTeamNameSync,
             ),
             const SizedBox(height: 16),
             ElevatedButton.icon(
-              onPressed: () {
+              onPressed: () async {
                 final name = _teamNameController.text.trim();
+                final error = await ProfanityFilter.validateTeamName(name);
+                if (error != null) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(error)),
+                    );
+                  }
+                  return;
+                }
                 if (name.isNotEmpty) {
                   ref.read(teamProvider.notifier).createTeam(name);
                 }

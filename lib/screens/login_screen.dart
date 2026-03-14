@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../core/theme.dart';
 import '../core/constants.dart';
+import '../core/profanity_filter.dart';
 import '../providers/auth_provider.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -13,6 +14,7 @@ class LoginScreen extends ConsumerStatefulWidget {
 }
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
+  final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _usernameController = TextEditingController();
@@ -38,12 +40,30 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Future<void> _handleSubmit() async {
+    // Validate form with local checks first
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
     final username = _usernameController.text.trim();
 
     if (email.isEmpty || password.isEmpty) return;
     if (_isSignUp && username.isEmpty) return;
+
+    // For signup, do additional async profanity check
+    if (_isSignUp) {
+      final usernameError = await ProfanityFilter.validateUsername(username);
+      if (usernameError != null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(usernameError)),
+          );
+        }
+        return;
+      }
+    }
 
     final controller = ref.read(authControllerProvider.notifier);
     bool success;
@@ -79,9 +99,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           child: Center(
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 32),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
                   // Logo area
                   Container(
                     width: 120,
@@ -128,19 +150,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
                   // Username field (sign up only)
                   if (_isSignUp) ...[
-                    TextField(
+                    TextFormField(
                       controller: _usernameController,
                       decoration: const InputDecoration(
                         hintText: 'Username',
                         prefixIcon: Icon(Icons.person_outline),
                       ),
                       textInputAction: TextInputAction.next,
+                      validator: ProfanityFilter.validateUsernameSync,
                     ),
                     const SizedBox(height: 16),
                   ],
 
                   // Email
-                  TextField(
+                  TextFormField(
                     controller: _emailController,
                     decoration: const InputDecoration(
                       hintText: 'Email',
@@ -148,11 +171,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                     keyboardType: TextInputType.emailAddress,
                     textInputAction: TextInputAction.next,
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Email is required';
+                      }
+                      if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
+                        return 'Please enter a valid email';
+                      }
+                      return null;
+                    },
                   ),
                   const SizedBox(height: 16),
 
                   // Password
-                  TextField(
+                  TextFormField(
                     controller: _passwordController,
                     decoration: InputDecoration(
                       hintText: 'Password',
@@ -167,7 +199,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                     obscureText: _obscurePassword,
                     textInputAction: TextInputAction.done,
-                    onSubmitted: (_) => _handleSubmit(),
+                    onFieldSubmitted: (_) => _handleSubmit(),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Password is required';
+                      }
+                      if (_isSignUp && value.length < 6) {
+                        return 'Password must be at least 6 characters';
+                      }
+                      return null;
+                    },
                   ),
                   const SizedBox(height: 24),
 
@@ -226,6 +267,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
                 ],
               ),
+            ),
             ),
           ),
         ),
