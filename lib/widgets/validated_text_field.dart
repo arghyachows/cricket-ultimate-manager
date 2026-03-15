@@ -92,7 +92,7 @@ class ValidatedTextField extends StatelessWidget {
 
         // Profanity check
         if (checkProfanity) {
-          return ProfanityFilter.validateText(
+          return ProfanityFilter.validateTextSync(
             value,
             fieldName: fieldName,
             minLength: minLength,
@@ -153,7 +153,7 @@ class UsernameTextField extends StatelessWidget {
       focusNode: focusNode,
       autofocus: autofocus,
       autovalidateMode: AutovalidateMode.onUserInteraction,
-      validator: ProfanityFilter.validateUsername,
+      validator: ProfanityFilter.validateUsernameSync,
     );
   }
 }
@@ -190,7 +190,7 @@ class TeamNameTextField extends StatelessWidget {
       focusNode: focusNode,
       autofocus: autofocus,
       autovalidateMode: AutovalidateMode.onUserInteraction,
-      validator: ProfanityFilter.validateTeamName,
+      validator: ProfanityFilter.validateTeamNameSync,
     );
   }
 }
@@ -227,7 +227,7 @@ class DisplayNameTextField extends StatelessWidget {
       focusNode: focusNode,
       autofocus: autofocus,
       autovalidateMode: AutovalidateMode.onUserInteraction,
-      validator: ProfanityFilter.validateDisplayName,
+      validator: ProfanityFilter.validateDisplayNameSync,
     );
   }
 }

@@ -264,6 +264,41 @@ class ProfanityFilter {
     return null;
   }
 
+  /// Synchronous display name validation (basic checks only, no profanity)
+  /// Use for form validators, then call validateDisplayName() on submit
+  static String? validateDisplayNameSync(String? displayName) {
+    if (displayName == null || displayName.isEmpty) {
+      return null; // Optional field
+    }
+    if (displayName.length < 2) {
+      return 'Display name must be at least 2 characters';
+    }
+    if (displayName.length > 30) {
+      return 'Display name must be less than 30 characters';
+    }
+    return null;
+  }
+
+  /// Synchronous generic text validation (basic checks only, no profanity)
+  static String? validateTextSync(
+    String? text, {
+    String fieldName = 'Text',
+    int minLength = 1,
+    int maxLength = 100,
+    bool required = true,
+  }) {
+    if (text == null || text.isEmpty) {
+      return required ? '$fieldName is required' : null;
+    }
+    if (text.length < minLength) {
+      return '$fieldName must be at least $minLength characters';
+    }
+    if (text.length > maxLength) {
+      return '$fieldName must be less than $maxLength characters';
+    }
+    return null;
+  }
+
   /// Clear the cache
   static void clearCache() {
     _cache.clear();

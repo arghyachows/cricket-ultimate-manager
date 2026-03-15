@@ -18,6 +18,10 @@ import '../screens/tournament_screen.dart';
 import '../screens/card_detail_screen.dart';
 import '../screens/profile_screen.dart';
 import '../screens/shell_screen.dart';
+import '../screens/multiplayer_lobby_screen.dart';
+import '../screens/multiplayer_room_screen.dart';
+import '../screens/multiplayer_debug_screen.dart';
+import '../screens/multiplayer_match_screen.dart';
 import 'constants.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -102,6 +106,25 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (context, state) {
               final cardId = state.pathParameters['cardId']!;
               return CardDetailScreen(cardId: cardId);
+            },
+          ),
+          GoRoute(
+            path: '/multiplayer',
+            builder: (context, state) => const MultiplayerLobbyScreen(),
+          ),
+          GoRoute(
+            path: '/multiplayer/room',
+            builder: (context, state) => const MultiplayerRoomScreen(),
+          ),
+          GoRoute(
+            path: '/multiplayer/debug',
+            builder: (context, state) => const MultiplayerDebugScreen(),
+          ),
+          GoRoute(
+            path: '/multiplayer/match/:matchId',
+            builder: (context, state) {
+              final matchId = state.pathParameters['matchId']!;
+              return MultiplayerMatchScreen(matchId: matchId);
             },
           ),
           GoRoute(

@@ -28,6 +28,13 @@ class MatchEngine {
   /// Public accessors for final scores
   int get score1 => _score1;
   int get score2 => _score2;
+  int get wickets1 => _wickets1;
+  int get wickets2 => _wickets2;
+  int get currentInnings => _innings;
+  int get overNumber => _overNumber;
+  int get ballNumber => _ballNumber;
+  bool get matchComplete => _matchComplete;
+  int get target => _target;
   int _currentBatsmanIndex = 0;
   int _currentBowlerIndex = 0;
   int _nonStrikerIndex = 1;

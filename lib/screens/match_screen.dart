@@ -104,6 +104,17 @@ class MatchScreen extends ConsumerWidget {
               const SizedBox(height: 12),
 
               _MatchModeCard(
+                title: 'MULTIPLAYER',
+                subtitle: 'Challenge other players online',
+                icon: Icons.people,
+                color: AppTheme.accent,
+                reward: 'Varies',
+                enabled: xi.length == 11 && !hasActiveMatch,
+                onTap: () => context.go('/multiplayer'),
+              ),
+              const SizedBox(height: 12),
+
+              _MatchModeCard(
                 title: 'TOURNAMENT',
                 subtitle: 'Compete against other managers',
                 icon: Icons.emoji_events,
