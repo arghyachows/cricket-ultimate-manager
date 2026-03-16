@@ -681,6 +681,7 @@ final multiplayerMatchHistoryProvider =
         batsmanStats[e.key] = BatsmanStats(
           name: b['name'] as String? ?? '',
           innings: b['innings'] as int? ?? 1,
+          battingOrder: b['battingOrder'] as int? ?? 99,
           runs: b['runs'] as int? ?? 0,
           balls: b['balls'] as int? ?? 0,
           fours: b['fours'] as int? ?? 0,

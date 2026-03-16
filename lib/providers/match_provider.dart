@@ -37,6 +37,8 @@ class MatchState {
   final String tossDecision; // 'bat' or 'bowl'
   final bool homeBatsFirst;
   final int target;
+  final List<String> xiOrder1;
+  final List<String> xiOrder2;
 
   const MatchState({
     this.match,
@@ -61,6 +63,8 @@ class MatchState {
     this.tossDecision = 'bat',
     this.homeBatsFirst = true,
     this.target = 0,
+    this.xiOrder1 = const [],
+    this.xiOrder2 = const [],
   });
 
   bool get hasActiveMatch => isSimulating || isMatchComplete;
@@ -101,13 +105,27 @@ class MatchState {
     return '${last.overNumber}.${last.ballNumber}';
   }
 
-  /// Batsmen who batted in innings 1 (home team)
-  List<BatsmanStats> get innings1Batsmen =>
-      batsmanStats.values.where((b) => b.innings == 1).toList();
+  List<BatsmanStats> _orderedBatsmenForInnings(int innings, List<String> xiOrder) {
+    final batsmen = batsmanStats.values.where((b) => b.innings == innings).toList();
+    if (xiOrder.isEmpty) return batsmen;
 
-  /// Batsmen who batted in innings 2 (away team)
-  List<BatsmanStats> get innings2Batsmen =>
-      batsmanStats.values.where((b) => b.innings == 2).toList();
+    final statsMap = {for (final b in batsmen) b.name: b};
+    final ordered = <BatsmanStats>[];
+
+    for (final name in xiOrder) {
+      ordered.add(statsMap[name] ?? BatsmanStats(name: name, innings: innings));
+    }
+    for (final b in batsmen) {
+      if (!xiOrder.contains(b.name)) ordered.add(b);
+    }
+    return ordered;
+  }
+
+  /// Batting card for innings 1 (full XI in batting order)
+  List<BatsmanStats> get innings1Batsmen => _orderedBatsmenForInnings(1, xiOrder1);
+
+  /// Batting card for innings 2 (full XI in batting order)
+  List<BatsmanStats> get innings2Batsmen => _orderedBatsmenForInnings(2, xiOrder2);
 
   /// Bowlers who bowled in innings 1 (away team bowled)
   List<BowlerStats> get innings1Bowlers =>
@@ -177,6 +195,8 @@ class MatchState {
     String? tossDecision,
     bool? homeBatsFirst,
     int? target,
+    List<String>? xiOrder1,
+    List<String>? xiOrder2,
   }) {
     return MatchState(
       match: match ?? this.match,
@@ -201,6 +221,8 @@ class MatchState {
       tossDecision: tossDecision ?? this.tossDecision,
       homeBatsFirst: homeBatsFirst ?? this.homeBatsFirst,
       target: target ?? this.target,
+      xiOrder1: xiOrder1 ?? this.xiOrder1,
+      xiOrder2: xiOrder2 ?? this.xiOrder2,
     );
   }
 }
@@ -208,6 +230,7 @@ class MatchState {
 class BatsmanStats {
   final String name;
   final int innings;
+  final int battingOrder;
   int runs;
   int balls;
   int fours;
@@ -215,7 +238,7 @@ class BatsmanStats {
   bool isOut;
   String? dismissalType;
 
-  BatsmanStats({required this.name, required this.innings, this.runs = 0, this.balls = 0, this.fours = 0, this.sixes = 0, this.isOut = false, this.dismissalType});
+  BatsmanStats({required this.name, required this.innings, this.battingOrder = 99, this.runs = 0, this.balls = 0, this.fours = 0, this.sixes = 0, this.isOut = false, this.dismissalType});
 
   double get strikeRate => balls > 0 ? (runs / balls) * 100 : 0;
 }
@@ -266,6 +289,8 @@ class MatchSummary {
   final List<MatchEvent> events;
   final bool homeBatsFirst;
 
+  final List<String> xiOrder1;
+  final List<String> xiOrder2;
   const MatchSummary({
     required this.homeTeamName,
     required this.awayTeamName,
@@ -284,6 +309,8 @@ class MatchSummary {
     required this.bowlerStats,
     required this.events,
     this.homeBatsFirst = true,
+    this.xiOrder1 = const [],
+    this.xiOrder2 = const [],
   });
 
   /// Team that batted first
@@ -369,6 +396,12 @@ class MatchNotifier extends StateNotifier<MatchState> {
       userWonToss: userWonToss,
       tossDecision: tossDecision,
       homeBatsFirst: homeBatsFirst,
+        xiOrder1: (homeBatsFirst ? homeXI : awayXI)
+          .map<String>((p) => p.userCard?.playerCard?.playerName ?? 'Unknown')
+          .toList(),
+        xiOrder2: (homeBatsFirst ? awayXI : homeXI)
+          .map<String>((p) => p.userCard?.playerCard?.playerName ?? 'Unknown')
+          .toList(),
     );
 
     // Simulate ball by ball with delay for UX
@@ -548,6 +581,8 @@ class MatchNotifier extends StateNotifier<MatchState> {
       bowlerStats: Map.from(state.bowlerStats),
       events: List.from(state.events),
       homeBatsFirst: state.homeBatsFirst,
+      xiOrder1: state.xiOrder1,
+      xiOrder2: state.xiOrder2,
     ));
 
     // Update local user state immediately

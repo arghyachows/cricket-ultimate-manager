@@ -198,9 +198,11 @@ class _MultiplayerMatchState {
   String get computedAwayOvers => awayOvers;
 
   List<BatsmanStats> get innings1Batsmen =>
-      batsmanStats.values.where((b) => b.innings == 1).toList();
+      (batsmanStats.values.where((b) => b.innings == 1).toList()
+        ..sort((a, b) => a.battingOrder.compareTo(b.battingOrder)));
   List<BatsmanStats> get innings2Batsmen =>
-      batsmanStats.values.where((b) => b.innings == 2).toList();
+      (batsmanStats.values.where((b) => b.innings == 2).toList()
+        ..sort((a, b) => a.battingOrder.compareTo(b.battingOrder)));
   List<BowlerStats> get innings1Bowlers =>
       bowlerStats.values.where((b) => b.innings == 1).toList();
   List<BowlerStats> get innings2Bowlers =>
@@ -675,6 +677,7 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
       result[entry.key] = BatsmanStats(
         name: m['name'] as String? ?? '',
         innings: m['innings'] as int? ?? 1,
+        battingOrder: m['battingOrder'] as int? ?? 99,
         runs: m['runs'] as int? ?? 0,
         balls: m['balls'] as int? ?? 0,
         fours: m['fours'] as int? ?? 0,

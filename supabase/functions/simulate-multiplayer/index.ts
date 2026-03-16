@@ -21,6 +21,7 @@ interface Player {
 interface BatsmanStats {
   name: string;
   innings: number;
+  battingOrder: number;
   runs: number;
   balls: number;
   fours: number;
@@ -358,9 +359,12 @@ class MatchEngine {
     const bowlKey = `${result.innings}_${result.bowlerCardId}`;
 
     if (!this.batsmanStats[batKey]) {
+      const battingArr = result.innings === 1 ? this.battingOrder1 : this.battingOrder2;
+      const battingPos = battingArr.findIndex((p) => p.userCardId === result.batsmanCardId);
       this.batsmanStats[batKey] = {
         name: batsmanName,
         innings: result.innings,
+        battingOrder: battingPos >= 0 ? battingPos + 1 : 99,
         runs: 0,
         balls: 0,
         fours: 0,

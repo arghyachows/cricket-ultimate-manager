@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../core/theme.dart';
+
 import '../core/profanity_filter.dart';
-import '../providers/providers.dart';
+import '../core/theme.dart';
 import '../models/models.dart';
+import '../providers/providers.dart';
 
 class SquadBuilderScreen extends ConsumerStatefulWidget {
   const SquadBuilderScreen({super.key});
@@ -14,9 +15,23 @@ class SquadBuilderScreen extends ConsumerStatefulWidget {
 
 class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
     with SingleTickerProviderStateMixin {
-  final _teamNameController = TextEditingController();
-  late TabController _tabController;
+  final TextEditingController _teamNameController = TextEditingController();
+  late final TabController _tabController;
   StatsSortField _sortField = StatsSortField.runs;
+
+  static const Map<int, String> _xiSlotLabels = {
+    1: 'Opener',
+    2: 'Opener',
+    3: 'No. 3',
+    4: 'No. 4',
+    5: 'No. 5',
+    6: 'Wicket Keeper',
+    7: 'All-Rounder',
+    8: 'All-Rounder',
+    9: 'Bowler',
+    10: 'Bowler',
+    11: 'Bowler',
+  };
 
   @override
   void initState() {
@@ -35,32 +50,27 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
   Widget build(BuildContext context) {
     final teamAsync = ref.watch(teamProvider);
     final chemistry = ref.watch(chemistryProvider);
-    // Ensure user cards are loaded for the player picker
     ref.watch(userCardsProvider);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('SQUAD BUILDER'),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(40),
-          child: TabBar(
-            controller: _tabController,
-            indicatorColor: AppTheme.accent,
-            labelColor: AppTheme.accent,
-            unselectedLabelColor: Colors.white54,
-            tabs: const [
-              Tab(text: 'PLAYING XI'),
-              Tab(text: 'STATS'),
-            ],
-          ),
+        bottom: TabBar(
+          controller: _tabController,
+          indicatorColor: AppTheme.accent,
+          labelColor: AppTheme.accent,
+          unselectedLabelColor: Colors.white54,
+          tabs: const [
+            Tab(text: 'PLAYING XI'),
+            Tab(text: 'STATS'),
+          ],
         ),
         actions: [
-          // Chemistry indicator
           Container(
-            margin: const EdgeInsets.only(right: 16),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            margin: const EdgeInsets.only(right: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color: _chemistryColor(chemistry).withValues(alpha: 0.2),
+              color: _chemistryColor(chemistry).withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: _chemistryColor(chemistry)),
             ),
@@ -82,23 +92,9 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
       ),
       body: teamAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Error: $e', style: const TextStyle(color: AppTheme.error)),
-              const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () => ref.read(teamProvider.notifier).refresh(),
-                child: const Text('RETRY'),
-              ),
-            ],
-          ),
-        ),
+        error: (error, _) => _buildError(error),
         data: (team) {
-          if (team == null) {
-            return _buildCreateTeam();
-          }
+          if (team == null) return _buildCreateTeam();
           return TabBarView(
             controller: _tabController,
             children: [
@@ -111,30 +107,36 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
     );
   }
 
-  Color _chemistryColor(int chemistry) {
-    if (chemistry >= 80) return AppTheme.cardLegend;
-    if (chemistry >= 60) return AppTheme.cardGold;
-    if (chemistry >= 40) return AppTheme.primaryLight;
-    if (chemistry >= 20) return AppTheme.cardSilver;
-    return AppTheme.cardBronze;
+  Widget _buildError(Object error) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('Error: $error', style: const TextStyle(color: AppTheme.error)),
+          const SizedBox(height: 12),
+          ElevatedButton(
+            onPressed: () => ref.read(teamProvider.notifier).refresh(),
+            child: const Text('RETRY'),
+          ),
+        ],
+      ),
+    );
   }
-
-  // ─── Create Team ─────────────────────────────────────────────────────────
 
   Widget _buildCreateTeam() {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(32),
+        padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.groups_outlined, size: 80, color: Colors.white24),
+            const Icon(Icons.groups_outlined, size: 72, color: Colors.white24),
             const SizedBox(height: 16),
             const Text(
               'Create Your Team',
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
             TextFormField(
               controller: _teamNameController,
               decoration: const InputDecoration(
@@ -145,7 +147,7 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
               autovalidateMode: AutovalidateMode.onUserInteraction,
               validator: ProfanityFilter.validateTeamNameSync,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             ElevatedButton.icon(
               onPressed: () async {
                 final name = _teamNameController.text.trim();
@@ -159,7 +161,7 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
                   return;
                 }
                 if (name.isNotEmpty) {
-                  ref.read(teamProvider.notifier).createTeam(name);
+                  await ref.read(teamProvider.notifier).createTeam(name);
                 }
               },
               icon: const Icon(Icons.add),
@@ -175,200 +177,233 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
     );
   }
 
-  // ─── Playing XI Tab ──────────────────────────────────────────────────────
-
-  // Role-based position labels for cricket
-  static const _positionLabels = <int, String>{
-    1: 'Opener',
-    2: 'Opener',
-    3: 'No. 3',
-    4: 'No. 4',
-    5: 'No. 5',
-    6: 'Wicket Keeper',
-    7: 'All-Rounder',
-    8: 'All-Rounder',
-    9: 'Bowler',
-    10: 'Bowler',
-    11: 'Bowler',
-  };
-
   Widget _buildPlayingXI(Team team) {
     final squad = team.activeSquad;
     if (squad == null) {
       return const Center(
-        child: Text('No active squad found', style: TextStyle(color: Colors.white38)),
+        child: Text(
+          'No active squad found',
+          style: TextStyle(color: Colors.white38),
+        ),
       );
     }
 
-    final xi = squad.playingXI;
-    // Build a map of position -> SquadPlayer for positions 1-11
-    final Map<int, SquadPlayer> positionMap = {};
-    for (final sp in squad.players.where((p) => p.isPlayingXI)) {
-      positionMap[sp.position] = sp;
+    final lineup = squad.playingXI;
+    final bench = squad.players.where((p) => !p.isPlayingXI).toList()
+      ..sort((a, b) {
+        final ar = a.userCard?.playerCard?.rating ?? 0;
+        final br = b.userCard?.playerCard?.rating ?? 0;
+        return br.compareTo(ar);
+      });
+
+    final roleCounts = <String, int>{};
+    for (final player in lineup) {
+      final role = player.userCard?.playerCard?.role ?? 'unknown';
+      roleCounts[role] = (roleCounts[role] ?? 0) + 1;
     }
 
-    // Ordered filled slots and empty positions
-    final filledSlots = <SquadPlayer>[];
-    final emptyPositions = <int>[];
-    for (int pos = 1; pos <= 11; pos++) {
-      if (positionMap.containsKey(pos)) {
-        filledSlots.add(positionMap[pos]!);
-      } else {
-        emptyPositions.add(pos);
-      }
-    }
-
-    // Count roles
-    final roleCount = <String, int>{};
-    for (final sp in xi) {
-      final role = sp.userCard?.playerCard?.role ?? 'unknown';
-      roleCount[role] = (roleCount[role] ?? 0) + 1;
-    }
-
-    final avgRating = xi.isEmpty
+    final avgRating = lineup.isEmpty
         ? 0
-        : xi.fold<int>(0, (sum, p) => sum + (p.userCard?.playerCard?.rating ?? 0)) ~/ xi.length;
+        : lineup.fold<int>(0, (sum, p) => sum + (p.userCard?.playerCard?.rating ?? 0)) ~/
+            lineup.length;
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       children: [
-        // Team header
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [AppTheme.primary.withValues(alpha: 0.4), AppTheme.surface],
-            ),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppTheme.accent.withValues(alpha: 0.3)),
-          ),
-          child: Row(
+        _buildTeamSummaryCard(team, lineup.length, avgRating),
+        const SizedBox(height: 10),
+        if (lineup.isNotEmpty)
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
             children: [
-              const Icon(Icons.shield, color: AppTheme.accent, size: 40),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      team.teamName,
-                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'OVR $avgRating | ${xi.length}/11 selected',
-                      style: const TextStyle(color: Colors.white54),
-                    ),
-                  ],
-                ),
-              ),
-              if (xi.length == 11)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: AppTheme.accent.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Text('READY', style: TextStyle(color: AppTheme.accent, fontWeight: FontWeight.bold, fontSize: 11)),
-                )
-              else
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: AppTheme.error.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text('${11 - xi.length} NEEDED', style: const TextStyle(color: AppTheme.error, fontWeight: FontWeight.bold, fontSize: 11)),
-                ),
+              _roleChip('BAT', roleCounts['batsman'] ?? 0, Colors.blueAccent),
+              _roleChip('BOWL', roleCounts['bowler'] ?? 0, Colors.redAccent),
+              _roleChip('ALL', roleCounts['all_rounder'] ?? 0, Colors.orangeAccent),
+              _roleChip('WK', roleCounts['wicket_keeper'] ?? 0, Colors.tealAccent),
             ],
           ),
+        const SizedBox(height: 10),
+        const Text(
+          'Batting Order',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Drag players to reorder your XI lineup.',
+          style: TextStyle(color: Colors.white54, fontSize: 12),
         ),
         const SizedBox(height: 8),
-
-        // Role breakdown chips
-        if (xi.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Wrap(
-              spacing: 8,
-              children: [
-                _roleChip('BAT', roleCount['batsman'] ?? 0, Colors.blueAccent),
-                _roleChip('BOWL', roleCount['bowler'] ?? 0, Colors.redAccent),
-                _roleChip('ALL', roleCount['all_rounder'] ?? 0, Colors.orangeAccent),
-                _roleChip('WK', roleCount['wicket_keeper'] ?? 0, Colors.tealAccent),
-              ],
-            ),
-          ),
-        const SizedBox(height: 8),
-
-        // Playing XI list — filled slots are reorderable, empty slots inline
-        if (filledSlots.isNotEmpty)
-          const Padding(
-            padding: EdgeInsets.only(bottom: 4),
-            child: Text(
-              'Drag to reorder lineup',
-              style: TextStyle(color: Colors.white38, fontSize: 12),
-            ),
-          ),
-        ReorderableListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: 11,
-          proxyDecorator: (child, index, animation) {
-            return Material(
+        if (lineup.isEmpty)
+          _buildEmptyLineupState(squad)
+        else
+          ReorderableListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: lineup.length,
+            proxyDecorator: (child, _, __) => Material(
               color: Colors.transparent,
               elevation: 4,
               child: child,
-            );
-          },
-          onReorder: (oldIndex, newIndex) {
-            // Map visual indices to filled-only indices for reorder
-            final oldPlayer = positionMap[oldIndex + 1];
-            final newPlayer = positionMap[newIndex > oldIndex ? newIndex : newIndex + 1];
-            if (oldPlayer == null) return; // Can't drag empty slots
-            // Find indices within filledSlots
-            final oldFilled = filledSlots.indexOf(oldPlayer);
-            if (oldFilled < 0) return;
-            // Compute target filled index
-            int newFilled;
-            if (newPlayer != null) {
-              newFilled = filledSlots.indexOf(newPlayer);
-              if (newIndex > oldIndex) newFilled++;
-            } else {
-              // Dropped onto an empty slot — find nearest filled position
-              newFilled = newIndex > oldIndex ? filledSlots.length : 0;
-              for (int i = 0; i < filledSlots.length; i++) {
-                if (filledSlots[i].position > newIndex + 1) {
-                  newFilled = i;
-                  break;
-                }
-              }
-            }
-            ref.read(teamProvider.notifier).reorderPlayingXI(
-              filledSlots,
-              oldFilled,
-              newFilled,
-            );
-          },
-          itemBuilder: (context, index) {
-            final pos = index + 1;
-            final sp = positionMap[pos];
-            if (sp != null) {
-              return _buildReorderableTile(sp, pos, key: ValueKey(sp.id));
-            }
-            return _buildEmptySlot(pos, label: _positionLabels[pos], key: ValueKey('empty_$pos'));
-          },
+            ),
+            onReorder: (oldIndex, newIndex) {
+              ref.read(teamProvider.notifier).reorderPlayingXI(
+                    lineup,
+                    oldIndex,
+                    newIndex,
+                  );
+            },
+            itemBuilder: (context, index) {
+              final player = lineup[index];
+              return _buildLineupTile(
+                player,
+                battingOrder: index + 1,
+                key: ValueKey(player.id),
+              );
+            },
+          ),
+        if (lineup.length < 11) ...[
+          const SizedBox(height: 10),
+          ...List.generate(
+            11 - lineup.length,
+            (index) {
+              final battingSlot = lineup.length + index + 1;
+              return _buildEmptyLineupSlot(
+                battingSlot,
+                squad,
+                key: ValueKey('empty_$battingSlot'),
+              );
+            },
+          ),
+        ],
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            const Text(
+              'Bench',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '${bench.length} players',
+              style: const TextStyle(color: Colors.white54, fontSize: 12),
+            ),
+          ],
         ),
+        const SizedBox(height: 6),
+        if (bench.isEmpty)
+          _buildEmptyBenchCard(squad)
+        else
+          ...bench.map((player) => _buildBenchTile(player, squad)),
       ],
     );
   }
 
-  Widget _buildReorderableTile(SquadPlayer sp, int order, {Key? key}) {
-    final card = sp.userCard?.playerCard;
-    if (card == null) return SizedBox(key: key);
+  Widget _buildTeamSummaryCard(Team team, int xiCount, int avgRating) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppTheme.primary.withValues(alpha: 0.35),
+            AppTheme.surface,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.accent.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.shield, color: AppTheme.accent, size: 38),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  team.teamName,
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'OVR $avgRating • $xiCount/11 selected',
+                  style: const TextStyle(color: Colors.white60),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: xiCount == 11
+                  ? AppTheme.accent.withValues(alpha: 0.2)
+                  : AppTheme.error.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              xiCount == 11 ? 'READY' : '${11 - xiCount} NEEDED',
+              style: TextStyle(
+                color: xiCount == 11 ? AppTheme.accent : AppTheme.error,
+                fontWeight: FontWeight.bold,
+                fontSize: 11,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyLineupState(Squad squad) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Column(
+        children: [
+          const Icon(Icons.sports_cricket, size: 34, color: Colors.white24),
+          const SizedBox(height: 8),
+          const Text(
+            'No players in Playing XI yet',
+            style: TextStyle(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Add your first player to start building your lineup.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.white54, fontSize: 12),
+          ),
+          const SizedBox(height: 10),
+          ElevatedButton.icon(
+            onPressed: () {
+              final freePos = _nextAvailableXiPosition(squad);
+              if (freePos != null) {
+                _showAddPlayerSheet(freePos);
+              }
+            },
+            icon: const Icon(Icons.person_add),
+            label: const Text('ADD TO XI'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLineupTile(
+    SquadPlayer player, {
+    required int battingOrder,
+    Key? key,
+  }) {
+    final card = player.userCard?.playerCard;
+    if (card == null) {
+      return SizedBox(key: key);
+    }
 
     final rarityColor = AppTheme.getRarityColor(card.rarity);
-    final label = _positionLabels[order] ?? 'Slot $order';
+    final slotLabel = _xiSlotLabels[battingOrder] ?? 'Slot $battingOrder';
 
     return Container(
       key: key,
@@ -377,12 +412,12 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
         color: AppTheme.surface,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: sp.isCaptain
+          color: player.isCaptain
               ? AppTheme.accent
-              : sp.isViceCaptain
+              : player.isViceCaptain
                   ? Colors.blueAccent
-                  : rarityColor.withValues(alpha: 0.3),
-          width: (sp.isCaptain || sp.isViceCaptain) ? 2 : 1,
+                  : rarityColor.withValues(alpha: 0.35),
+          width: (player.isCaptain || player.isViceCaptain) ? 2 : 1,
         ),
       ),
       child: ListTile(
@@ -400,11 +435,19 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
             children: [
               Text(
                 '${card.rating}',
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 15,
+                ),
               ),
               Text(
                 card.roleDisplay,
-                style: const TextStyle(color: Colors.white70, fontSize: 9, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontSize: 8,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ],
           ),
@@ -413,16 +456,20 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
           children: [
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              margin: const EdgeInsets.only(right: 6),
               decoration: BoxDecoration(
                 color: Colors.white10,
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Text(
-                '#$order',
-                style: const TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.bold),
+                '#$battingOrder',
+                style: const TextStyle(
+                  color: Colors.white54,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
+            const SizedBox(width: 6),
             Expanded(
               child: Text(
                 card.playerName,
@@ -430,51 +477,243 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            if (sp.isCaptain)
+            if (player.isCaptain)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
                   color: AppTheme.accent,
                   borderRadius: BorderRadius.circular(4),
                 ),
-                child: const Text('C', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 11)),
+                child: const Text(
+                  'C',
+                  style: TextStyle(
+                    color: Colors.black,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 11,
+                  ),
+                ),
               ),
-            if (sp.isViceCaptain)
+            if (player.isViceCaptain)
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 margin: const EdgeInsets.only(left: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
                   color: Colors.blueAccent,
                   borderRadius: BorderRadius.circular(4),
                 ),
-                child: const Text('VC', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11)),
+                child: const Text(
+                  'VC',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 11,
+                  ),
+                ),
               ),
           ],
         ),
         subtitle: Text(
-          '$label  •  ${card.countryCode}  •  BAT ${card.batting}  BOWL ${card.bowling}',
+          '$slotLabel • ${card.countryCode} • BAT ${card.batting} BOWL ${card.bowling}',
           style: const TextStyle(color: Colors.white54, fontSize: 11),
         ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             PopupMenuButton<String>(
-              icon: const Icon(Icons.more_vert, color: Colors.white54, size: 20),
+              icon: const Icon(Icons.more_vert, size: 20, color: Colors.white54),
               color: AppTheme.surfaceLight,
-              onSelected: (value) => _handlePlayerAction(value, sp),
-              itemBuilder: (context) => [
-                if (!sp.isCaptain)
+              onSelected: (value) => _handleLineupAction(value, player),
+              itemBuilder: (_) => [
+                if (!player.isCaptain)
                   const PopupMenuItem(value: 'captain', child: Text('Set Captain')),
-                if (!sp.isViceCaptain)
-                  const PopupMenuItem(value: 'vice_captain', child: Text('Set Vice Captain')),
-                const PopupMenuItem(value: 'remove_xi', child: Text('Remove from XI')),
+                if (!player.isViceCaptain)
+                  const PopupMenuItem(
+                    value: 'vice_captain',
+                    child: Text('Set Vice Captain'),
+                  ),
                 const PopupMenuItem(
-                  value: 'remove',
-                  child: Text('Remove from Squad', style: TextStyle(color: AppTheme.error)),
+                  value: 'remove_xi',
+                  child: Text('Remove from XI'),
+                ),
+                const PopupMenuItem(
+                  value: 'remove_squad',
+                  child: Text(
+                    'Remove from Squad',
+                    style: TextStyle(color: AppTheme.error),
+                  ),
                 ),
               ],
             ),
             const Icon(Icons.drag_handle, color: Colors.white24, size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyLineupSlot(int battingSlot, Squad squad, {Key? key}) {
+    return Container(
+      key: key,
+      margin: const EdgeInsets.only(bottom: 6),
+      decoration: BoxDecoration(
+        color: AppTheme.surface.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: ListTile(
+        leading: const Icon(Icons.person_add_alt_1, color: Colors.white24),
+        title: Text(
+          'Batting Slot #$battingSlot',
+          style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w600),
+        ),
+        subtitle: Text(
+          _xiSlotLabels[battingSlot] ?? 'Add a player',
+          style: const TextStyle(color: Colors.white38, fontSize: 12),
+        ),
+        trailing: const Icon(Icons.add, color: Colors.white54),
+        onTap: () {
+          final freePos = _nextAvailableXiPosition(squad);
+          if (freePos == null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Playing XI is full (11/11)')),
+            );
+            return;
+          }
+          _showAddPlayerSheet(freePos);
+        },
+      ),
+    );
+  }
+
+  Widget _buildEmptyBenchCard(Squad squad) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Column(
+        children: [
+          const Text(
+            'No bench players',
+            style: TextStyle(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Tap below to add players directly to your XI.',
+            style: TextStyle(color: Colors.white54, fontSize: 12),
+          ),
+          const SizedBox(height: 10),
+          ElevatedButton.icon(
+            onPressed: () {
+              final freePos = _nextAvailableXiPosition(squad);
+              if (freePos != null) {
+                _showAddPlayerSheet(freePos);
+              }
+            },
+            icon: const Icon(Icons.person_add),
+            label: const Text('ADD PLAYER'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBenchTile(SquadPlayer player, Squad squad) {
+    final card = player.userCard?.playerCard;
+    if (card == null) return const SizedBox();
+
+    final rarityColor = AppTheme.getRarityColor(card.rarity);
+    final notifier = ref.read(teamProvider.notifier);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: rarityColor.withValues(alpha: 0.25)),
+      ),
+      child: ListTile(
+        leading: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            gradient: LinearGradient(
+              colors: [rarityColor, rarityColor.withValues(alpha: 0.5)],
+            ),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                '${card.rating}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
+              Text(
+                card.roleDisplay,
+                style: const TextStyle(
+                  color: Colors.white70,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 8,
+                ),
+              ),
+            ],
+          ),
+        ),
+        title: Text(
+          card.playerName,
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+        ),
+        subtitle: Text(
+          '${card.countryCode} • BAT ${card.batting} BOWL ${card.bowling}',
+          style: const TextStyle(color: Colors.white54, fontSize: 11),
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              tooltip: 'Add to XI',
+              icon: const Icon(Icons.playlist_add_check, color: AppTheme.accent),
+              onPressed: () {
+                final freePos = _nextAvailableXiPosition(squad);
+                if (freePos == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Playing XI is full (11/11)')),
+                  );
+                  return;
+                }
+                notifier.addPlayerToSquad(
+                  squad.id,
+                  player.userCardId,
+                  freePos,
+                  isPlayingXI: true,
+                );
+              },
+            ),
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert, size: 20, color: Colors.white54),
+              color: AppTheme.surfaceLight,
+              onSelected: (value) {
+                if (value == 'remove_squad') {
+                  notifier.removePlayerFromSquad(player.id);
+                }
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: 'remove_squad',
+                  child: Text(
+                    'Remove from Squad',
+                    style: TextStyle(color: AppTheme.error),
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
       ),
@@ -491,107 +730,63 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
       ),
       child: Text(
         '$label: $count',
-        style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.bold),
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.bold,
+          fontSize: 11,
+        ),
       ),
     );
   }
 
-  void _handlePlayerAction(String value, SquadPlayer sp) {
+  int? _nextAvailableXiPosition(Squad squad) {
+    final usedPositions = squad.players
+        .where((p) => p.isPlayingXI)
+        .map((p) => p.position)
+        .toSet();
+    for (int i = 1; i <= 11; i++) {
+      if (!usedPositions.contains(i)) {
+        return i;
+      }
+    }
+    return null;
+  }
+
+  void _handleLineupAction(String action, SquadPlayer player) {
     final notifier = ref.read(teamProvider.notifier);
-    switch (value) {
+    switch (action) {
       case 'captain':
-        notifier.setCaptain(sp.id);
+        notifier.setCaptain(player.id);
         break;
       case 'vice_captain':
-        notifier.setViceCaptain(sp.id);
-        break;
-      case 'add_xi':
-        // Find next available XI position
-        final team = ref.read(teamProvider).valueOrNull;
-        final squad = team?.activeSquad;
-        if (squad == null) return;
-        final usedPositions = squad.players
-            .where((p) => p.isPlayingXI)
-            .map((p) => p.position)
-            .toSet();
-        int? freePos;
-        for (int i = 1; i <= 11; i++) {
-          if (!usedPositions.contains(i)) {
-            freePos = i;
-            break;
-          }
-        }
-        if (freePos != null) {
-          notifier.addPlayerToSquad(squad.id, sp.userCardId, freePos, isPlayingXI: true);
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Playing XI is full (11/11)')),
-          );
-        }
+        notifier.setViceCaptain(player.id);
         break;
       case 'remove_xi':
-        notifier.setPlayingXI(sp.id, false);
+        notifier.setPlayingXI(player.id, false);
         break;
-      case 'remove':
-        notifier.removePlayerFromSquad(sp.id);
+      case 'remove_squad':
+        notifier.removePlayerFromSquad(player.id);
         break;
     }
   }
 
-  // ─── Empty Slot ──────────────────────────────────────────────────────────
-
-  Widget _buildEmptySlot(int position, {String? label, Key? key}) {
-    return Container(
-      key: key,
-      margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        color: AppTheme.surface.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white12, style: BorderStyle.solid),
-      ),
-      child: ListTile(
-        leading: Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-            color: Colors.white10,
-          ),
-          child: const Icon(Icons.person_add, color: Colors.white24, size: 22),
-        ),
-        title: Text(
-          label ?? 'Position $position',
-          style: const TextStyle(color: Colors.white38, fontSize: 14),
-        ),
-        subtitle: Text(
-          'Tap to add player  •  Slot $position',
-          style: const TextStyle(color: Colors.white24, fontSize: 11),
-        ),
-        onTap: () => _showAddPlayerSheet(position),
-      ),
-    );
-  }
-
-  // ─── Add Player Sheet ────────────────────────────────────────────────────
-
-  void _showAddPlayerSheet(int position, {String? filterRole}) {
+  void _showAddPlayerSheet(int position) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: AppTheme.background,
       isScrollControlled: true,
+      backgroundColor: AppTheme.background,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (ctx) {
-        String? selectedRole = filterRole;
+      builder: (bottomSheetContext) {
+        String? selectedRole;
+
         return StatefulBuilder(
-          builder: (ctx, setSheetState) {
-            // Read fresh data each rebuild
+          builder: (context, setSheetState) {
             final allCards = ref.read(userCardsProvider).valueOrNull ?? [];
             final team = ref.read(teamProvider).valueOrNull;
             final squad = team?.activeSquad;
 
-            // Collect assigned user-card IDs AND player-card IDs from Playing XI only
             final xiPlayers = squad?.players.where((p) => p.isPlayingXI) ?? [];
             final assignedUserCardIds = xiPlayers.map((p) => p.userCardId).toSet();
             final assignedPlayerCardIds = xiPlayers
@@ -599,30 +794,29 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
                 .map((p) => p.userCard!.cardId)
                 .toSet();
 
-            var cards = allCards.where((c) {
-              if (assignedUserCardIds.contains(c.id)) return false;
-              // Prevent duplicate player cards in lineup
-              if (assignedPlayerCardIds.contains(c.cardId)) return false;
+            var availableCards = allCards.where((card) {
+              if (assignedUserCardIds.contains(card.id)) return false;
+              if (assignedPlayerCardIds.contains(card.cardId)) return false;
               return true;
-            }).toList();
+            }).toList()
+              ..sort((a, b) {
+                final ar = a.playerCard?.rating ?? 0;
+                final br = b.playerCard?.rating ?? 0;
+                return br.compareTo(ar);
+              });
 
-            // Sort by rating descending
-            cards.sort((a, b) =>
-                (b.playerCard?.rating ?? 0).compareTo(a.playerCard?.rating ?? 0));
-
-            var filtered = cards.toList();
             if (selectedRole != null) {
-              filtered = filtered
-                  .where((c) => c.playerCard?.role == selectedRole)
+              availableCards = availableCards
+                  .where((card) => card.playerCard?.role == selectedRole)
                   .toList();
             }
 
             return DraggableScrollableSheet(
-              initialChildSize: 0.7,
+              initialChildSize: 0.75,
               minChildSize: 0.5,
               maxChildSize: 0.95,
               expand: false,
-              builder: (ctx, scrollController) {
+              builder: (_, scrollController) {
                 return Column(
                   children: [
                     _buildSheetHandle(),
@@ -631,11 +825,13 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
                       child: Column(
                         children: [
                           Text(
-                            'SELECT PLAYER — Slot $position',
-                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                            'SELECT PLAYER — XI SLOT $position',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                           const SizedBox(height: 8),
-                          // Role filters
                           SingleChildScrollView(
                             scrollDirection: Axis.horizontal,
                             child: Row(
@@ -661,7 +857,7 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
                         ],
                       ),
                     ),
-                    if (filtered.isEmpty)
+                    if (availableCards.isEmpty)
                       const Expanded(
                         child: Center(
                           child: Text(
@@ -675,18 +871,22 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
                       Expanded(
                         child: ListView.builder(
                           controller: scrollController,
-                          itemCount: filtered.length,
-                          itemBuilder: (ctx, index) {
-                            final card = filtered[index];
-                            if (card.playerCard == null) return const SizedBox();
-                            final pc = card.playerCard!;
-                            final rarityColor = AppTheme.getRarityColor(pc.rarity);
+                          itemCount: availableCards.length,
+                          itemBuilder: (_, index) {
+                            final userCard = availableCards[index];
+                            final card = userCard.playerCard;
+                            if (card == null) return const SizedBox();
+
+                            final rarityColor = AppTheme.getRarityColor(card.rarity);
+
                             return Container(
                               margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
                               decoration: BoxDecoration(
                                 color: AppTheme.surface,
                                 borderRadius: BorderRadius.circular(10),
-                                border: Border.all(color: rarityColor.withValues(alpha: 0.2)),
+                                border: Border.all(
+                                  color: rarityColor.withValues(alpha: 0.2),
+                                ),
                               ),
                               child: ListTile(
                                 leading: Container(
@@ -695,51 +895,88 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
                                   decoration: BoxDecoration(
                                     borderRadius: BorderRadius.circular(8),
                                     gradient: LinearGradient(
-                                      colors: [rarityColor, rarityColor.withValues(alpha: 0.5)],
+                                      colors: [
+                                        rarityColor,
+                                        rarityColor.withValues(alpha: 0.5),
+                                      ],
                                     ),
                                   ),
                                   child: Column(
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
                                       Text(
-                                        '${pc.rating}',
-                                        style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 15),
+                                        '${card.rating}',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                          fontSize: 15,
+                                        ),
                                       ),
                                       Text(
-                                        pc.roleDisplay,
-                                        style: const TextStyle(color: Colors.white70, fontSize: 8, fontWeight: FontWeight.bold),
+                                        card.roleDisplay,
+                                        style: const TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 8,
+                                          fontWeight: FontWeight.bold,
+                                        ),
                                       ),
                                     ],
                                   ),
                                 ),
-                                title: Text(pc.playerName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                                title: Text(
+                                  card.playerName,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                  ),
+                                ),
                                 subtitle: Row(
                                   children: [
-                                    Text(pc.countryCode, style: const TextStyle(fontSize: 11, color: Colors.white54)),
+                                    Text(
+                                      card.countryCode,
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        color: Colors.white54,
+                                      ),
+                                    ),
                                     const SizedBox(width: 8),
-                                    Text('BAT ${pc.batting}', style: const TextStyle(fontSize: 11, color: Colors.blueAccent)),
+                                    Text(
+                                      'BAT ${card.batting}',
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        color: Colors.blueAccent,
+                                      ),
+                                    ),
                                     const SizedBox(width: 6),
-                                    Text('BOWL ${pc.bowling}', style: const TextStyle(fontSize: 11, color: Colors.redAccent)),
-                                    const SizedBox(width: 6),
-                                    Text('FLD ${pc.fielding}', style: const TextStyle(fontSize: 11, color: Colors.tealAccent)),
+                                    Text(
+                                      'BOWL ${card.bowling}',
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        color: Colors.redAccent,
+                                      ),
+                                    ),
                                   ],
                                 ),
                                 trailing: Text(
-                                  pc.rarity.toUpperCase(),
-                                  style: TextStyle(color: rarityColor, fontSize: 10, fontWeight: FontWeight.bold),
+                                  card.rarity.toUpperCase(),
+                                  style: TextStyle(
+                                    color: rarityColor,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                                 onTap: () {
-                                  final team = ref.read(teamProvider).valueOrNull;
-                                  final squad = team?.activeSquad;
-                                  if (squad != null) {
+                                  final activeTeam = ref.read(teamProvider).valueOrNull;
+                                  final activeSquad = activeTeam?.activeSquad;
+                                  if (activeSquad != null) {
                                     ref.read(teamProvider.notifier).addPlayerToSquad(
-                                      squad.id,
-                                      card.id,
-                                      position,
-                                      isPlayingXI: position <= 11,
-                                    );
+                                          activeSquad.id,
+                                          userCard.id,
+                                          position,
+                                          isPlayingXI: position <= 11,
+                                        );
                                   }
-                                  Navigator.pop(ctx);
+                                  Navigator.of(bottomSheetContext).pop();
                                 },
                               ),
                             );
@@ -756,7 +993,12 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
     );
   }
 
-  Widget _filterChip(String label, String? role, String? selectedRole, ValueChanged<String?> onTap) {
+  Widget _filterChip(
+    String label,
+    String? role,
+    String? selectedRole,
+    ValueChanged<String?> onTap,
+  ) {
     final isSelected = selectedRole == role;
     return Padding(
       padding: const EdgeInsets.only(right: 6),
@@ -765,7 +1007,9 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
-            color: isSelected ? AppTheme.accent.withValues(alpha: 0.2) : AppTheme.surfaceLight,
+            color: isSelected
+                ? AppTheme.accent.withValues(alpha: 0.2)
+                : AppTheme.surfaceLight,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: isSelected ? AppTheme.accent : Colors.white24,
@@ -796,16 +1040,11 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
     );
   }
 
-  // ─── Tactics Tab ─────────────────────────────────────────────────────────
-
-  // ─── Stats Tab ───────────────────────────────────────────────────────────
-
   Widget _buildStatsTab() {
     final stats = ref.watch(careerStatsProvider(_sortField));
 
     return Column(
       children: [
-        // Sort chips
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           color: AppTheme.surface,
@@ -813,7 +1052,14 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
-                const Text('SORT BY  ', style: TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.bold)),
+                const Text(
+                  'SORT BY  ',
+                  style: TextStyle(
+                    color: Colors.white38,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 _sortChip('Runs', StatsSortField.runs),
                 _sortChip('Wickets', StatsSortField.wickets),
                 _sortChip('4s', StatsSortField.fours),
@@ -824,7 +1070,6 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
             ),
           ),
         ),
-
         if (stats.isEmpty)
           const Expanded(
             child: Center(
@@ -843,10 +1088,7 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
             child: ListView.builder(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               itemCount: stats.length,
-              itemBuilder: (context, index) {
-                final s = stats[index];
-                return _buildStatRow(s, index + 1);
-              },
+              itemBuilder: (_, index) => _buildStatRow(stats[index], index + 1),
             ),
           ),
       ],
@@ -862,7 +1104,9 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
-            color: isSelected ? AppTheme.accent.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.05),
+            color: isSelected
+                ? AppTheme.accent.withValues(alpha: 0.2)
+                : Colors.white.withValues(alpha: 0.05),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: isSelected ? AppTheme.accent : Colors.white24,
@@ -881,27 +1125,26 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
     );
   }
 
-  Widget _buildStatRow(PlayerCareerStats s, int rank) {
-    // Highlight the primary sorted stat
+  Widget _buildStatRow(PlayerCareerStats stats, int rank) {
     String primaryValue;
     switch (_sortField) {
       case StatsSortField.runs:
-        primaryValue = '${s.runs} runs';
+        primaryValue = '${stats.runs} runs';
         break;
       case StatsSortField.wickets:
-        primaryValue = '${s.wickets} wkts';
+        primaryValue = '${stats.wickets} wkts';
         break;
       case StatsSortField.fours:
-        primaryValue = '${s.fours} fours';
+        primaryValue = '${stats.fours} fours';
         break;
       case StatsSortField.sixes:
-        primaryValue = '${s.sixes} sixes';
+        primaryValue = '${stats.sixes} sixes';
         break;
       case StatsSortField.catches:
-        primaryValue = '${s.catches} catches';
+        primaryValue = '${stats.catches} catches';
         break;
       case StatsSortField.matches:
-        primaryValue = '${s.matches} matches';
+        primaryValue = '${stats.matches} matches';
         break;
     }
 
@@ -916,14 +1159,15 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Name row
           Row(
             children: [
               Container(
                 width: 28,
                 height: 28,
                 decoration: BoxDecoration(
-                  color: rank <= 3 ? AppTheme.accent.withValues(alpha: 0.2) : Colors.white10,
+                  color: rank <= 3
+                      ? AppTheme.accent.withValues(alpha: 0.2)
+                      : Colors.white10,
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Center(
@@ -940,7 +1184,7 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  s.playerName,
+                  stats.playerName,
                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -953,28 +1197,31 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
                 ),
                 child: Text(
                   primaryValue,
-                  style: const TextStyle(color: AppTheme.accent, fontWeight: FontWeight.bold, fontSize: 12),
+                  style: const TextStyle(
+                    color: AppTheme.accent,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 8),
-          // Stat chips row
           Wrap(
             spacing: 6,
             runSpacing: 4,
             children: [
-              _miniStat('M', '${s.matches}', Colors.white70),
-              _miniStat('R', '${s.runs}', Colors.blueAccent),
-              _miniStat('HS', '${s.highScore}', Colors.lightBlueAccent),
-              _miniStat('4s', '${s.fours}', Colors.orangeAccent),
-              _miniStat('6s', '${s.sixes}', Colors.purpleAccent),
-              _miniStat('W', '${s.wickets}', Colors.redAccent),
-              _miniStat('CT', '${s.catches}', Colors.tealAccent),
-              if (s.ballsFaced > 0)
-                _miniStat('SR', s.strikeRate.toStringAsFixed(1), Colors.white54),
-              if (s.ballsBowled > 0)
-                _miniStat('ECO', s.bowlingEconomy.toStringAsFixed(1), Colors.white54),
+              _miniStat('M', '${stats.matches}', Colors.white70),
+              _miniStat('R', '${stats.runs}', Colors.blueAccent),
+              _miniStat('HS', '${stats.highScore}', Colors.lightBlueAccent),
+              _miniStat('4s', '${stats.fours}', Colors.orangeAccent),
+              _miniStat('6s', '${stats.sixes}', Colors.purpleAccent),
+              _miniStat('W', '${stats.wickets}', Colors.redAccent),
+              _miniStat('CT', '${stats.catches}', Colors.tealAccent),
+              if (stats.ballsFaced > 0)
+                _miniStat('SR', stats.strikeRate.toStringAsFixed(1), Colors.white54),
+              if (stats.ballsBowled > 0)
+                _miniStat('ECO', stats.bowlingEconomy.toStringAsFixed(1), Colors.white54),
             ],
           ),
         ],
@@ -992,11 +1239,33 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(label, style: TextStyle(fontSize: 10, color: color.withValues(alpha: 0.7), fontWeight: FontWeight.bold)),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              color: color.withValues(alpha: 0.7),
+              fontWeight: FontWeight.bold,
+            ),
+          ),
           const SizedBox(width: 3),
-          Text(value, style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.bold)),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 11,
+              color: color,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
         ],
       ),
     );
+  }
+
+  Color _chemistryColor(int chemistry) {
+    if (chemistry >= 80) return AppTheme.cardLegend;
+    if (chemistry >= 60) return AppTheme.cardGold;
+    if (chemistry >= 40) return AppTheme.primaryLight;
+    if (chemistry >= 20) return AppTheme.cardSilver;
+    return AppTheme.cardBronze;
   }
 }

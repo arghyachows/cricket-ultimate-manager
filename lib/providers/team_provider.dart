@@ -13,6 +13,32 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
     loadTeam();
   }
 
+  Future<void> _normalizePlayingXIBattingOrder(String squadId) async {
+    final rows = await SupabaseService.client
+        .from('squad_players')
+        .select('id, position, batting_order')
+        .eq('squad_id', squadId)
+        .eq('is_playing_xi', true);
+
+    final players = List<Map<String, dynamic>>.from(rows);
+    players.sort((a, b) {
+      final ao = a['batting_order'] as int?;
+      final bo = b['batting_order'] as int?;
+      if (ao != null && bo != null) return ao.compareTo(bo);
+      if (ao != null) return -1;
+      if (bo != null) return 1;
+      final ap = (a['position'] as int?) ?? 999;
+      final bp = (b['position'] as int?) ?? 999;
+      return ap.compareTo(bp);
+    });
+
+    for (int i = 0; i < players.length; i++) {
+      await SupabaseService.client
+          .from('squad_players')
+          .update({'batting_order': i + 1}).eq('id', players[i]['id']);
+    }
+  }
+
   Future<void> loadTeam() async {
     try {
       // Only show loading spinner on very first load
@@ -64,22 +90,52 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
       'user_card_id': userCardId,
       'position': position,
       'is_playing_xi': isPlayingXI,
+      'batting_order': isPlayingXI ? position : null,
     });
+
+    await _normalizePlayingXIBattingOrder(squadId);
     await loadTeam();
   }
 
   Future<void> removePlayerFromSquad(String squadPlayerId) async {
+    final player = await SupabaseService.client
+        .from('squad_players')
+        .select('squad_id, is_playing_xi')
+        .eq('id', squadPlayerId)
+        .maybeSingle();
+
     await SupabaseService.client
         .from('squad_players')
         .delete()
         .eq('id', squadPlayerId);
+
+    final squadId = player?['squad_id'] as String?;
+    final wasXI = player?['is_playing_xi'] as bool? ?? false;
+    if (squadId != null && wasXI) {
+      await _normalizePlayingXIBattingOrder(squadId);
+    }
     await loadTeam();
   }
 
   Future<void> setPlayingXI(String squadPlayerId, bool isXI) async {
+    final player = await SupabaseService.client
+        .from('squad_players')
+        .select('squad_id, position')
+        .eq('id', squadPlayerId)
+        .maybeSingle();
+    final squadId = player?['squad_id'] as String?;
+    final position = player?['position'] as int?;
+
     await SupabaseService.client
         .from('squad_players')
-        .update({'is_playing_xi': isXI}).eq('id', squadPlayerId);
+        .update({
+          'is_playing_xi': isXI,
+          'batting_order': isXI ? position : null,
+        }).eq('id', squadPlayerId);
+
+    if (squadId != null) {
+      await _normalizePlayingXIBattingOrder(squadId);
+    }
     await loadTeam();
   }
 
@@ -201,6 +257,10 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
       await SupabaseService.client
           .from('squad_players')
           .update({'batting_order': i + 1}).eq('id', reordered[i].id);
+    }
+
+    if (reordered.isNotEmpty) {
+      await _normalizePlayingXIBattingOrder(reordered.first.squadId);
     }
     await loadTeam();
   }
