@@ -131,7 +131,8 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
   }
 
   /// Reorder Playing XI: move the player at [oldIndex] to [newIndex] (0-based)
-  /// and reassign position values (1-11) for all XI players accordingly.
+  /// Reorders the playing XI and persists the new batting_order values.
+  /// Uses batting_order (no UNIQUE constraint) to avoid DB conflict issues.
   Future<void> reorderPlayingXI(List<SquadPlayer> currentOrder, int oldIndex, int newIndex) async {
     if (newIndex > oldIndex) newIndex--;
     if (oldIndex == newIndex) return;
@@ -140,12 +141,10 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
     final item = reordered.removeAt(oldIndex);
     reordered.insert(newIndex, item);
 
-    // Build new position map and save old positions for DB comparison
-    final positionUpdates = <String, int>{};
-    final oldPositions = <String, int>{};
+    // Build new batting order map (1-based)
+    final battingOrderUpdates = <String, int>{};
     for (int i = 0; i < reordered.length; i++) {
-      oldPositions[reordered[i].id] = reordered[i].position;
-      positionUpdates[reordered[i].id] = i + 1;
+      battingOrderUpdates[reordered[i].id] = i + 1;
     }
 
     // Optimistically update local state so the UI doesn't snap back
@@ -154,17 +153,17 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
       final squad = team.activeSquad;
       if (squad != null) {
         final updatedPlayers = squad.players.map((p) {
-          final newPos = positionUpdates[p.id];
-          if (newPos != null && newPos != p.position) {
+          final newOrder = battingOrderUpdates[p.id];
+          if (newOrder != null && newOrder != p.battingOrder) {
             return SquadPlayer(
               id: p.id,
               squadId: p.squadId,
               userCardId: p.userCardId,
-              position: newPos,
+              position: p.position,
               isPlayingXI: p.isPlayingXI,
               isCaptain: p.isCaptain,
               isViceCaptain: p.isViceCaptain,
-              battingOrder: p.battingOrder,
+              battingOrder: newOrder,
               bowlingOrder: p.bowlingOrder,
               userCard: p.userCard,
             );
@@ -197,24 +196,11 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
       }
     }
 
-    // Persist to DB — move to temp positions first to avoid UNIQUE constraint.
-    // Position CHECK constraint allows 1-30, so use 20+i as temp values.
+    // Persist batting_order to DB — no UNIQUE constraint, so no conflict risk.
     for (int i = 0; i < reordered.length; i++) {
-      final targetPos = i + 1;
-      if (oldPositions[reordered[i].id] != targetPos) {
-        await SupabaseService.client
-            .from('squad_players')
-            .update({'position': 20 + i}).eq('id', reordered[i].id);
-      }
-    }
-    // Now assign final positions
-    for (int i = 0; i < reordered.length; i++) {
-      final targetPos = i + 1;
-      if (oldPositions[reordered[i].id] != targetPos) {
-        await SupabaseService.client
-            .from('squad_players')
-            .update({'position': targetPos}).eq('id', reordered[i].id);
-      }
+      await SupabaseService.client
+          .from('squad_players')
+          .update({'batting_order': i + 1}).eq('id', reordered[i].id);
     }
     await loadTeam();
   }

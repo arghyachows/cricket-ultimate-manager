@@ -77,7 +77,13 @@ class Squad {
 
   List<SquadPlayer> get playingXI =>
       players.where((p) => p.isPlayingXI).toList()
-        ..sort((a, b) => a.position.compareTo(b.position));
+        ..sort((a, b) {
+          final ao = a.battingOrder, bo = b.battingOrder;
+          if (ao != null && bo != null) return ao.compareTo(bo);
+          if (ao != null) return -1;
+          if (bo != null) return 1;
+          return a.position.compareTo(b.position);
+        });
 
   SquadPlayer? get captain =>
       players.where((p) => p.isCaptain).firstOrNull;

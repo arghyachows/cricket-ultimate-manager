@@ -1114,7 +1114,13 @@ async function loadTeamXI(
 
     const players = (squad.squad_players ?? [])
       .filter((sp: any) => sp.is_playing_xi)
-      .sort((a: any, b: any) => (a.position ?? 0) - (b.position ?? 0));
+      .sort((a: any, b: any) => {
+        const ao = a.batting_order, bo = b.batting_order;
+        if (ao != null && bo != null) return ao - bo;
+        if (ao != null) return -1;
+        if (bo != null) return 1;
+        return (a.position ?? 0) - (b.position ?? 0);
+      });
 
     if (players.length === 0) {
       // Fall back to all players in squad
