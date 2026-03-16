@@ -522,8 +522,8 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
                     child: Text('Set Vice Captain'),
                   ),
                 const PopupMenuItem(
-                  value: 'remove_xi',
-                  child: Text('Remove from XI'),
+                  value: 'swap',
+                  child: Text('Swap Player'),
                 ),
               ],
             ),
@@ -609,8 +609,8 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
       case 'vice_captain':
         notifier.setViceCaptain(player.id);
         break;
-      case 'remove_xi':
-        notifier.setPlayingXI(player.id, false);
+      case 'swap':
+        _showSwapPlayerSheet(player);
         break;
     }
   }
@@ -630,6 +630,239 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Auto-picked lineup applied')), 
+    );
+  }
+
+  void _showSwapPlayerSheet(SquadPlayer currentPlayer) {
+    final currentCard = currentPlayer.userCard?.playerCard;
+    final currentName = currentCard?.playerName ?? 'Player';
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppTheme.background,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (bottomSheetContext) {
+        String? selectedRole;
+
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            final allCards = ref.read(userCardsProvider).valueOrNull ?? [];
+            final team = ref.read(teamProvider).valueOrNull;
+            final squad = team?.activeSquad;
+
+            // Exclude cards already in XI (except the one being swapped out)
+            final xiPlayers = squad?.players.where((p) => p.isPlayingXI) ?? [];
+            final assignedUserCardIds = xiPlayers
+                .where((p) => p.id != currentPlayer.id)
+                .map((p) => p.userCardId)
+                .toSet();
+            final assignedPlayerCardIds = xiPlayers
+                .where((p) => p.id != currentPlayer.id && p.userCard?.playerCard != null)
+                .map((p) => p.userCard!.cardId)
+                .toSet();
+
+            var availableCards = allCards.where((card) {
+              if (card.id == currentPlayer.userCardId) return false;
+              if (assignedUserCardIds.contains(card.id)) return false;
+              if (assignedPlayerCardIds.contains(card.cardId)) return false;
+              return true;
+            }).toList()
+              ..sort((a, b) {
+                final ar = a.playerCard?.rating ?? 0;
+                final br = b.playerCard?.rating ?? 0;
+                return br.compareTo(ar);
+              });
+
+            if (selectedRole != null) {
+              availableCards = availableCards
+                  .where((card) => card.playerCard?.role == selectedRole)
+                  .toList();
+            }
+
+            return DraggableScrollableSheet(
+              initialChildSize: 0.75,
+              minChildSize: 0.5,
+              maxChildSize: 0.95,
+              expand: false,
+              builder: (_, scrollController) {
+                return Column(
+                  children: [
+                    _buildSheetHandle(),
+                    Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        children: [
+                          Text(
+                            'SWAP $currentName',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Choose a replacement player',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.white54,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: Row(
+                              children: [
+                                _filterChip('All', null, selectedRole, (role) {
+                                  setSheetState(() => selectedRole = role);
+                                }),
+                                _filterChip('BAT', 'batsman', selectedRole, (role) {
+                                  setSheetState(() => selectedRole = role);
+                                }),
+                                _filterChip('BOWL', 'bowler', selectedRole, (role) {
+                                  setSheetState(() => selectedRole = role);
+                                }),
+                                _filterChip('ALL', 'all_rounder', selectedRole, (role) {
+                                  setSheetState(() => selectedRole = role);
+                                }),
+                                _filterChip('WK', 'wicket_keeper', selectedRole, (role) {
+                                  setSheetState(() => selectedRole = role);
+                                }),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (availableCards.isEmpty)
+                      const Expanded(
+                        child: Center(
+                          child: Text(
+                            'No available cards to swap with',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Colors.white38),
+                          ),
+                        ),
+                      )
+                    else
+                      Expanded(
+                        child: ListView.builder(
+                          controller: scrollController,
+                          itemCount: availableCards.length,
+                          itemBuilder: (_, index) {
+                            final userCard = availableCards[index];
+                            final card = userCard.playerCard;
+                            if (card == null) return const SizedBox();
+
+                            final rarityColor = AppTheme.getRarityColor(card.rarity);
+
+                            return Container(
+                              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: AppTheme.surface,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: rarityColor.withValues(alpha: 0.2),
+                                ),
+                              ),
+                              child: ListTile(
+                                leading: Container(
+                                  width: 44,
+                                  height: 44,
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(8),
+                                    gradient: LinearGradient(
+                                      colors: [
+                                        rarityColor,
+                                        rarityColor.withValues(alpha: 0.5),
+                                      ],
+                                    ),
+                                  ),
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        '${card.rating}',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                          fontSize: 15,
+                                        ),
+                                      ),
+                                      Text(
+                                        card.roleDisplay,
+                                        style: const TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 8,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                title: Text(
+                                  card.playerName,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                                subtitle: Row(
+                                  children: [
+                                    Text(
+                                      card.countryCode,
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        color: Colors.white54,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      'BAT ${card.batting}',
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        color: Colors.blueAccent,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      'BOWL ${card.bowling}',
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        color: Colors.redAccent,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                trailing: Text(
+                                  card.rarity.toUpperCase(),
+                                  style: TextStyle(
+                                    color: rarityColor,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                onTap: () {
+                                  ref.read(teamProvider.notifier).swapPlayingXIPlayer(
+                                        currentPlayer.id,
+                                        userCard.id,
+                                      );
+                                  Navigator.of(bottomSheetContext).pop();
+                                },
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                  ],
+                );
+              },
+            );
+          },
+        );
+      },
     );
   }
 

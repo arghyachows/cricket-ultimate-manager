@@ -97,6 +97,80 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
     await loadTeam();
   }
 
+  /// Swap a player in the Playing XI with a new card from the collection.
+  /// Keeps the same position & batting order slot; the old card stays in squad but leaves XI.
+  Future<void> swapPlayingXIPlayer(String oldSquadPlayerId, String newUserCardId) async {
+    // Fetch old player's slot info
+    final oldRow = await SupabaseService.client
+        .from('squad_players')
+        .select('squad_id, position, batting_order, is_captain, is_vice_captain')
+        .eq('id', oldSquadPlayerId)
+        .maybeSingle();
+    if (oldRow == null) return;
+
+    final squadId = oldRow['squad_id'] as String;
+    final battingOrder = oldRow['batting_order'] as int?;
+    final wasCaptain = oldRow['is_captain'] as bool? ?? false;
+    final wasVC = oldRow['is_vice_captain'] as bool? ?? false;
+
+    // Remove old player from XI (keep in squad)
+    await SupabaseService.client
+        .from('squad_players')
+        .update({
+          'is_playing_xi': false,
+          'batting_order': null,
+          'is_captain': false,
+          'is_vice_captain': false,
+        })
+        .eq('id', oldSquadPlayerId);
+
+    // Check if new card is already in the squad
+    final existingRow = await SupabaseService.client
+        .from('squad_players')
+        .select('id')
+        .eq('squad_id', squadId)
+        .eq('user_card_id', newUserCardId)
+        .maybeSingle();
+
+    if (existingRow != null) {
+      // Card already in squad — promote it to XI at the same batting position
+      await SupabaseService.client
+          .from('squad_players')
+          .update({
+            'is_playing_xi': true,
+            'batting_order': battingOrder,
+            'is_captain': wasCaptain,
+            'is_vice_captain': wasVC,
+          })
+          .eq('id', existingRow['id']);
+    } else {
+      // Card not in squad — insert it directly into XI
+      // First find an available squad position for the new card
+      final allRows = await SupabaseService.client
+          .from('squad_players')
+          .select('position')
+          .eq('squad_id', squadId);
+      final usedPositions = (allRows as List).map((r) => r['position'] as int).toSet();
+      int newPos = 1;
+      for (int i = 1; i <= 30; i++) {
+        if (!usedPositions.contains(i)) { newPos = i; break; }
+      }
+
+      await SupabaseService.client.from('squad_players').insert({
+        'squad_id': squadId,
+        'user_card_id': newUserCardId,
+        'position': newPos,
+        'is_playing_xi': true,
+        'batting_order': battingOrder,
+        'is_captain': wasCaptain,
+        'is_vice_captain': wasVC,
+      });
+    }
+
+    await _normalizePlayingXIBattingOrder(squadId);
+    await loadTeam();
+  }
+
   Future<void> removePlayerFromSquad(String squadPlayerId) async {
     final player = await SupabaseService.client
         .from('squad_players')
