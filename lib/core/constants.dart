@@ -97,4 +97,6 @@ class AppConstants {
   static const String profileRoute = '/profile';
   static const String settingsRoute = '/settings';
   static const String matchHistoryRoute = '/match/history';
+  static const String multiplayerRoute = '/multiplayer';
+  static const String multiplayerRoomRoute = '/multiplayer/room';
 }

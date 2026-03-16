@@ -835,7 +835,7 @@ serve(async (req) => {
       );
     }
 
-    // Prevent duplicate simulation
+    // Prevent duplicate simulation — only 'waiting' or 'in_progress' allowed
     if (match.status === "completed" || match.status === "simulating") {
       return new Response(
         JSON.stringify({ error: "Match already " + match.status }),
@@ -863,6 +863,9 @@ serve(async (req) => {
       .update({ status: "in_progress" })
       .eq("id", match_id);
 
+    console.log(`Starting simulation for match ${match_id}, overs: ${maxOvers}, homeBatsFirst: ${homeBatsFirst}`);
+    console.log(`HomeXI: ${homeXI.length} players, AwayXI: ${awayXI.length} players`);
+
     // Create engine
     const engine = new MatchEngine(
       homeXI,
@@ -878,6 +881,8 @@ serve(async (req) => {
 
     // ─── Ball-by-ball simulation with DB pushes ─────────────────────
     let ballCount = 0;
+    const commentaryLog: Array<{commentary: string; eventType: string; runs: number; innings: number; oversDisplay: string}> = [];
+    try {
     while (!engine.matchComplete) {
       const result = engine.simulateNextBall();
       if (!result) break;
@@ -889,25 +894,40 @@ serve(async (req) => {
       const aScore = homeBatsFirst ? engine.score2 : engine.score1;
       const aWickets = homeBatsFirst ? engine.wickets2 : engine.wickets1;
 
-      const hOvers =
-        result.innings === 1 && homeBatsFirst
-          ? `${result.overNumber}.${result.ballNumber}`
-          : homeBatsFirst
-            ? oversDisplay(countBalls(engine, 1))
-            : `${result.overNumber}.${result.ballNumber}`;
-      const aOvers =
-        result.innings === 1 && !homeBatsFirst
-          ? `${result.overNumber}.${result.ballNumber}`
-          : !homeBatsFirst
-            ? oversDisplay(countBalls(engine, 1))
-            : `${result.overNumber}.${result.ballNumber}`;
-
       let batsmanName = "";
       let bowlerName = "";
       if (result.eventType !== "innings_break") {
         batsmanName = engine.getName(result.batsmanCardId);
         bowlerName = engine.getName(result.bowlerCardId);
       }
+
+      // Build overs display values
+      const hOversDisplay = homeBatsFirst
+        ? (result.innings === 1
+            ? `${result.overNumber}.${result.ballNumber}`
+            : oversDisplay(engine.innings === 2 ? totalBallsInnings1(engine) : 0))
+        : (result.innings === 2
+            ? `${result.overNumber}.${result.ballNumber}`
+            : "0.0");
+      const aOversDisplay = !homeBatsFirst
+        ? (result.innings === 1
+            ? `${result.overNumber}.${result.ballNumber}`
+            : oversDisplay(engine.innings === 2 ? totalBallsInnings1(engine) : 0))
+        : (result.innings === 2
+            ? `${result.overNumber}.${result.ballNumber}`
+            : "0.0");
+
+      // Append to commentary log — pick the batting team's overs
+      const battingInInnings1 = homeBatsFirst ? hOversDisplay : aOversDisplay;
+      const battingInInnings2 = homeBatsFirst ? aOversDisplay : hOversDisplay;
+      const currentOvers = result.innings === 1 ? battingInInnings1 : battingInInnings2;
+      commentaryLog.push({
+        commentary: result.commentary,
+        eventType: result.eventType,
+        runs: result.runs,
+        innings: result.innings,
+        oversDisplay: currentOvers,
+      });
 
       // Push update to DB — both users see this via Realtime
       await supabase
@@ -919,20 +939,8 @@ serve(async (req) => {
           away_wickets: aWickets,
           current_innings: result.innings,
           current_commentary: result.commentary,
-          home_overs_display: homeBatsFirst
-            ? (result.innings === 1
-                ? `${result.overNumber}.${result.ballNumber}`
-                : oversDisplay(engine.innings === 2 ? totalBallsInnings1(engine) : 0))
-            : (result.innings === 2
-                ? `${result.overNumber}.${result.ballNumber}`
-                : "0.0"),
-          away_overs_display: !homeBatsFirst
-            ? (result.innings === 1
-                ? `${result.overNumber}.${result.ballNumber}`
-                : oversDisplay(engine.innings === 2 ? totalBallsInnings1(engine) : 0))
-            : (result.innings === 2
-                ? `${result.overNumber}.${result.ballNumber}`
-                : "0.0"),
+          home_overs_display: hOversDisplay,
+          away_overs_display: aOversDisplay,
           last_event_type: result.eventType,
           last_runs: result.runs,
           target: engine.target,
@@ -942,11 +950,32 @@ serve(async (req) => {
             batsmen: engine.batsmanStats,
             bowlers: engine.bowlerStats,
           },
+          commentary_log: commentaryLog,
         })
         .eq("id", match_id);
 
       // Delay between balls for realtime feel
-      await delay(700);
+      await delay(50);
+
+      if (ballCount % 30 === 0) {
+        console.log(`Ball ${ballCount}: ${engine.score1}/${engine.wickets1} vs ${engine.score2}/${engine.wickets2}, innings ${engine.innings}`);
+      }
+    }
+    } catch (simError: any) {
+      // If simulation crashes mid-way, still mark match completed so it doesn't get stuck
+      console.error('Simulation error:', simError.message);
+      await supabase
+        .from('multiplayer_matches')
+        .update({
+          status: 'completed',
+          match_result: 'Match abandoned due to error',
+          current_commentary: 'Match abandoned due to error',
+        })
+        .eq('id', match_id);
+      return new Response(
+        JSON.stringify({ error: 'Simulation failed', details: simError.message }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     // ─── Match complete ─────────────────────────────────────────────
@@ -993,19 +1022,29 @@ serve(async (req) => {
           p_user_id: uid,
           p_coins: coins,
           p_xp: xp,
+          p_won: isWinner,
         });
       } catch (_) {
         // Fallback: direct update
         try {
           const { data: u } = await supabase
             .from("users")
-            .select("coins, xp")
+            .select("coins, xp, matches_played, matches_won")
             .eq("id", uid)
             .single();
           if (u) {
+            const newXp = (u.xp ?? 0) + xp;
+            const newLevel = Math.min(Math.floor(newXp / 500) + 1, 100);
             await supabase
               .from("users")
-              .update({ coins: (u.coins ?? 0) + coins, xp: (u.xp ?? 0) + xp })
+              .update({
+                coins: (u.coins ?? 0) + coins,
+                xp: newXp,
+                level: newLevel,
+                matches_played: (u.matches_played ?? 0) + 1,
+                matches_won: isWinner ? (u.matches_won ?? 0) + 1 : (u.matches_won ?? 0),
+                updated_at: new Date().toISOString(),
+              })
               .eq("id", uid);
           }
         } catch (_) {}

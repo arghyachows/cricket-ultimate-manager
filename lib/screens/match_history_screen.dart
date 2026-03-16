@@ -2,77 +2,171 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/theme.dart';
 import '../providers/match_provider.dart';
+import '../providers/multiplayer_provider.dart';
 
-class MatchHistoryScreen extends ConsumerWidget {
+class MatchHistoryScreen extends ConsumerStatefulWidget {
   const MatchHistoryScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final history = ref.watch(matchHistoryProvider);
+  ConsumerState<MatchHistoryScreen> createState() => _MatchHistoryScreenState();
+}
 
-    return Scaffold(
-      backgroundColor: AppTheme.background,
-      appBar: AppBar(title: const Text('MATCH HISTORY')),
-      body: history.isEmpty
-          ? const Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.history, size: 64, color: Colors.white24),
-                  SizedBox(height: 16),
-                  Text(
-                    'No matches played yet',
-                    style: TextStyle(color: Colors.white38, fontSize: 16),
-                  ),
-                  SizedBox(height: 8),
-                  Text(
-                    'Play a match and it will appear here',
-                    style: TextStyle(color: Colors.white24, fontSize: 13),
-                  ),
-                ],
-              ),
-            )
-          : ListView.builder(
-              padding: const EdgeInsets.all(12),
-              itemCount: history.length,
-              itemBuilder: (context, index) {
-                final match = history[index];
-                return _MatchHistoryCard(
-                  match: match,
-                  onTap: () => _showScorecard(context, match),
-                );
-              },
-            ),
-    );
+class _MatchHistoryScreenState extends ConsumerState<MatchHistoryScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
   }
 
-  void _showScorecard(BuildContext context, MatchSummary match) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
       backgroundColor: AppTheme.background,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (_) => DraggableScrollableSheet(
-        initialChildSize: 0.85,
-        maxChildSize: 0.95,
-        minChildSize: 0.5,
-        expand: false,
-        builder: (_, controller) => _ScorecardSheet(
-          match: match,
-          scrollController: controller,
+      appBar: AppBar(
+        title: const Text('MATCH HISTORY'),
+        bottom: TabBar(
+          controller: _tabController,
+          indicatorColor: AppTheme.accent,
+          labelColor: AppTheme.accent,
+          unselectedLabelColor: Colors.white38,
+          tabs: const [
+            Tab(text: 'QUICK MATCH'),
+            Tab(text: 'MULTIPLAYER'),
+          ],
         ),
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _QuickMatchHistory(),
+          _MultiplayerHistory(),
+        ],
       ),
     );
   }
 }
 
+class _QuickMatchHistory extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final history = ref.watch(matchHistoryProvider);
+
+    if (history.isEmpty) {
+      return const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.history, size: 64, color: Colors.white24),
+            SizedBox(height: 16),
+            Text('No quick matches played yet',
+                style: TextStyle(color: Colors.white38, fontSize: 16)),
+            SizedBox(height: 8),
+            Text('Play a quick match and it will appear here',
+                style: TextStyle(color: Colors.white24, fontSize: 13)),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(12),
+      itemCount: history.length,
+      itemBuilder: (context, index) {
+        final match = history[index];
+        return _MatchHistoryCard(
+          match: match,
+          onTap: () => _showScorecard(context, match),
+        );
+      },
+    );
+  }
+
+  void _showScorecard(BuildContext context, MatchSummary match) {
+    _openScorecardSheet(context, match);
+  }
+}
+
+class _MultiplayerHistory extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final historyAsync = ref.watch(multiplayerMatchHistoryProvider);
+
+    return historyAsync.when(
+      loading: () => const Center(child: CircularProgressIndicator(color: AppTheme.accent)),
+      error: (e, _) => Center(
+        child: Text('Failed to load: $e', style: const TextStyle(color: Colors.white38)),
+      ),
+      data: (history) {
+        if (history.isEmpty) {
+          return const Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.people, size: 64, color: Colors.white24),
+                SizedBox(height: 16),
+                Text('No multiplayer matches played yet',
+                    style: TextStyle(color: Colors.white38, fontSize: 16)),
+                SizedBox(height: 8),
+                Text('Challenge someone in the multiplayer lobby!',
+                    style: TextStyle(color: Colors.white24, fontSize: 13)),
+              ],
+            ),
+          );
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.all(12),
+          itemCount: history.length,
+          itemBuilder: (context, index) {
+            final match = history[index];
+            return _MatchHistoryCard(
+              match: match,
+              isMultiplayer: true,
+              onTap: () => _openScorecardSheet(context, match),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+void _openScorecardSheet(BuildContext context, MatchSummary match) {
+  showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: AppTheme.background,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+    ),
+    builder: (_) => DraggableScrollableSheet(
+      initialChildSize: 0.85,
+      maxChildSize: 0.95,
+      minChildSize: 0.5,
+      expand: false,
+      builder: (_, controller) => _ScorecardSheet(
+        match: match,
+        scrollController: controller,
+      ),
+    ),
+  );
+}
+
 class _MatchHistoryCard extends StatelessWidget {
   final MatchSummary match;
   final VoidCallback onTap;
+  final bool isMultiplayer;
 
-  const _MatchHistoryCard({required this.match, required this.onTap});
+  const _MatchHistoryCard({required this.match, required this.onTap, this.isMultiplayer = false});
 
   @override
   Widget build(BuildContext context) {
@@ -114,7 +208,7 @@ class _MatchHistoryCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  match.format.toUpperCase(),
+                  isMultiplayer ? 'MP · ${match.format.toUpperCase()}' : match.format.toUpperCase(),
                   style: const TextStyle(color: Colors.white54, fontSize: 11),
                 ),
                 const Spacer(),

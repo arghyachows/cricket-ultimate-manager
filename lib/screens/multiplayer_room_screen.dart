@@ -17,13 +17,20 @@ class _MultiplayerRoomScreenState extends ConsumerState<MultiplayerRoomScreen> {
   void initState() {
     super.initState();
     // Refresh room data when screen loads
-    Future.microtask(() => ref.read(multiplayerProvider.notifier).refreshRoom());
+    Future.microtask(() {
+      ref.read(multiplayerProvider.notifier).refreshRoom();
+      ref.invalidate(activeMultiplayerMatchProvider);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(multiplayerProvider);
     final currentUser = ref.watch(currentUserProvider).valueOrNull;
+    final activeMatchAsync = ref.watch(activeMultiplayerMatchProvider);
+    final activeMatchData = activeMatchAsync.hasValue ? activeMatchAsync.value : null;
+    final hasActiveMatch = activeMatchData != null &&
+        activeMatchData['status'] != 'completed';
 
     // Listen for match start
     ref.listen<MultiplayerState>(multiplayerProvider, (previous, next) {
@@ -34,7 +41,9 @@ class _MultiplayerRoomScreenState extends ConsumerState<MultiplayerRoomScreen> {
         ref.read(multiplayerProvider.notifier).clearMatchStarted();
         
         // Navigate immediately — the match screen handles its own loading state
-        context.push('/multiplayer/match/$matchId');
+        context.push('/multiplayer/match/$matchId').then((_) {
+          if (mounted) ref.invalidate(activeMultiplayerMatchProvider);
+        });
       }
     });
 
@@ -63,7 +72,7 @@ class _MultiplayerRoomScreenState extends ConsumerState<MultiplayerRoomScreen> {
                 children: [
                   IconButton(
                     icon: const Icon(Icons.notifications),
-                    onPressed: () => _showChallengesDialog(context, ref),
+                    onPressed: () => _showChallengesDialog(context, ref, hasActiveMatch),
                   ),
                   Positioned(
                     right: 8,
@@ -189,7 +198,7 @@ class _MultiplayerRoomScreenState extends ConsumerState<MultiplayerRoomScreen> {
                         
                         return AnimatedSwitcher(
                           duration: const Duration(milliseconds: 300),
-                          child: _buildUserCard(context, ref, user, isCurrentUser),
+                          child: _buildUserCard(context, ref, user, isCurrentUser, hasActiveMatch),
                         );
                       },
                     ),
@@ -200,7 +209,7 @@ class _MultiplayerRoomScreenState extends ConsumerState<MultiplayerRoomScreen> {
     );
   }
 
-  Widget _buildUserCard(BuildContext context, WidgetRef ref, user, bool isCurrentUser) {
+  Widget _buildUserCard(BuildContext context, WidgetRef ref, user, bool isCurrentUser, bool hasActiveMatch) {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       color: isCurrentUser ? AppTheme.primary.withValues(alpha: 0.3) : AppTheme.surface,
@@ -284,12 +293,16 @@ class _MultiplayerRoomScreenState extends ConsumerState<MultiplayerRoomScreen> {
             // Challenge button
             if (!isCurrentUser)
               ElevatedButton.icon(
-                onPressed: () => _showChallengeDialog(context, ref, user),
+                onPressed: hasActiveMatch
+                    ? null
+                    : () => _showChallengeDialog(context, ref, user),
                 icon: const Icon(Icons.sports_cricket, size: 16),
-                label: const Text('CHALLENGE'),
+                label: Text(hasActiveMatch ? 'MATCH IN PROGRESS' : 'CHALLENGE'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.accent,
                   foregroundColor: Colors.black,
+                  disabledBackgroundColor: Colors.grey.shade700,
+                  disabledForegroundColor: Colors.white38,
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 ),
               ),
@@ -371,7 +384,7 @@ class _MultiplayerRoomScreenState extends ConsumerState<MultiplayerRoomScreen> {
     );
   }
 
-  void _showChallengesDialog(BuildContext context, WidgetRef ref) {
+  void _showChallengesDialog(BuildContext context, WidgetRef ref, bool hasActiveMatch) {
     final state = ref.read(multiplayerProvider);
     
     showDialog(
@@ -417,7 +430,9 @@ class _MultiplayerRoomScreenState extends ConsumerState<MultiplayerRoomScreen> {
                           ),
                           const SizedBox(width: 8),
                           ElevatedButton(
-                            onPressed: () async {
+                            onPressed: hasActiveMatch
+                                ? null
+                                : () async {
                               Navigator.pop(context); // Close challenges dialog
                               
                               // Accept challenge — navigation happens via ref.listen when matchStartedId is set
@@ -426,8 +441,10 @@ class _MultiplayerRoomScreenState extends ConsumerState<MultiplayerRoomScreen> {
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppTheme.accent,
                               foregroundColor: Colors.black,
+                              disabledBackgroundColor: Colors.grey.shade700,
+                              disabledForegroundColor: Colors.white38,
                             ),
-                            child: const Text('ACCEPT'),
+                            child: Text(hasActiveMatch ? 'MATCH ACTIVE' : 'ACCEPT'),
                           ),
                         ],
                       ),

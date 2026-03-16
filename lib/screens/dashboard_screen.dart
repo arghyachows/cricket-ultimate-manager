@@ -1,11 +1,18 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/theme.dart';
 import '../core/constants.dart';
+import '../core/supabase_service.dart';
 import '../providers/providers.dart';
 import '../widgets/coin_display.dart';
 import '../widgets/daily_objectives_card.dart';
+
+/// Tracks the match ID the user dismissed from the dashboard banner.
+/// Persists across widget rebuilds within the same app session.
+final _dismissedMatchIdProvider = StateProvider<String?>((ref) => null);
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
@@ -30,11 +37,15 @@ class DashboardScreen extends ConsumerWidget {
                 SliverToBoxAdapter(
                   child: _buildHeader(context, user, ref),
                 ),
-                // Live match banner
+                // Live match banner (quick match)
                 if (matchState.hasActiveMatch)
                   SliverToBoxAdapter(
                     child: _LiveMatchBanner(matchState: matchState),
                   ),
+                // Live multiplayer match banner
+                SliverToBoxAdapter(
+                  child: _MultiplayerMatchBanner(),
+                ),
                 // Quick actions
                 SliverPadding(
                   padding: const EdgeInsets.all(16),
@@ -551,6 +562,319 @@ class _LiveMatchBanner extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ─── Multiplayer Live Match Banner ──────────────────────────────────
+
+class _MultiplayerMatchBanner extends ConsumerStatefulWidget {
+  @override
+  ConsumerState<_MultiplayerMatchBanner> createState() => _MultiplayerMatchBannerState();
+}
+
+class _MultiplayerMatchBannerState extends ConsumerState<_MultiplayerMatchBanner> {
+  Map<String, dynamic>? _matchData;
+  String? _subscribedMatchId;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(() => ref.invalidate(activeMultiplayerMatchProvider));
+  }
+
+  @override
+  void dispose() {
+    _unsubscribe();
+    super.dispose();
+  }
+
+  void _subscribeRealtime(String matchId) {
+    if (_subscribedMatchId == matchId) return;
+    _unsubscribe();
+    _subscribedMatchId = matchId;
+
+    final channel = SupabaseService.client.channel('dashboard_mp_$matchId');
+    channel
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'multiplayer_matches',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'id',
+            value: matchId,
+          ),
+          callback: (payload) {
+            if (!mounted) return;
+            final data = payload.newRecord;
+            setState(() => _matchData = data);
+            if (data['status'] == 'completed') {
+              ref.invalidate(activeMultiplayerMatchProvider);
+              _unsubscribe();
+            }
+          },
+        )
+        .subscribe();
+  }
+
+  void _unsubscribe() {
+    if (_subscribedMatchId != null) {
+      SupabaseService.client.channel('dashboard_mp_$_subscribedMatchId').unsubscribe();
+      _subscribedMatchId = null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final activeMatch = ref.watch(activeMultiplayerMatchProvider);
+    final dismissedId = ref.watch(_dismissedMatchIdProvider);
+
+    return activeMatch.when(
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+      data: (providerMatch) {
+        if (providerMatch == null && _matchData == null) {
+          _unsubscribe();
+          return const SizedBox.shrink();
+        }
+
+        // Use realtime data if available, fall back to provider data
+        final match = _matchData ?? providerMatch!;
+        final matchId = match['id'] as String;
+
+        // Skip if user dismissed this specific completed match
+        final status = match['status'] as String? ?? '';
+        if (status == 'completed' && matchId == dismissedId) {
+          return const SizedBox.shrink();
+        }
+
+        // Reset dismissed ID if a new active match appeared
+        if (status != 'completed' && dismissedId != null) {
+          Future.microtask(() => ref.read(_dismissedMatchIdProvider.notifier).state = null);
+        }
+
+        // Start realtime subscription for this match
+        if (!status.contains('completed')) {
+          _subscribeRealtime(matchId);
+        }
+
+        final isLive = status == 'in_progress';
+        final isCompleted = status == 'completed';
+        final homeTeam = match['home_team_name'] ?? 'Home';
+        final awayTeam = match['away_team_name'] ?? 'Away';
+        final hScore = match['home_score'] ?? 0;
+        final hWickets = match['home_wickets'] ?? 0;
+        final aScore = match['away_score'] ?? 0;
+        final aWickets = match['away_wickets'] ?? 0;
+        final hOvers = match['home_overs_display'] ?? '0.0';
+        final aOvers = match['away_overs_display'] ?? '0.0';
+        final commentary = match['current_commentary'] as String? ?? '';
+        final matchResult = match['match_result'] as String? ?? '';
+        final winnerId = match['winner_user_id'];
+        final userId = SupabaseService.currentUserId;
+        final userWon = winnerId != null && winnerId == userId;
+        final isDraw = isCompleted && winnerId == null;
+        final target = match['target'] as int? ?? 0;
+        final currentInnings = match['current_innings'] as int? ?? 1;
+        final matchOvers = match['match_overs'] as int? ?? 20;
+        final homeBatsFirst = match['home_bats_first'] as bool? ?? true;
+
+        // Chase info for 2nd innings
+        String? chaseInfo;
+        if (isLive && currentInnings >= 2 && target > 0) {
+          final chasingScore = homeBatsFirst ? aScore : hScore;
+          final chasingOvers = homeBatsFirst ? aOvers : hOvers;
+          final chasingTeam = homeBatsFirst ? awayTeam : homeTeam;
+          final runsNeeded = target + 1 - (chasingScore as int);
+          if (runsNeeded > 0) {
+            final parts = chasingOvers.toString().split('.');
+            final fullOvers = int.tryParse(parts[0]) ?? 0;
+            final extraBalls = parts.length > 1 ? (int.tryParse(parts[1]) ?? 0) : 0;
+            final ballsBowled = fullOvers * 6 + extraBalls;
+            final ballsRemaining = (matchOvers * 6) - ballsBowled;
+            chaseInfo = '$chasingTeam need $runsNeeded from $ballsRemaining balls';
+          }
+        }
+
+        // Badge color/text
+        final Color badgeColor;
+        final String badgeText;
+        if (isCompleted) {
+          badgeColor = userWon ? Colors.green : (isDraw ? Colors.orange : Colors.red);
+          badgeText = userWon ? 'WON' : (isDraw ? 'DRAW' : 'LOST');
+        } else if (isLive) {
+          badgeColor = Colors.deepPurple;
+          badgeText = 'LIVE';
+        } else {
+          badgeColor = AppTheme.primary;
+          badgeText = 'WAITING';
+        }
+
+        return GestureDetector(
+          onTap: () => context.push('/multiplayer/match/$matchId'),
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: isCompleted
+                    ? (userWon
+                        ? [Colors.green.withValues(alpha: 0.25), AppTheme.surface]
+                        : [Colors.red.withValues(alpha: 0.2), AppTheme.surface])
+                    : isLive
+                        ? [Colors.deepPurple.withValues(alpha: 0.3), AppTheme.surface]
+                        : [AppTheme.primary.withValues(alpha: 0.2), AppTheme.surface],
+              ),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: isCompleted
+                    ? (userWon
+                        ? Colors.green.withValues(alpha: 0.5)
+                        : Colors.red.withValues(alpha: 0.4))
+                    : isLive
+                        ? Colors.deepPurple.withValues(alpha: 0.5)
+                        : AppTheme.primary.withValues(alpha: 0.4),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: badgeColor,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (isLive) ...[
+                            Container(
+                              width: 6, height: 6,
+                              decoration: const BoxDecoration(
+                                color: Colors.white, shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                          ],
+                          Text(
+                            badgeText,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 10,
+                              letterSpacing: 1,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'MULTIPLAYER',
+                      style: TextStyle(color: Colors.white54, fontSize: 11),
+                    ),
+                    const Spacer(),
+                    if (isCompleted)
+                      GestureDetector(
+                        onTap: () {
+                          ref.read(_dismissedMatchIdProvider.notifier).state = matchId;
+                          setState(() => _matchData = null);
+                        },
+                        child: const Icon(Icons.close, size: 18, color: Colors.white38),
+                      )
+                    else
+                      const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.white38),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                // Teams & Scores
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(homeTeam,
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                              overflow: TextOverflow.ellipsis),
+                          const SizedBox(height: 2),
+                          if (isLive || isCompleted) ...[
+                            Text('$hScore/$hWickets',
+                                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.accent)),
+                            Text('($hOvers ov)',
+                                style: const TextStyle(fontSize: 11, color: Colors.white38)),
+                          ] else
+                            const Text('--', style: TextStyle(fontSize: 18, color: Colors.white38)),
+                        ],
+                      ),
+                    ),
+                    const Text('vs', style: TextStyle(color: Colors.white38, fontSize: 14)),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(awayTeam,
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                              overflow: TextOverflow.ellipsis, textAlign: TextAlign.end),
+                          const SizedBox(height: 2),
+                          if (isLive || isCompleted) ...[
+                            Text('$aScore/$aWickets',
+                                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
+                            Text('($aOvers ov)',
+                                style: const TextStyle(fontSize: 11, color: Colors.white38)),
+                          ] else
+                            const Text('--', style: TextStyle(fontSize: 18, color: Colors.white38)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+
+                // Chase info
+                if (chaseInfo != null) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: AppTheme.accent.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(chaseInfo,
+                        style: const TextStyle(
+                          color: AppTheme.accent,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                        )),
+                  ),
+                ],
+
+                // Result / Commentary
+                if (isCompleted && matchResult.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(matchResult,
+                      style: TextStyle(
+                        color: userWon ? Colors.green.shade300 : Colors.orange.shade300,
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      maxLines: 2, overflow: TextOverflow.ellipsis),
+                ] else if (commentary.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(commentary,
+                      style: const TextStyle(color: Colors.white60, fontSize: 12),
+                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

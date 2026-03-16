@@ -14,7 +14,11 @@ class MatchScreen extends ConsumerWidget {
     final teamAsync = ref.watch(teamProvider);
     final chemistry = ref.watch(chemistryProvider);
     final matchState = ref.watch(matchProvider);
-    final hasActiveMatch = matchState.hasActiveMatch;
+    final hasActiveQuickMatch = matchState.hasActiveMatch;
+    final activeMultiplayer = ref.watch(activeMultiplayerMatchProvider);
+    final mpMatch = activeMultiplayer.valueOrNull;
+    final hasActiveMultiplayer = mpMatch != null && mpMatch['status'] != 'completed';
+    final hasActiveMatch = hasActiveQuickMatch || hasActiveMultiplayer;
 
     return Scaffold(
       appBar: AppBar(
@@ -54,7 +58,7 @@ class MatchScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 12),
 
-              if (hasActiveMatch) ...[
+              if (hasActiveQuickMatch) ...[
                 GestureDetector(
                   onTap: () => context.go(AppConstants.liveMatchRoute),
                   child: Container(
@@ -85,6 +89,46 @@ class MatchScreen extends ConsumerWidget {
                           ),
                         ),
                         const Icon(Icons.arrow_forward_ios, color: AppTheme.accent, size: 16),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+
+              if (hasActiveMultiplayer) ...[
+                GestureDetector(
+                  onTap: () => context.push('/multiplayer/match/${mpMatch['id']}'),
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.deepPurple.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.deepPurple.withValues(alpha: 0.3)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.people, color: Colors.deepPurple),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                mpMatch['status'] == 'in_progress'
+                                    ? 'Multiplayer match in progress'
+                                    : 'Waiting for opponent',
+                                style: const TextStyle(color: Colors.deepPurple, fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(height: 2),
+                              const Text(
+                                'Tap to view the multiplayer match',
+                                style: TextStyle(color: Colors.white54, fontSize: 12),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Icon(Icons.arrow_forward_ios, color: Colors.deepPurple, size: 16),
                       ],
                     ),
                   ),

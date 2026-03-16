@@ -5,9 +5,79 @@ import '../core/supabase_service.dart';
 import '../models/models.dart';
 import 'auth_provider.dart';
 import 'team_provider.dart';
+import 'match_provider.dart';
 
 final multiplayerProvider = StateNotifierProvider<MultiplayerNotifier, MultiplayerState>((ref) {
   return MultiplayerNotifier(ref);
+});
+
+/// Checks DB for any active (waiting/in_progress) multiplayer match for the current user.
+/// Returns the match row map, or null if no active/recent match.
+/// Includes recently completed matches (last 10 minutes) so the result stays visible.
+/// Auto-abandons matches stuck in 'in_progress' for over 5 minutes.
+final activeMultiplayerMatchProvider = FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
+  final userId = SupabaseService.currentUserId;
+  if (userId == null) return null;
+
+  // First check for active matches
+  final active = await SupabaseService.client
+      .from('multiplayer_matches')
+      .select()
+      .or('home_user_id.eq.$userId,away_user_id.eq.$userId')
+      .inFilter('status', ['waiting', 'in_progress'])
+      .order('created_at', ascending: false)
+      .limit(1);
+
+  if (active.isNotEmpty) {
+    final match = active.first;
+    // Auto-abandon stuck matches: in_progress but started > 5 minutes ago
+    if (match['status'] == 'in_progress' && match['started_at'] != null) {
+      final startedStr = match['started_at'].toString();
+      final started = DateTime.tryParse(startedStr);
+      if (started != null) {
+        final now = DateTime.now().toUtc();
+        final startedUtc = started.toUtc();
+        final diff = now.difference(startedUtc);
+        if (diff.inMinutes > 5) {
+          await SupabaseService.client
+              .from('multiplayer_matches')
+              .update({
+                'status': 'completed',
+                'match_result': 'Match abandoned (simulation timeout)',
+                'current_commentary': 'Match abandoned (simulation timeout)',
+              })
+              .eq('id', match['id']);
+          return null;
+        }
+      }
+    }
+    return match;
+  }
+
+  // No active match — check for recently completed (last 10 minutes)
+  final recent = await SupabaseService.client
+      .from('multiplayer_matches')
+      .select()
+      .or('home_user_id.eq.$userId,away_user_id.eq.$userId')
+      .eq('status', 'completed')
+      .order('created_at', ascending: false)
+      .limit(1);
+
+  if (recent.isNotEmpty) {
+    final match = recent.first;
+    final createdStr = match['created_at']?.toString();
+    if (createdStr != null) {
+      final created = DateTime.tryParse(createdStr);
+      if (created != null) {
+        final diff = DateTime.now().toUtc().difference(created.toUtc());
+        if (diff.inMinutes <= 10) {
+          return match;
+        }
+      }
+    }
+  }
+
+  return null;
 });
 
 class MultiplayerState {
@@ -548,3 +618,90 @@ class MultiplayerNotifier extends StateNotifier<MultiplayerState> {
     super.dispose();
   }
 }
+
+// ─── Multiplayer Match History Provider ─────────────────────────────────────
+
+/// Fetches all completed multiplayer matches for the current user from the DB.
+final multiplayerMatchHistoryProvider =
+    FutureProvider.autoDispose<List<MatchSummary>>((ref) async {
+  final userId = SupabaseService.currentUserId;
+  if (userId == null) return [];
+
+  final data = await SupabaseService.client
+      .from('multiplayer_matches')
+      .select()
+      .or('home_user_id.eq.$userId,away_user_id.eq.$userId')
+      .eq('status', 'completed')
+      .order('created_at', ascending: false)
+      .limit(50);
+
+  return data.map<MatchSummary>((m) {
+    final homeBatsFirst = m['home_bats_first'] as bool? ?? true;
+    final isHome = m['home_user_id'] == userId;
+    final winnerId = m['winner_user_id'];
+    bool? homeWon;
+    if (winnerId != null) {
+      homeWon = winnerId == m['home_user_id'];
+    }
+    // From the user's perspective: homeWon means the user's side won
+    final userWon = (isHome && homeWon == true) || (!isHome && homeWon == false);
+
+    // Deserialize scorecard
+    Map<String, BatsmanStats> batsmanStats = {};
+    Map<String, BowlerStats> bowlerStats = {};
+    final sc = m['scorecard_data'];
+    if (sc != null && sc is Map<String, dynamic>) {
+      final batsmen = sc['batsmen'] as Map<String, dynamic>? ?? {};
+      for (final e in batsmen.entries) {
+        final b = e.value as Map<String, dynamic>;
+        batsmanStats[e.key] = BatsmanStats(
+          name: b['name'] as String? ?? '',
+          innings: b['innings'] as int? ?? 1,
+          runs: b['runs'] as int? ?? 0,
+          balls: b['balls'] as int? ?? 0,
+          fours: b['fours'] as int? ?? 0,
+          sixes: b['sixes'] as int? ?? 0,
+          isOut: b['isOut'] as bool? ?? false,
+          dismissalType: b['dismissalType'] as String?,
+        );
+      }
+      final bowlers = sc['bowlers'] as Map<String, dynamic>? ?? {};
+      for (final e in bowlers.entries) {
+        final b = e.value as Map<String, dynamic>;
+        bowlerStats[e.key] = BowlerStats(
+          name: b['name'] as String? ?? '',
+          innings: b['innings'] as int? ?? 1,
+          balls: b['balls'] as int? ?? 0,
+          runs: b['runs'] as int? ?? 0,
+          wickets: b['wickets'] as int? ?? 0,
+          maidens: b['maidens'] as int? ?? 0,
+          dotBalls: b['dotBalls'] as int? ?? 0,
+        );
+      }
+    }
+
+    final createdAt = DateTime.tryParse(m['created_at']?.toString() ?? '') ?? DateTime.now();
+    final coins = userWon ? 100 : (homeWon == null ? 50 : 30);
+    final xp = userWon ? 50 : (homeWon == null ? 30 : 20);
+
+    return MatchSummary(
+      homeTeamName: m['home_team_name'] ?? 'Home',
+      awayTeamName: m['away_team_name'] ?? 'Away',
+      format: m['match_format'] ?? 't20',
+      homeScore: m['home_score'] ?? 0,
+      homeWickets: m['home_wickets'] ?? 0,
+      homeOvers: m['home_overs_display'] ?? '0.0',
+      awayScore: m['away_score'] ?? 0,
+      awayWickets: m['away_wickets'] ?? 0,
+      awayOvers: m['away_overs_display'] ?? '0.0',
+      homeWon: isHome ? homeWon : (homeWon == null ? null : !homeWon),
+      coinsAwarded: coins,
+      xpAwarded: xp,
+      playedAt: createdAt,
+      batsmanStats: batsmanStats,
+      bowlerStats: bowlerStats,
+      events: const [],
+      homeBatsFirst: homeBatsFirst,
+    );
+  }).toList();
+});

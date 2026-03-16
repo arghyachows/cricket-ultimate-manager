@@ -8,6 +8,9 @@ import '../core/theme.dart';
 import '../core/supabase_service.dart';
 import '../models/models.dart';
 import '../providers/match_provider.dart';
+import '../providers/multiplayer_provider.dart';
+import '../providers/auth_provider.dart';
+import '../providers/career_stats_provider.dart';
 
 // ─── Local state for multiplayer match ─────────────────────────────────────
 
@@ -328,6 +331,13 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
     if (winnerId != null) {
       homeWon = winnerId == data['home_user_id'];
     }
+    final isHome = data['home_user_id'] == userId;
+    final userWon =
+        (isHome && homeWon == true) || (!isHome && homeWon == false);
+    final isDraw = homeWon == null;
+
+    int coins = userWon ? 100 : (isDraw ? 50 : 30);
+    int xp = userWon ? 50 : (isDraw ? 30 : 20);
 
     // Deserialize scorecard data if available
     Map<String, BatsmanStats> watcherBatsmanStats = {};
@@ -352,10 +362,11 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
           currentCommentary: data['match_result'] ?? 'Match Complete',
           homeWon: homeWon,
           homeBatsFirst: data['home_bats_first'] ?? true,
-          coinsAwarded: userId == winnerId ? 100 : 30,
-          xpAwarded: userId == winnerId ? 50 : 20,
+          coinsAwarded: coins,
+          xpAwarded: xp,
           batsmanStats: watcherBatsmanStats,
           bowlerStats: watcherBowlerStats,
+          commentaryLog: _parseCommentaryLog(data['commentary_log']),
         ));
   }
 
@@ -385,7 +396,23 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
           isSimulating: data['status'] == 'in_progress',
           batsmanStats: watcherBatsmanStats,
           bowlerStats: watcherBowlerStats,
+          commentaryLog: _parseCommentaryLog(data['commentary_log']),
         ));
+  }
+
+  /// Parse the commentary_log JSONB array from the DB into _CommentaryEntry list
+  static List<_CommentaryEntry> _parseCommentaryLog(dynamic raw) {
+    if (raw == null || raw is! List) return [];
+    return raw.map<_CommentaryEntry>((e) {
+      final m = e as Map<String, dynamic>;
+      return _CommentaryEntry(
+        commentary: m['commentary'] as String? ?? '',
+        eventType: m['eventType'] as String? ?? '',
+        runs: m['runs'] as int? ?? 0,
+        innings: m['innings'] as int? ?? 1,
+        oversDisplay: m['oversDisplay'] as String? ?? '',
+      );
+    }).toList();
   }
 
   // ─── Toss Logic ───────────────────────────────────────────────────
@@ -415,7 +442,7 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
           .from('multiplayer_matches')
           .update({
             'status': 'in_progress',
-            'started_at': DateTime.now().toIso8601String(),
+            'started_at': DateTime.now().toUtc().toIso8601String(),
             'home_score': 0,
             'away_score': 0,
             'home_wickets': 0,
@@ -443,10 +470,14 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
     SupabaseService.client.functions.invoke(
       'simulate-multiplayer',
       body: {'match_id': widget.matchId},
-    ).then((_) {
-      print('Edge function completed');
+    ).then((response) {
+      print('Edge function response status: ${response.status}');
+      print('Edge function response data: ${response.data}');
+      if (response.status >= 400) {
+        print('Edge function error: ${response.data}');
+      }
     }).catchError((e) {
-      print('Edge function error: $e');
+      print('Edge function invocation error: $e');
     });
   }
 
@@ -539,8 +570,14 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
     // Build commentary log entry for the watcher's timeline
     final updatedLog = [..._state.commentaryLog];
     if (commentary.isNotEmpty && commentary != _state.currentCommentary) {
-      // Determine overs display based on which team is currently batting
-      final currentOvers = innings == 1 ? hOvers : aOvers;
+      // Pick the batting team's overs based on who bats first
+      final hbf = homeBatsFirst ?? _state.homeBatsFirst;
+      final String currentOvers;
+      if (innings == 1) {
+        currentOvers = hbf ? hOvers : aOvers;
+      } else {
+        currentOvers = hbf ? aOvers : hOvers;
+      }
       updatedLog.add(_CommentaryEntry(
         commentary: commentary,
         eventType: eventType,
@@ -590,6 +627,31 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
           ));
 
       // Server awards rewards via Edge Function
+      ref.invalidate(activeMultiplayerMatchProvider);
+      ref.read(currentUserProvider.notifier).silentRefresh();
+
+      // Persist per-player career stats
+      final hbfFinal = homeBatsFirst ?? _state.homeBatsFirst;
+      final summary = MatchSummary(
+        homeTeamName: _state.homeTeamName,
+        awayTeamName: _state.awayTeamName,
+        format: _state.matchFormat,
+        homeScore: hScore,
+        homeWickets: hWickets,
+        homeOvers: hOvers,
+        awayScore: aScore,
+        awayWickets: aWickets,
+        awayOvers: aOvers,
+        homeWon: homeWon,
+        coinsAwarded: coins,
+        xpAwarded: xp,
+        playedAt: DateTime.now(),
+        batsmanStats: watcherBatsmanStats,
+        bowlerStats: watcherBowlerStats,
+        events: const [],
+        homeBatsFirst: hbfFinal,
+      );
+      ref.read(careerStatsNotifierProvider.notifier).persistMatchStats(summary);
       return;
     }
 
@@ -1057,6 +1119,9 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
   Widget _buildWatcherTimeline() {
     final log = _state.commentaryLog;
     if (log.isEmpty) {
+      if (_state.isMatchComplete) {
+        return const SizedBox.shrink();
+      }
       return const Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
