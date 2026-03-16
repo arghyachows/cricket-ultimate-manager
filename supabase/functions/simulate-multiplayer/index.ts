@@ -955,7 +955,7 @@ serve(async (req) => {
         .eq("id", match_id);
 
       // Delay between balls for realtime feel
-      await delay(50);
+      await delay(1000);
 
       if (ballCount % 30 === 0) {
         console.log(`Ball ${ballCount}: ${engine.score1}/${engine.wickets1} vs ${engine.score2}/${engine.wickets2}, innings ${engine.innings}`);

@@ -313,12 +313,11 @@ class _MultiplayerRoomScreenState extends ConsumerState<MultiplayerRoomScreen> {
   }
 
   void _showChallengeDialog(BuildContext context, WidgetRef ref, user) {
-    int selectedOvers = 20;
+    const int selectedOvers = 5;
     
     showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
+      builder: (context) => AlertDialog(
           backgroundColor: AppTheme.surface,
           title: const Text('Challenge Player'),
           content: Column(
@@ -328,28 +327,29 @@ class _MultiplayerRoomScreenState extends ConsumerState<MultiplayerRoomScreen> {
                 'Challenge ${user.teamName} to a match?',
                 style: const TextStyle(fontSize: 14),
               ),
-              const SizedBox(height: 20),
-              const Text(
-                'Select Match Format:',
-                style: TextStyle(fontSize: 12, color: Colors.white54),
-              ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                children: [5, 10, 20, 50].map((overs) {
-                  final selected = selectedOvers == overs;
-                  return ChoiceChip(
-                    label: Text('$overs Overs'),
-                    selected: selected,
-                    onSelected: (_) => setState(() => selectedOvers = overs),
-                    selectedColor: AppTheme.accent,
-                    backgroundColor: AppTheme.surfaceLight,
-                    labelStyle: TextStyle(
-                      color: selected ? Colors.black : Colors.white,
-                      fontWeight: FontWeight.bold,
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(
+                  color: AppTheme.surfaceLight,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppTheme.accent.withOpacity(0.5)),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.sports_cricket, color: AppTheme.accent, size: 18),
+                    SizedBox(width: 8),
+                    Text(
+                      '5 Overs Match',
+                      style: TextStyle(
+                        color: AppTheme.accent,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
                     ),
-                  );
-                }).toList(),
+                  ],
+                ),
               ),
             ],
           ),
@@ -380,7 +380,6 @@ class _MultiplayerRoomScreenState extends ConsumerState<MultiplayerRoomScreen> {
             ),
           ],
         ),
-      ),
     );
   }
 
