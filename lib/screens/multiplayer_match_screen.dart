@@ -6,11 +6,8 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/theme.dart';
 import '../core/supabase_service.dart';
-import '../engine/match_engine.dart';
-import '../engine/ai_opponent.dart';
 import '../models/models.dart';
 import '../providers/match_provider.dart';
-import '../providers/auth_provider.dart';
 
 // ─── Local state for multiplayer match ─────────────────────────────────────
 
@@ -188,45 +185,14 @@ class _MultiplayerMatchState {
     );
   }
 
-  // ─── Computed getters (for simulator who has events) ───────────────
+  // ─── Computed getters ───────────────────────────────────────────
 
-  int _inningsScore(int inn) {
-    if (events.isEmpty) return 0;
-    final inns = events.where((e) => e.innings == inn && e.eventType != 'innings_break');
-    return inns.isEmpty ? 0 : inns.last.scoreAfter;
-  }
-
-  int _inningsWickets(int inn) {
-    if (events.isEmpty) return 0;
-    final inns = events.where((e) => e.innings == inn && e.eventType != 'innings_break');
-    return inns.isEmpty ? 0 : inns.last.wicketsAfter;
-  }
-
-  String _inningsOvers(int inn) {
-    final inns = events.where((e) => e.innings == inn && e.eventType != 'innings_break');
-    if (inns.isEmpty) return '0.0';
-    final last = inns.last;
-    return '${last.overNumber}.${last.ballNumber}';
-  }
-
-  int get computedHomeScore => isSimulator
-      ? (homeBatsFirst ? _inningsScore(1) : _inningsScore(2))
-      : homeScore;
-  int get computedHomeWickets => isSimulator
-      ? (homeBatsFirst ? _inningsWickets(1) : _inningsWickets(2))
-      : homeWickets;
-  String get computedHomeOvers => isSimulator
-      ? (homeBatsFirst ? _inningsOvers(1) : _inningsOvers(2))
-      : homeOvers;
-  int get computedAwayScore => isSimulator
-      ? (homeBatsFirst ? _inningsScore(2) : _inningsScore(1))
-      : awayScore;
-  int get computedAwayWickets => isSimulator
-      ? (homeBatsFirst ? _inningsWickets(2) : _inningsWickets(1))
-      : awayWickets;
-  String get computedAwayOvers => isSimulator
-      ? (homeBatsFirst ? _inningsOvers(2) : _inningsOvers(1))
-      : awayOvers;
+  int get computedHomeScore => homeScore;
+  int get computedHomeWickets => homeWickets;
+  String get computedHomeOvers => homeOvers;
+  int get computedAwayScore => awayScore;
+  int get computedAwayWickets => awayWickets;
+  String get computedAwayOvers => awayOvers;
 
   List<BatsmanStats> get innings1Batsmen =>
       batsmanStats.values.where((b) => b.innings == 1).toList();
@@ -245,23 +211,12 @@ class _MultiplayerMatchState {
 
   int get runsNeeded {
     if (currentInnings < 2 || target == 0) return 0;
-    final chasingScore = isSimulator
-        ? _inningsScore(2)
-        : (homeBatsFirst ? awayScore : homeScore);
+    final chasingScore = homeBatsFirst ? awayScore : homeScore;
     final needed = target + 1 - chasingScore;
     return needed > 0 ? needed : 0;
   }
 
   int get ballsRemaining {
-    if (isSimulator) {
-      if (events.isEmpty) return matchOvers * 6;
-      final inningsEvents = events.where((e) => e.innings == currentInnings);
-      if (inningsEvents.isEmpty) return matchOvers * 6;
-      final last = inningsEvents.last;
-      final ballsBowled = last.overNumber * 6 + last.ballNumber;
-      return (matchOvers * 6) - ballsBowled;
-    }
-    // Watcher: parse overs display to compute balls
     final chasingOvers = homeBatsFirst ? awayOvers : homeOvers;
     final parts = chasingOvers.split('.');
     final fullOvers = int.tryParse(parts[0]) ?? 0;
@@ -292,12 +247,8 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
   late TabController _tabController;
   _MultiplayerMatchState _state = const _MultiplayerMatchState();
 
-  MatchEngine? _engine;
-  Timer? _simulationTimer;
   StreamSubscription? _realtimeSub;
   final _rng = Random();
-  int _homeChemistry = 50;
-  int _awayChemistry = 50;
 
   // Match DB data
   Map<String, dynamic>? _matchData;
@@ -312,7 +263,6 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
   @override
   void dispose() {
     _tabController.dispose();
-    _simulationTimer?.cancel();
     _realtimeSub?.cancel();
     // Unsubscribe from realtime channel
     SupabaseService.client.channel('mp_match_${widget.matchId}').unsubscribe();
@@ -343,7 +293,7 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
             awayTeamName: data['away_team_name'] ?? 'Away',
             matchOvers: data['match_overs'] ?? 20,
             matchFormat: data['match_format'] ?? 't20',
-            isSimulator: isAway, // away user runs the simulation
+            isSimulator: false, // Server-side simulation — both users are watchers
           ));
 
       // If match already completed, show result
@@ -352,31 +302,19 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
         return;
       }
 
-      // If match already in progress, resume
+      // Both users subscribe to realtime
+      _subscribeRealtime();
+
+      // If match already in progress, sync state
       if (data['status'] == 'in_progress') {
-        if (isAway) {
-          // Simulator: should not happen normally, but handle gracefully
-          _setState((s) => s.copyWith(
-                tossComplete: true,
-                isMatchComplete: true,
-                currentCommentary: 'Match already in progress on another device.',
-              ));
-        } else {
-          // Watcher: subscribe to realtime
-          _setState((s) => s.copyWith(tossComplete: true));
-          _subscribeRealtime();
-          _syncFromDb(data);
-        }
+        _setState((s) => s.copyWith(tossComplete: true));
+        _syncFromDb(data);
         return;
       }
 
-      // Match is waiting — do toss
+      // Match is waiting — away user triggers the toss
       if (isAway) {
-        // Away user (simulator) triggers the toss
         _doToss();
-      } else {
-        // Home user waits for toss result via realtime
-        _subscribeRealtime();
       }
     } catch (e) {
       _setState((s) => s.copyWith(isLoading: false, error: 'Failed to load match: $e'));
@@ -390,6 +328,16 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
     if (winnerId != null) {
       homeWon = winnerId == data['home_user_id'];
     }
+
+    // Deserialize scorecard data if available
+    Map<String, BatsmanStats> watcherBatsmanStats = {};
+    Map<String, BowlerStats> watcherBowlerStats = {};
+    final scorecardRaw = data['scorecard_data'];
+    if (scorecardRaw != null && scorecardRaw is Map<String, dynamic>) {
+      watcherBatsmanStats = _deserializeBatsmanStats(scorecardRaw);
+      watcherBowlerStats = _deserializeBowlerStats(scorecardRaw);
+    }
+
     _setState((s) => s.copyWith(
           isLoading: false,
           tossComplete: true,
@@ -398,15 +346,29 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
           homeWickets: data['home_wickets'] ?? 0,
           awayScore: data['away_score'] ?? 0,
           awayWickets: data['away_wickets'] ?? 0,
+          homeOvers: data['home_overs_display'] ?? '0.0',
+          awayOvers: data['away_overs_display'] ?? '0.0',
           matchResult: data['match_result'] ?? 'Match Complete',
           currentCommentary: data['match_result'] ?? 'Match Complete',
           homeWon: homeWon,
+          homeBatsFirst: data['home_bats_first'] ?? true,
           coinsAwarded: userId == winnerId ? 100 : 30,
           xpAwarded: userId == winnerId ? 50 : 20,
+          batsmanStats: watcherBatsmanStats,
+          bowlerStats: watcherBowlerStats,
         ));
   }
 
   void _syncFromDb(Map<String, dynamic> data) {
+    // Deserialize scorecard data if available
+    Map<String, BatsmanStats> watcherBatsmanStats = {};
+    Map<String, BowlerStats> watcherBowlerStats = {};
+    final scorecardRaw = data['scorecard_data'];
+    if (scorecardRaw != null && scorecardRaw is Map<String, dynamic>) {
+      watcherBatsmanStats = _deserializeBatsmanStats(scorecardRaw);
+      watcherBowlerStats = _deserializeBowlerStats(scorecardRaw);
+    }
+
     _setState((s) => s.copyWith(
           homeScore: data['home_score'] ?? 0,
           homeWickets: data['home_wickets'] ?? 0,
@@ -417,7 +379,12 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
           homeOvers: data['home_overs_display'] ?? '0.0',
           awayOvers: data['away_overs_display'] ?? '0.0',
           target: data['target'] ?? 0,
+          homeBatsFirst: data['home_bats_first'] ?? true,
+          homeBatsman: data['home_batsman'] ?? '',
+          currentBowler: data['current_bowler'] ?? '',
           isSimulating: data['status'] == 'in_progress',
+          batsmanStats: watcherBatsmanStats,
+          bowlerStats: watcherBowlerStats,
         ));
   }
 
@@ -442,7 +409,7 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
           homeBatsFirst: homeBatsFirst,
         ));
 
-    // Update DB with toss result
+    // Update DB with toss result + simulation parameters
     try {
       await SupabaseService.client
           .from('multiplayer_matches')
@@ -454,8 +421,9 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
             'home_wickets': 0,
             'away_wickets': 0,
             'current_innings': 1,
+            'home_bats_first': homeBatsFirst,
             'current_commentary':
-                '${_state.homeTeamName} won the toss and chose to bat',
+                '${homeBatsFirst ? _state.homeTeamName : _state.awayTeamName} won the toss and chose to bat',
           })
           .eq('id', widget.matchId);
     } catch (_) {}
@@ -464,283 +432,22 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
     await Future.delayed(const Duration(seconds: 2));
     _setState((s) => s.copyWith(tossComplete: true));
 
-    // Load lineups and start simulation
-    await _loadLineupsAndStart();
+    // Call the server-side Edge Function to simulate the match
+    _invokeServerSimulation();
   }
 
-  // ─── Load Playing XIs and Start Engine ────────────────────────────
-
-  Future<void> _loadLineupsAndStart() async {
-    try {
-      final homeTeamId = _matchData!['home_team_id'];
-      final awayTeamId = _matchData!['away_team_id'];
-
-      // Load both teams with full joins
-      List<SquadPlayer> homeXI = [];
-      List<SquadPlayer> awayXI = [];
-
-      // Try loading home team
-      try {
-        final homeResult = await SupabaseService.client
-            .from('teams')
-            .select('*, squads(*, squad_players(*, user_cards(*, player_cards(*))))')
-            .eq('id', homeTeamId)
-            .order('position', referencedTable: 'squads.squad_players')
-            .single();
-
-        final homeTeam = Team.fromJson(homeResult);
-        homeXI = homeTeam.activeSquad?.playingXI ?? [];
-        if (homeXI.isEmpty) homeXI = homeTeam.activeSquad?.players ?? [];
-        _homeChemistry = homeTeam.chemistry;
-      } catch (e) {
-        print('Error loading home team: $e');
-      }
-
-      // Try loading away team
-      try {
-        final awayResult = await SupabaseService.client
-            .from('teams')
-            .select('*, squads(*, squad_players(*, user_cards(*, player_cards(*))))')
-            .eq('id', awayTeamId)
-            .order('position', referencedTable: 'squads.squad_players')
-            .single();
-
-        final awayTeam = Team.fromJson(awayResult);
-        awayXI = awayTeam.activeSquad?.playingXI ?? [];
-        if (awayXI.isEmpty) awayXI = awayTeam.activeSquad?.players ?? [];
-        _awayChemistry = awayTeam.chemistry;
-      } catch (e) {
-        print('Error loading away team: $e');
-      }
-
-      // Fallback: generate AI XI for any team that couldn't be loaded
-      // This handles RLS restrictions where one user can't read the other's data
-      if (homeXI.isEmpty) {
-        print('Home team empty — generating AI fallback XI');
-        homeXI = await AIOpponent.generateXI();
-      }
-      if (awayXI.isEmpty) {
-        print('Away team empty — generating AI fallback XI');
-        awayXI = await AIOpponent.generateXI();
-      }
-
-      // Create engine
-      _engine = MatchEngine(
-        homeXI: homeXI,
-        awayXI: awayXI,
-        homeChemistry: _homeChemistry,
-        awayChemistry: _awayChemistry,
-        overs: _state.matchOvers,
-        pitchCondition: 'balanced',
-        homeTeamName: _state.homeTeamName,
-        awayTeamName: _state.awayTeamName,
-        homeBatsFirst: _state.homeBatsFirst,
-      );
-
-      _setState((s) => s.copyWith(isSimulating: true));
-
-      // Start ball-by-ball simulation
-      _simulationTimer = Timer.periodic(
-        const Duration(milliseconds: 800),
-        (_) => _simulateNextBall(),
-      );
-    } catch (e) {
-      _setState((s) => s.copyWith(error: 'Failed to load lineups: $e'));
-    }
-  }
-
-  // ─── Ball-by-ball simulation (mirrors match_provider logic) ───────
-
-  void _simulateNextBall() {
-    if (_engine == null) return;
-
-    final result = _engine!.simulateNextBall();
-    if (result == null) {
-      // Match complete
-      _simulationTimer?.cancel();
-      _onMatchComplete();
-      return;
-    }
-
-    final events = [..._state.events, result];
-    final batsmanStats = Map<String, BatsmanStats>.from(_state.batsmanStats);
-    final bowlerStats = Map<String, BowlerStats>.from(_state.bowlerStats);
-
-    if (result.eventType != 'innings_break') {
-      final isExtra = result.eventType == 'wide' || result.eventType == 'no_ball';
-
-      final batKey = '${result.innings}_${result.batsmanCardId}';
-      final bowlKey = '${result.innings}_${result.bowlerCardId}';
-
-      // Update batsman stats
-      final batsmanName = _engine!.getBatsmanName(result.batsmanCardId);
-      batsmanStats.putIfAbsent(
-          batKey, () => BatsmanStats(name: batsmanName, innings: result.innings));
-      final batStats = batsmanStats[batKey]!;
-      if (result.eventType != 'wide') batStats.balls++;
-      batStats.runs += result.runs;
-      if (result.runs == 4) batStats.fours++;
-      if (result.runs == 6) batStats.sixes++;
-      if (result.isWicket) {
-        batStats.isOut = true;
-        final bowlerNameForDismissal = _engine!.getBowlerName(result.bowlerCardId);
-        final fielderNameForDismissal = result.fielderCardId != null
-            ? _engine!.getBatsmanName(result.fielderCardId!)
-            : null;
-        batStats.dismissalType = _formatDismissal(
-          result.wicketType ?? 'bowled',
-          bowlerNameForDismissal,
-          fielderNameForDismissal,
-        );
-      }
-
-      // Update bowler stats
-      final bowlerName = _engine!.getBowlerName(result.bowlerCardId);
-      bowlerStats.putIfAbsent(
-          bowlKey, () => BowlerStats(name: bowlerName, innings: result.innings));
-      final bowlStats = bowlerStats[bowlKey]!;
-      if (!isExtra) bowlStats.balls++;
-      bowlStats.runs += result.runs;
-      if (result.isWicket) bowlStats.wickets++;
-      if (result.runs == 0 && !result.isWicket && !isExtra) {
-        bowlStats.dotBalls++;
-      }
-    }
-
-    // Track target when innings changes
-    int newTarget = _state.target;
-    if (result.innings == 2 && _state.target == 0) {
-      // Calculate innings 1 score
-      final inn1Events = events.where(
-          (e) => e.innings == 1 && e.eventType != 'innings_break');
-      if (inn1Events.isNotEmpty) {
-        newTarget = inn1Events.last.scoreAfter;
-      }
-    }
-
-    _setState((s) => s.copyWith(
-          events: events,
-          currentCommentary: result.commentary,
-          currentInnings: result.innings,
-          batsmanStats: batsmanStats,
-          bowlerStats: bowlerStats,
-          target: newTarget,
-        ));
-
-    // Push update to DB every ball
-    _pushScoreToDb(result);
-  }
-
-  String _formatDismissal(String wicketType, String bowlerName, String? fielderName) {
-    switch (wicketType) {
-      case 'bowled':
-        return 'b $bowlerName';
-      case 'caught':
-        return 'c ${fielderName ?? "fielder"} b $bowlerName';
-      case 'caught_behind':
-        return 'c ${fielderName ?? "†keeper"} b $bowlerName';
-      case 'lbw':
-        return 'lbw b $bowlerName';
-      case 'run_out':
-        return 'run out (${fielderName ?? "fielder"})';
-      case 'stumped':
-        return 'st ${fielderName ?? "†keeper"} b $bowlerName';
-      default:
-        return 'b $bowlerName';
-    }
-  }
-
-  // ─── Push score to DB (for watcher to see via realtime) ───────────
-
-  Future<void> _pushScoreToDb(MatchEvent event) async {
-    final hScore = _state.homeBatsFirst ? _state._inningsScore(1) : _state._inningsScore(2);
-    final hWickets = _state.homeBatsFirst ? _state._inningsWickets(1) : _state._inningsWickets(2);
-    final aScore = _state.homeBatsFirst ? _state._inningsScore(2) : _state._inningsScore(1);
-    final aWickets = _state.homeBatsFirst ? _state._inningsWickets(2) : _state._inningsWickets(1);
-
-    // Get current batsmen/bowler names for watcher display
-    String batsmanName = '';
-    String bowlerName = '';
-    if (_engine != null && event.eventType != 'innings_break') {
-      batsmanName = _engine!.getBatsmanName(event.batsmanCardId);
-      bowlerName = _engine!.getBowlerName(event.bowlerCardId);
-    }
-
-    // Serialize batsman/bowler stats for watcher scorecard
-    final scorecardJson = _serializeScorecardData();
-
-    // Build full update with all columns
-    final fullUpdate = <String, dynamic>{
-      'home_score': hScore,
-      'home_wickets': hWickets,
-      'away_score': aScore,
-      'away_wickets': aWickets,
-      'current_innings': event.innings,
-      'current_commentary': event.commentary ?? '',
-      'home_overs_display': _state.homeBatsFirst
-          ? _state._inningsOvers(1)
-          : _state._inningsOvers(2),
-      'away_overs_display': _state.homeBatsFirst
-          ? _state._inningsOvers(2)
-          : _state._inningsOvers(1),
-      'last_event_type': event.eventType,
-      'last_runs': event.runs,
-      'target': _state.target,
-      'home_batsman': batsmanName,
-      'current_bowler': bowlerName,
-      'scorecard_data': scorecardJson,
-    };
-
-    try {
-      await SupabaseService.client
-          .from('multiplayer_matches')
-          .update(fullUpdate)
-          .eq('id', widget.matchId);
-    } catch (_) {
-      // Extended columns may not exist — fallback to base columns only
-      try {
-        await SupabaseService.client
-            .from('multiplayer_matches')
-            .update({
-              'home_score': hScore,
-              'home_wickets': hWickets,
-              'away_score': aScore,
-              'away_wickets': aWickets,
-            })
-            .eq('id', widget.matchId);
-      } catch (_) {}
-    }
-  }
-
-  Map<String, dynamic> _serializeScorecardData() {
-    final batsmen = <String, dynamic>{};
-    for (final entry in _state.batsmanStats.entries) {
-      final b = entry.value;
-      batsmen[entry.key] = {
-        'name': b.name,
-        'innings': b.innings,
-        'runs': b.runs,
-        'balls': b.balls,
-        'fours': b.fours,
-        'sixes': b.sixes,
-        'isOut': b.isOut,
-        'dismissalType': b.dismissalType,
-      };
-    }
-    final bowlers = <String, dynamic>{};
-    for (final entry in _state.bowlerStats.entries) {
-      final b = entry.value;
-      bowlers[entry.key] = {
-        'name': b.name,
-        'innings': b.innings,
-        'balls': b.balls,
-        'runs': b.runs,
-        'wickets': b.wickets,
-        'maidens': b.maidens,
-        'dotBalls': b.dotBalls,
-      };
-    }
-    return {'batsmen': batsmen, 'bowlers': bowlers};
+  /// Invokes the Supabase Edge Function to run simulation server-side.
+  /// Both users see live updates via Realtime — no local engine needed.
+  /// Fire-and-forget: don't await, as the simulation runs for minutes.
+  void _invokeServerSimulation() {
+    SupabaseService.client.functions.invoke(
+      'simulate-multiplayer',
+      body: {'match_id': widget.matchId},
+    ).then((_) {
+      print('Edge function completed');
+    }).catchError((e) {
+      print('Edge function error: $e');
+    });
   }
 
   static Map<String, BatsmanStats> _deserializeBatsmanStats(Map<String, dynamic> data) {
@@ -780,130 +487,7 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
     return result;
   }
 
-  // ─── Match Complete ───────────────────────────────────────────────
-
-  void _onMatchComplete() {
-    if (_engine == null) return;
-
-    final score1 = _engine!.score1;
-    final score2 = _engine!.score2;
-    final hScore = _state.homeBatsFirst ? score1 : score2;
-    final aScore = _state.homeBatsFirst ? score2 : score1;
-
-    bool? homeWon;
-    int coins;
-    int xp;
-
-    if (hScore > aScore) {
-      homeWon = true;
-    } else if (aScore > hScore) {
-      homeWon = false;
-    } else {
-      homeWon = null;
-    }
-
-    // Determine if current user won
-    final userId = SupabaseService.currentUserId;
-    final isHome = _matchData?['home_user_id'] == userId;
-    final userWon = (isHome && homeWon == true) || (!isHome && homeWon == false);
-    final isDraw = homeWon == null;
-
-    if (userWon) {
-      coins = 100;
-      xp = 50;
-    } else if (isDraw) {
-      coins = 50;
-      xp = 30;
-    } else {
-      coins = 30;
-      xp = 20;
-    }
-
-    final resultText = _engine!.getMatchResult();
-
-    _setState((s) => s.copyWith(
-          isSimulating: false,
-          isMatchComplete: true,
-          homeWon: homeWon,
-          coinsAwarded: coins,
-          xpAwarded: xp,
-          currentCommentary: resultText,
-          matchResult: resultText,
-        ));
-
-    // Update DB with final result
-    _pushFinalResult(homeWon, resultText);
-
-    // Award rewards
-    _awardRewards(coins, xp, userWon);
-  }
-
-  Future<void> _pushFinalResult(bool? homeWon, String resultText) async {
-    try {
-      final hScore = _state.homeBatsFirst ? _state._inningsScore(1) : _state._inningsScore(2);
-      final hWickets = _state.homeBatsFirst ? _state._inningsWickets(1) : _state._inningsWickets(2);
-      final aScore = _state.homeBatsFirst ? _state._inningsScore(2) : _state._inningsScore(1);
-      final aWickets = _state.homeBatsFirst ? _state._inningsWickets(2) : _state._inningsWickets(1);
-
-      String? winnerId;
-      if (homeWon == true) winnerId = _matchData?['home_user_id'];
-      if (homeWon == false) winnerId = _matchData?['away_user_id'];
-
-      final update = <String, dynamic>{
-        'status': 'completed',
-        'home_score': hScore,
-        'home_wickets': hWickets,
-        'away_score': aScore,
-        'away_wickets': aWickets,
-        'winner_user_id': winnerId,
-        'completed_at': DateTime.now().toIso8601String(),
-      };
-      try {
-        update['match_result'] = resultText;
-        update['home_overs_display'] = _state.homeBatsFirst
-            ? _state._inningsOvers(1)
-            : _state._inningsOvers(2);
-        update['away_overs_display'] = _state.homeBatsFirst
-            ? _state._inningsOvers(2)
-            : _state._inningsOvers(1);
-      } catch (_) {}
-
-      await SupabaseService.client
-          .from('multiplayer_matches')
-          .update(update)
-          .eq('id', widget.matchId);
-    } catch (_) {}
-  }
-
-  Future<void> _awardRewards(int coins, int xp, bool won) async {
-    try {
-      final userId = SupabaseService.currentUserId;
-      if (userId == null) return;
-      await SupabaseService.client.rpc('award_match_rewards', params: {
-        'p_user_id': userId,
-        'p_coins': coins,
-        'p_xp': xp,
-        'p_won': won,
-      });
-    } catch (_) {
-      try {
-        final userId = SupabaseService.currentUserId;
-        if (userId == null) return;
-        final user = ref.read(currentUserProvider).valueOrNull;
-        if (user == null) return;
-        await SupabaseService.client.from('users').update({
-          'coins': user.coins + coins,
-          'xp': user.xp + xp,
-          'matches_played': user.matchesPlayed + 1,
-          if (won) 'matches_won': user.matchesWon + 1,
-        }).eq('id', userId);
-      } catch (_) {}
-    }
-    // Refresh user data
-    ref.read(currentUserProvider.notifier).silentRefresh();
-  }
-
-  // ─── Realtime subscription (for watcher / home user) ──────────────
+  // ─── Realtime subscription ──────────────────────────────────────
 
   void _subscribeRealtime() {
     final channel = SupabaseService.client.channel('mp_match_${widget.matchId}');
@@ -941,6 +525,7 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
     final lastRuns = data['last_runs'] as int? ?? 0;
     final homeBatsman = data['home_batsman'] as String? ?? '';
     final currentBowler = data['current_bowler'] as String? ?? '';
+    final homeBatsFirst = data['home_bats_first'] as bool?;
 
     // Deserialize scorecard data for watcher
     Map<String, BatsmanStats> watcherBatsmanStats = _state.batsmanStats;
@@ -983,6 +568,7 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
       _setState((s) => s.copyWith(
             isSimulating: false,
             isMatchComplete: true,
+            homeBatsFirst: homeBatsFirst ?? s.homeBatsFirst,
             homeScore: hScore,
             homeWickets: hWickets,
             awayScore: aScore,
@@ -1003,8 +589,7 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
             bowlerStats: watcherBowlerStats,
           ));
 
-      // Award watcher's rewards too
-      _awardRewards(coins, xp, userWon);
+      // Server awards rewards via Edge Function
       return;
     }
 
@@ -1012,6 +597,7 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
     _setState((s) => s.copyWith(
           tossComplete: true,
           isSimulating: true,
+          homeBatsFirst: homeBatsFirst ?? s.homeBatsFirst,
           homeScore: hScore,
           homeWickets: hWickets,
           awayScore: aScore,
@@ -1029,76 +615,6 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
           batsmanStats: watcherBatsmanStats,
           bowlerStats: watcherBowlerStats,
         ));
-  }
-
-  // ─── Skip to End (simulator only) ────────────────────────────────
-
-  void _skipToEnd() {
-    _simulationTimer?.cancel();
-    if (_engine == null) return;
-
-    final allEvents = <MatchEvent>[..._state.events];
-    final batsmanStats = Map<String, BatsmanStats>.from(_state.batsmanStats);
-    final bowlerStats = Map<String, BowlerStats>.from(_state.bowlerStats);
-    int currentTarget = _state.target;
-
-    while (true) {
-      final result = _engine!.simulateNextBall();
-      if (result == null) break;
-      allEvents.add(result);
-
-      if (result.eventType != 'innings_break') {
-        final isExtra =
-            result.eventType == 'wide' || result.eventType == 'no_ball';
-        final batKey = '${result.innings}_${result.batsmanCardId}';
-        final bowlKey = '${result.innings}_${result.bowlerCardId}';
-
-        final batsmanName = _engine!.getBatsmanName(result.batsmanCardId);
-        batsmanStats.putIfAbsent(
-            batKey, () => BatsmanStats(name: batsmanName, innings: result.innings));
-        final batStats = batsmanStats[batKey]!;
-        if (result.eventType != 'wide') batStats.balls++;
-        batStats.runs += result.runs;
-        if (result.runs == 4) batStats.fours++;
-        if (result.runs == 6) batStats.sixes++;
-        if (result.isWicket) {
-          batStats.isOut = true;
-          batStats.dismissalType = _formatDismissal(
-            result.wicketType ?? 'bowled',
-            _engine!.getBowlerName(result.bowlerCardId),
-            result.fielderCardId != null
-                ? _engine!.getBatsmanName(result.fielderCardId!)
-                : null,
-          );
-        }
-
-        final bowlerName = _engine!.getBowlerName(result.bowlerCardId);
-        bowlerStats.putIfAbsent(
-            bowlKey, () => BowlerStats(name: bowlerName, innings: result.innings));
-        final bowlStats = bowlerStats[bowlKey]!;
-        if (!isExtra) bowlStats.balls++;
-        bowlStats.runs += result.runs;
-        if (result.isWicket) bowlStats.wickets++;
-        if (result.runs == 0 && !result.isWicket && !isExtra) {
-          bowlStats.dotBalls++;
-        }
-      }
-
-      if (result.innings == 2 && currentTarget == 0) {
-        final inn1 = allEvents
-            .where((e) => e.innings == 1 && e.eventType != 'innings_break');
-        if (inn1.isNotEmpty) currentTarget = inn1.last.scoreAfter;
-      }
-    }
-
-    _setState((s) => s.copyWith(
-          events: allEvents,
-          batsmanStats: batsmanStats,
-          bowlerStats: bowlerStats,
-          target: currentTarget,
-        ));
-
-    _onMatchComplete();
   }
 
   // ─── BUILD ────────────────────────────────────────────────────────
@@ -1148,14 +664,7 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
       backgroundColor: AppTheme.background,
       appBar: AppBar(
         title: const Text('MULTIPLAYER MATCH'),
-        actions: [
-          if (_state.isSimulator && _state.isSimulating)
-            IconButton(
-              icon: const Icon(Icons.fast_forward),
-              tooltip: 'Skip to end',
-              onPressed: _skipToEnd,
-            ),
-        ],
+        actions: const [],
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: AppTheme.accent,
@@ -1256,12 +765,7 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
                 'Elected to ${_state.tossDecision}',
                 style: const TextStyle(fontSize: 16, color: Colors.white54),
               ),
-            ] else if (_state.isSimulator)
-              const Text(
-                'Tossing coin...',
-                style: TextStyle(fontSize: 18, color: Colors.white70),
-              )
-            else
+            ] else
               const Text(
                 'Waiting for toss...',
                 style: TextStyle(fontSize: 18, color: Colors.white70),
@@ -1473,188 +977,21 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
           ),
         ),
 
-        // Batsman panel — simulator uses stats, watcher uses DB names
-        if (s.isSimulator && s.currentBatsmen.isNotEmpty)
-          _buildBatsmanPanel()
-        else if (!s.isSimulator && s.homeBatsman.isNotEmpty)
+        // Batsman panel
+        if (s.homeBatsman.isNotEmpty)
           _buildWatcherBatsmanPanel(),
 
         // Bowler panel
-        if (s.isSimulator && s.currentBowlers.isNotEmpty)
-          _buildBowlerPanel()
-        else if (!s.isSimulator && s.currentBowler.isNotEmpty)
+        if (s.currentBowler.isNotEmpty)
           _buildWatcherBowlerPanel(),
 
-        // Ball timeline — simulator uses events, watcher uses commentary log
-        if (s.isSimulator)
-          Expanded(child: _buildTimeline())
-        else
-          Expanded(child: _buildWatcherTimeline()),
+        // Ball timeline (from realtime commentary log)
+        Expanded(child: _buildWatcherTimeline()),
 
         // Match result
-        if (!s.isSimulating && (s.isMatchComplete || s.events.isNotEmpty || s.commentaryLog.isNotEmpty))
+        if (!s.isSimulating && (s.isMatchComplete || s.commentaryLog.isNotEmpty))
           _buildMatchResult(),
       ],
-    );
-  }
-
-  Widget _buildBatsmanPanel() {
-    final activeBatsmen = _state.currentBatsmen.take(2).toList();
-    if (activeBatsmen.isEmpty) return const SizedBox();
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: AppTheme.surface,
-      child: Row(
-        children: activeBatsmen.map((b) {
-          return Expanded(
-            child: Row(
-              children: [
-                const Icon(Icons.sports_cricket,
-                    size: 14, color: AppTheme.accent),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(b.name,
-                      style: const TextStyle(
-                          fontSize: 13, fontWeight: FontWeight.w500),
-                      overflow: TextOverflow.ellipsis),
-                ),
-                Text(
-                  '${b.runs}(${b.balls})',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.accent,
-                  ),
-                ),
-              ],
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-
-  Widget _buildBowlerPanel() {
-    final currentBowlers = _state.currentBowlers;
-    if (currentBowlers.isEmpty) return const SizedBox();
-    final bowler = currentBowlers.last;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      color: AppTheme.surfaceLight,
-      child: Row(
-        children: [
-          const Icon(Icons.sports_baseball, size: 14, color: Colors.redAccent),
-          const SizedBox(width: 6),
-          Text(bowler.name, style: const TextStyle(fontSize: 13)),
-          const Spacer(),
-          Text(
-            '${bowler.oversDisplay}-${bowler.maidens}-${bowler.runs}-${bowler.wickets}',
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTimeline() {
-    if (_state.events.isEmpty) {
-      return const Center(
-        child: Text('Waiting for match to start...',
-            style: TextStyle(color: Colors.white38)),
-      );
-    }
-
-    return ListView.builder(
-      reverse: true,
-      padding: const EdgeInsets.all(16),
-      itemCount: _state.events.length,
-      itemBuilder: (context, index) {
-        final event = _state.events[_state.events.length - 1 - index];
-        return _buildEventTile(event);
-      },
-    );
-  }
-
-  Widget _buildEventTile(MatchEvent event) {
-    Color eventColor;
-    IconData eventIcon;
-
-    switch (event.eventType) {
-      case 'four':
-        eventColor = AppTheme.primaryLight;
-        eventIcon = Icons.looks_4;
-        break;
-      case 'six':
-        eventColor = AppTheme.accent;
-        eventIcon = Icons.looks_6;
-        break;
-      case 'wicket':
-        eventColor = AppTheme.error;
-        eventIcon = Icons.close;
-        break;
-      case 'dot_ball':
-        eventColor = Colors.white38;
-        eventIcon = Icons.fiber_manual_record;
-        break;
-      case 'wide':
-      case 'no_ball':
-        eventColor = Colors.orangeAccent;
-        eventIcon = Icons.warning_amber;
-        break;
-      default:
-        eventColor = Colors.white54;
-        eventIcon = Icons.circle_outlined;
-    }
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 6),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: eventColor.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border(left: BorderSide(color: eventColor, width: 3)),
-      ),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 50,
-            child: Text(
-              event.overDisplay,
-              style: TextStyle(
-                color: eventColor,
-                fontWeight: FontWeight.bold,
-                fontSize: 13,
-              ),
-            ),
-          ),
-          Icon(eventIcon, size: 16, color: eventColor),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              event.commentary ?? '',
-              style: const TextStyle(fontSize: 13, color: Colors.white70),
-            ),
-          ),
-          if (event.runs > 0)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: eventColor.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(
-                '+${event.runs}',
-                style: TextStyle(
-                  color: eventColor,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
-                ),
-              ),
-            ),
-        ],
-      ),
     );
   }
 
@@ -1945,8 +1282,8 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
   Widget _buildScorecardTab() {
     final s = _state;
 
-    // Watcher without scorecard data yet — show basic scores
-    if (!s.isSimulator && s.batsmanStats.isEmpty) {
+    // No scorecard data yet — show basic scores
+    if (s.batsmanStats.isEmpty) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(32),
