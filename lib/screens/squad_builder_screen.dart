@@ -189,13 +189,6 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
     }
 
     final lineup = squad.playingXI;
-    final bench = squad.players.where((p) => !p.isPlayingXI).toList()
-      ..sort((a, b) {
-        final ar = a.userCard?.playerCard?.rating ?? 0;
-        final br = b.userCard?.playerCard?.rating ?? 0;
-        return br.compareTo(ar);
-      });
-
     final roleCounts = <String, int>{};
     for (final player in lineup) {
       final role = player.userCard?.playerCard?.role ?? 'unknown';
@@ -224,13 +217,29 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
             ],
           ),
         const SizedBox(height: 10),
-        const Text(
-          'Batting Order',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+        Row(
+          children: [
+            const Expanded(
+              child: Text(
+                'Batting Order',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+            ),
+            ElevatedButton.icon(
+              onPressed: () => _autoPickLineup(squad),
+              icon: const Icon(Icons.auto_fix_high, size: 16),
+              label: const Text('AUTO PICK'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.accent,
+                foregroundColor: Colors.black,
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 4),
         const Text(
-          'Drag players to reorder your XI lineup.',
+          'Drag players to reorder your XI lineup, or auto-pick best XI.',
           style: TextStyle(color: Colors.white54, fontSize: 12),
         ),
         const SizedBox(height: 8),
@@ -276,25 +285,6 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
             },
           ),
         ],
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            const Text(
-              'Bench',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              '${bench.length} players',
-              style: const TextStyle(color: Colors.white54, fontSize: 12),
-            ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        if (bench.isEmpty)
-          _buildEmptyBenchCard(squad)
-        else
-          ...bench.map((player) => _buildBenchTile(player, squad)),
       ],
     );
   }
@@ -535,13 +525,6 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
                   value: 'remove_xi',
                   child: Text('Remove from XI'),
                 ),
-                const PopupMenuItem(
-                  value: 'remove_squad',
-                  child: Text(
-                    'Remove from Squad',
-                    style: TextStyle(color: AppTheme.error),
-                  ),
-                ),
               ],
             ),
             const Icon(Icons.drag_handle, color: Colors.white24, size: 20),
@@ -581,141 +564,6 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
           }
           _showAddPlayerSheet(freePos);
         },
-      ),
-    );
-  }
-
-  Widget _buildEmptyBenchCard(Squad squad) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white10),
-      ),
-      child: Column(
-        children: [
-          const Text(
-            'No bench players',
-            style: TextStyle(fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            'Tap below to add players directly to your XI.',
-            style: TextStyle(color: Colors.white54, fontSize: 12),
-          ),
-          const SizedBox(height: 10),
-          ElevatedButton.icon(
-            onPressed: () {
-              final freePos = _nextAvailableXiPosition(squad);
-              if (freePos != null) {
-                _showAddPlayerSheet(freePos);
-              }
-            },
-            icon: const Icon(Icons.person_add),
-            label: const Text('ADD PLAYER'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBenchTile(SquadPlayer player, Squad squad) {
-    final card = player.userCard?.playerCard;
-    if (card == null) return const SizedBox();
-
-    final rarityColor = AppTheme.getRarityColor(card.rarity);
-    final notifier = ref.read(teamProvider.notifier);
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 6),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: rarityColor.withValues(alpha: 0.25)),
-      ),
-      child: ListTile(
-        leading: Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-            gradient: LinearGradient(
-              colors: [rarityColor, rarityColor.withValues(alpha: 0.5)],
-            ),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                '${card.rating}',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                ),
-              ),
-              Text(
-                card.roleDisplay,
-                style: const TextStyle(
-                  color: Colors.white70,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 8,
-                ),
-              ),
-            ],
-          ),
-        ),
-        title: Text(
-          card.playerName,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-        ),
-        subtitle: Text(
-          '${card.countryCode} • BAT ${card.batting} BOWL ${card.bowling}',
-          style: const TextStyle(color: Colors.white54, fontSize: 11),
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              tooltip: 'Add to XI',
-              icon: const Icon(Icons.playlist_add_check, color: AppTheme.accent),
-              onPressed: () {
-                final freePos = _nextAvailableXiPosition(squad);
-                if (freePos == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Playing XI is full (11/11)')),
-                  );
-                  return;
-                }
-                notifier.addPlayerToSquad(
-                  squad.id,
-                  player.userCardId,
-                  freePos,
-                  isPlayingXI: true,
-                );
-              },
-            ),
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.more_vert, size: 20, color: Colors.white54),
-              color: AppTheme.surfaceLight,
-              onSelected: (value) {
-                if (value == 'remove_squad') {
-                  notifier.removePlayerFromSquad(player.id);
-                }
-              },
-              itemBuilder: (_) => const [
-                PopupMenuItem(
-                  value: 'remove_squad',
-                  child: Text(
-                    'Remove from Squad',
-                    style: TextStyle(color: AppTheme.error),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -764,10 +612,25 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
       case 'remove_xi':
         notifier.setPlayingXI(player.id, false);
         break;
-      case 'remove_squad':
-        notifier.removePlayerFromSquad(player.id);
-        break;
     }
+  }
+
+  Future<void> _autoPickLineup(Squad squad) async {
+    final allCards = ref.read(userCardsProvider).valueOrNull ?? [];
+    if (allCards.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No cards in your collection to auto-pick')), 
+      );
+      return;
+    }
+
+    await ref.read(teamProvider.notifier).autoPickLineup(allCards);
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Auto-picked lineup applied')), 
+    );
   }
 
   void _showAddPlayerSheet(int position) {

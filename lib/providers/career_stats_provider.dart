@@ -88,6 +88,19 @@ class CareerStatsNotifier extends StateNotifier<List<PlayerCareerStats>> {
     final userId = SupabaseService.currentUserId;
     if (userId == null) return;
 
+    // Fetch the current user's own card IDs to avoid recording opponent stats
+    // (in multiplayer both teams have real UUIDs, so we must filter by ownership)
+    Set<String>? myCardIds;
+    try {
+      final rows = await SupabaseService.client
+          .from('user_cards')
+          .select('id')
+          .eq('user_id', userId);
+      myCardIds = Set<String>.from((rows as List).map((r) => r['id'].toString()));
+    } catch (_) {
+      // If lookup fails, fall back to the AI-prefix filter only
+    }
+
     // Aggregate per-player deltas from this match
     final deltas = <String, PlayerCareerStats>{};
 
@@ -97,6 +110,7 @@ class CareerStatsNotifier extends StateNotifier<List<PlayerCareerStats>> {
       if (parts.length < 2) continue;
       final userCardId = parts.sublist(1).join('_');
       if (userCardId.startsWith('ai')) continue;
+      if (myCardIds != null && !myCardIds.contains(userCardId)) continue;
 
       final bat = entry.value;
       final d = deltas.putIfAbsent(
@@ -116,6 +130,7 @@ class CareerStatsNotifier extends StateNotifier<List<PlayerCareerStats>> {
       if (parts.length < 2) continue;
       final userCardId = parts.sublist(1).join('_');
       if (userCardId.startsWith('ai')) continue;
+      if (myCardIds != null && !myCardIds.contains(userCardId)) continue;
 
       final bowl = entry.value;
       final d = deltas.putIfAbsent(
@@ -133,6 +148,7 @@ class CareerStatsNotifier extends StateNotifier<List<PlayerCareerStats>> {
       if (event.isWicket && event.fielderCardId != null) {
         final fid = event.fielderCardId!;
         if (fid.startsWith('ai')) continue;
+        if (myCardIds != null && !myCardIds.contains(fid)) continue;
         final wicketType = event.wicketType ?? '';
         if (wicketType == 'caught' || wicketType == 'caught_behind') {
           final d = deltas[fid];

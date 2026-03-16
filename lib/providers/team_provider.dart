@@ -60,7 +60,7 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
 
   Future<Team?> createTeam(String name) async {
     try {
-      final data = await SupabaseService.createTeam(name);
+      await SupabaseService.createTeam(name);
       // Reload to get full team with squads joined
       await loadTeam();
       return state.valueOrNull;
@@ -183,6 +183,145 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
     await SupabaseService.client
         .from('squad_players')
         .update({'batting_order': order}).eq('id', squadPlayerId);
+    await loadTeam();
+  }
+
+  Future<void> autoPickLineup(List<UserCard> allCards) async {
+    final team = state.valueOrNull;
+    if (team == null) return;
+    final squad = team.activeSquad;
+    if (squad == null) return;
+
+    // Sort entire collection by rating descending
+    final candidates = allCards
+        .where((c) => c.playerCard != null)
+        .toList()
+      ..sort((a, b) => (b.playerCard!.rating).compareTo(a.playerCard!.rating));
+
+    if (candidates.isEmpty) return;
+
+    int ratingOf(UserCard c) => c.playerCard?.rating ?? 0;
+    int battingOf(UserCard c) => c.playerCard?.batting ?? 0;
+    String roleOf(UserCard c) => c.playerCard?.role ?? 'batsman';
+
+    // Pick best per role: 4 bat, 1 WK, 2 AR, 4 bowl
+    final selected = <UserCard>[];
+    final selectedIds = <String>{};      // user_card UUIDs
+    final selectedCardIds = <String>{};  // underlying player_card UUIDs (prevent same player twice)
+
+    void pick(String role, int count) {
+      int picked = 0;
+      for (final card in candidates) {
+        if (picked >= count) break;
+        if (selectedIds.contains(card.id)) continue;
+        if (selectedCardIds.contains(card.cardId)) continue; // skip duplicate player
+        if (roleOf(card) == role) {
+          selected.add(card);
+          selectedIds.add(card.id);
+          selectedCardIds.add(card.cardId);
+          picked++;
+        }
+      }
+    }
+
+    pick('batsman', 4);
+    pick('wicket_keeper', 1);
+    pick('all_rounder', 2);
+    pick('bowler', 4);
+
+    // Fill any remaining slots by overall rating
+    for (final card in candidates) {
+      if (selected.length >= 11) break;
+      if (!selectedIds.contains(card.id) && !selectedCardIds.contains(card.cardId)) {
+        selected.add(card);
+        selectedIds.add(card.id);
+        selectedCardIds.add(card.cardId);
+      }
+    }
+
+    if (selected.isEmpty) return;
+
+    // Add any selected cards not yet in the squad
+    final existingUserCardIds = squad.players.map((sp) => sp.userCardId).toSet();
+    final usedPositions = squad.players.map((sp) => sp.position).toSet();
+
+    int nextAvailablePosition() {
+      for (int i = 1; i <= 30; i++) {
+        if (!usedPositions.contains(i)) {
+          usedPositions.add(i);
+          return i;
+        }
+      }
+      return -1;
+    }
+
+    bool squadChanged = false;
+    for (final card in selected) {
+      if (!existingUserCardIds.contains(card.id)) {
+        final pos = nextAvailablePosition();
+        if (pos == -1) continue; // squad is full (30 players)
+        await SupabaseService.client.from('squad_players').insert({
+          'squad_id': squad.id,
+          'user_card_id': card.id,
+          'position': pos,
+          'is_playing_xi': false,
+        });
+        existingUserCardIds.add(card.id);
+        squadChanged = true;
+      }
+    }
+
+    // Reload if new players were inserted so we have their squad_player IDs
+    if (squadChanged) await loadTeam();
+
+    final refreshedSquad = state.valueOrNull?.activeSquad ?? squad;
+    final spByUserCardId = <String, SquadPlayer>{
+      for (final sp in refreshedSquad.players) sp.userCardId: sp,
+    };
+
+    // Batting order: batsmen first, then WK, all-rounders, bowlers; within each by batting
+    int battingOrderScore(UserCard c) {
+      final role = roleOf(c);
+      final bonus = role == 'batsman'
+          ? 40
+          : role == 'wicket_keeper'
+              ? 30
+              : role == 'all_rounder'
+                  ? 20
+                  : 0;
+      return battingOf(c) * 2 + ratingOf(c) + bonus;
+    }
+
+    final battingOrder = List<UserCard>.from(selected)
+      ..sort((a, b) => battingOrderScore(b).compareTo(battingOrderScore(a)));
+
+    final battingOrderBySPId = <String, int>{};
+    for (int i = 0; i < battingOrder.length; i++) {
+      final sp = spByUserCardId[battingOrder[i].id];
+      if (sp != null) battingOrderBySPId[sp.id] = i + 1;
+    }
+
+    // Captain = highest rated, VC = second highest
+    final leadership = List<UserCard>.from(selected)
+      ..sort((a, b) => ratingOf(b).compareTo(ratingOf(a)));
+    final captainSPId = spByUserCardId[leadership.first.id]?.id;
+    final vcSPId = leadership.length > 1 ? spByUserCardId[leadership[1].id]?.id : null;
+
+    // Update all squad_players: set XI status, batting order, captain/VC
+    for (final sp in refreshedSquad.players) {
+      final isXI = selectedIds.contains(sp.userCardId);
+      await SupabaseService.client
+          .from('squad_players')
+          .update({
+            'is_playing_xi': isXI,
+            'batting_order': isXI ? battingOrderBySPId[sp.id] : null,
+            'is_captain': sp.id == captainSPId,
+            'is_vice_captain': vcSPId != null && sp.id == vcSPId,
+          })
+          .eq('id', sp.id);
+    }
+
+    await _normalizePlayingXIBattingOrder(refreshedSquad.id);
     await loadTeam();
   }
 
