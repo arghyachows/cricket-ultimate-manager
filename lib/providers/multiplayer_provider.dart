@@ -129,8 +129,30 @@ class MultiplayerNotifier extends StateNotifier<MultiplayerState> {
   RealtimeChannel? _roomChannel;
   Timer? _heartbeatTimer;
   String? _currentPresenceId;
+  static const Duration _presenceFreshnessWindow = Duration(seconds: 35);
 
   MultiplayerNotifier(this.ref) : super(const MultiplayerState());
+
+  List<RoomPresence> _normalizeUsersInRoom(List<RoomPresence> users) {
+    final nowUtc = DateTime.now().toUtc();
+    final latestByUserId = <String, RoomPresence>{};
+
+    for (final user in users) {
+      final lastSeenUtc = user.lastSeen.toUtc();
+      if (nowUtc.difference(lastSeenUtc) > _presenceFreshnessWindow) {
+        continue;
+      }
+
+      final existing = latestByUserId[user.userId];
+      if (existing == null || user.joinedAt.isAfter(existing.joinedAt)) {
+        latestByUserId[user.userId] = user;
+      }
+    }
+
+    final normalized = latestByUserId.values.toList()
+      ..sort((a, b) => a.joinedAt.compareTo(b.joinedAt));
+    return normalized;
+  }
 
   Future<void> loadRooms() async {
     state = state.copyWith(isLoading: true, error: null);
@@ -340,11 +362,8 @@ class MultiplayerNotifier extends StateNotifier<MultiplayerState> {
   void _handleUserJoined(Map<String, dynamic> data) {
     try {
       final newUser = RoomPresence.fromJson(data);
-      // Check if user already exists (avoid duplicates)
-      if (!state.usersInRoom.any((u) => u.id == newUser.id)) {
-        final updatedUsers = [...state.usersInRoom, newUser];
-        state = state.copyWith(usersInRoom: updatedUsers);
-      }
+      final updatedUsers = _normalizeUsersInRoom([...state.usersInRoom, newUser]);
+      state = state.copyWith(usersInRoom: updatedUsers);
     } catch (e) {
       print('Error handling user joined: $e');
     }
@@ -353,9 +372,10 @@ class MultiplayerNotifier extends StateNotifier<MultiplayerState> {
   void _handleUserUpdated(Map<String, dynamic> data) {
     try {
       final updatedUser = RoomPresence.fromJson(data);
-      final updatedUsers = state.usersInRoom.map((u) {
+      final mergedUsers = state.usersInRoom.map((u) {
         return u.id == updatedUser.id ? updatedUser : u;
       }).toList();
+      final updatedUsers = _normalizeUsersInRoom(mergedUsers);
       state = state.copyWith(usersInRoom: updatedUsers);
     } catch (e) {
       print('Error handling user updated: $e');
@@ -365,7 +385,9 @@ class MultiplayerNotifier extends StateNotifier<MultiplayerState> {
   void _handleUserLeft(Map<String, dynamic> data) {
     try {
       final deletedId = data['id'];
-      final updatedUsers = state.usersInRoom.where((u) => u.id != deletedId).toList();
+      final updatedUsers = _normalizeUsersInRoom(
+        state.usersInRoom.where((u) => u.id != deletedId).toList(),
+      );
       state = state.copyWith(usersInRoom: updatedUsers);
     } catch (e) {
       print('Error handling user left: $e');
@@ -429,7 +451,9 @@ class MultiplayerNotifier extends StateNotifier<MultiplayerState> {
           .eq('room_id', roomId)
           .order('joined_at');
 
-      final users = (data as List).map((json) => RoomPresence.fromJson(json)).toList();
+      final users = _normalizeUsersInRoom(
+        (data as List).map((json) => RoomPresence.fromJson(json)).toList(),
+      );
       state = state.copyWith(usersInRoom: users);
     } catch (e) {
       print('Error loading room users: $e');

@@ -247,6 +247,8 @@ class MultiplayerMatchScreen extends ConsumerStatefulWidget {
 
 class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
     with SingleTickerProviderStateMixin {
+  static const Duration _tossDecisionFallbackDelay = Duration(seconds: 12);
+
   late TabController _tabController;
   _MultiplayerMatchState _state = const _MultiplayerMatchState();
 
@@ -255,6 +257,55 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
 
   // Match DB data
   Map<String, dynamic>? _matchData;
+  Timer? _tossDecisionFallbackTimer;
+
+  String _normalizeTossWinner(dynamic rawWinner, Map<String, dynamic> data) {
+    final value = (rawWinner ?? '').toString();
+    if (value == 'home' || value == 'away') return value;
+
+    final homeTeamId = (data['home_team_id'] ?? '').toString();
+    final awayTeamId = (data['away_team_id'] ?? '').toString();
+    if (value.isNotEmpty && value == homeTeamId) return 'home';
+    if (value.isNotEmpty && value == awayTeamId) return 'away';
+    return '';
+  }
+
+  bool _isCurrentUserTossWinner(String tossWinner, Map<String, dynamic> data) {
+    final userId = SupabaseService.currentUserId;
+    if (userId == null || tossWinner.isEmpty) return false;
+    if (tossWinner == 'home') return data['home_user_id'] == userId;
+    if (tossWinner == 'away') return data['away_user_id'] == userId;
+    return false;
+  }
+
+  void _cancelTossDecisionFallback() {
+    _tossDecisionFallbackTimer?.cancel();
+    _tossDecisionFallbackTimer = null;
+  }
+
+  void _scheduleTossDecisionFallback() {
+    _cancelTossDecisionFallback();
+    if (_state.tossComplete ||
+        _state.tossWinner.isEmpty ||
+        _state.tossDecision.isNotEmpty) {
+      return;
+    }
+
+    _tossDecisionFallbackTimer = Timer(_tossDecisionFallbackDelay, () async {
+      if (!mounted ||
+          _state.tossComplete ||
+          _state.tossWinner.isEmpty ||
+          _state.tossDecision.isNotEmpty) {
+        return;
+      }
+
+      await _chooseTossDecision(
+        'bat',
+        force: true,
+        silentFailure: true,
+      );
+    });
+  }
 
   @override
   void initState() {
@@ -265,6 +316,7 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
 
   @override
   void dispose() {
+    _cancelTossDecisionFallback();
     _tabController.dispose();
     _realtimeSub?.cancel();
     // Unsubscribe from realtime channel
@@ -296,11 +348,15 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
             awayTeamName: data['away_team_name'] ?? 'Away',
             matchOvers: data['match_overs'] ?? 20,
             matchFormat: data['match_format'] ?? 't20',
+            tossWinner: _normalizeTossWinner(data['toss_winner'], data),
+            tossDecision: data['toss_decision'] ?? '',
+            homeBatsFirst: data['home_bats_first'] ?? true,
             isSimulator: false, // Server-side simulation — both users are watchers
           ));
 
       // If match already completed, show result
       if (data['status'] == 'completed') {
+        _cancelTossDecisionFallback();
         _showCompletedMatch(data);
         return;
       }
@@ -310,13 +366,31 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
 
       // If match already in progress, sync state
       if (data['status'] == 'in_progress') {
+        _cancelTossDecisionFallback();
         _setState((s) => s.copyWith(tossComplete: true));
         _syncFromDb(data);
         return;
       }
 
+      final tossWinner = _normalizeTossWinner(data['toss_winner'], data);
+      final tossDecision = data['toss_decision'] ?? '';
+      if (tossWinner.isNotEmpty && tossDecision.isEmpty) {
+        _setState((s) => s.copyWith(
+              tossAnimating: false,
+              tossWinner: tossWinner,
+              tossDecision: '',
+              tossComplete: false,
+              currentCommentary: (tossWinner == 'home'
+                      ? _state.homeTeamName
+                      : _state.awayTeamName) +
+                  ' won the toss',
+            ));
+        _scheduleTossDecisionFallback();
+        return;
+      }
+
       // Match is waiting — away user triggers the toss
-      if (isAway) {
+      if (isAway && tossWinner.isEmpty) {
         _doToss();
       }
     } catch (e) {
@@ -374,6 +448,10 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
   }
 
   void _syncFromDb(Map<String, dynamic> data) {
+    _matchData = data;
+    final tossWinner = _normalizeTossWinner(data['toss_winner'], data);
+    final tossDecision = data['toss_decision'] ?? '';
+
     // Deserialize scorecard data if available
     Map<String, BatsmanStats> watcherBatsmanStats = {};
     Map<String, BowlerStats> watcherBowlerStats = {};
@@ -384,6 +462,8 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
     }
 
     _setState((s) => s.copyWith(
+          tossWinner: tossWinner.isEmpty ? s.tossWinner : tossWinner,
+          tossDecision: tossDecision.isEmpty ? s.tossDecision : tossDecision,
           homeScore: data['home_score'] ?? 0,
           homeWickets: data['home_wickets'] ?? 0,
           awayScore: data['away_score'] ?? 0,
@@ -402,6 +482,12 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
           bowlerStats: watcherBowlerStats,
           commentaryLog: _parseCommentaryLog(data['commentary_log']),
         ));
+
+    if (data['status'] == 'in_progress' || tossDecision.isNotEmpty) {
+      _cancelTossDecisionFallback();
+    } else if (tossWinner.isNotEmpty) {
+      _scheduleTossDecisionFallback();
+    }
   }
 
   /// Parse the commentary_log JSONB array from the DB into _CommentaryEntry list
@@ -422,6 +508,7 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
   // ─── Toss Logic ───────────────────────────────────────────────────
 
   Future<void> _doToss() async {
+    _cancelTossDecisionFallback();
     _setState((s) => s.copyWith(tossAnimating: true));
     await Future.delayed(const Duration(milliseconds: 1500));
 
@@ -429,19 +516,100 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
     final homeWinsToss = _rng.nextBool();
     final tossWinner = homeWinsToss ? 'home' : 'away';
 
-    // The toss winner (for simplicity) always chooses to bat
-    const decision = 'bat';
-    final homeBatsFirst = homeWinsToss;
-
     _setState((s) => s.copyWith(
           tossAnimating: false,
           tossWinner: tossWinner,
-          tossDecision: decision,
-          homeBatsFirst: homeBatsFirst,
+          tossDecision: '',
         ));
 
-    // Update DB with toss result + simulation parameters
+    final dynamic winnerTeamId;
+    if (tossWinner == 'home') {
+      winnerTeamId = _matchData?['home_team_id'];
+    } else {
+      winnerTeamId = _matchData?['away_team_id'];
+    }
+
+    // Persist toss winner first; winner will choose bat/bowl on UI.
     try {
+      await SupabaseService.client
+          .from('multiplayer_matches')
+          .update({
+            'toss_winner': winnerTeamId,
+            'toss_decision': null,
+            'current_commentary':
+                '${tossWinner == 'home' ? _state.homeTeamName : _state.awayTeamName} won the toss',
+          })
+          .eq('id', widget.matchId);
+      _scheduleTossDecisionFallback();
+    } catch (e) {
+      // Backward-compat fallback: older DBs may not have toss_winner/toss_decision
+      // columns yet. Start match directly so users aren't stuck on toss.
+      try {
+        await SupabaseService.client
+            .from('multiplayer_matches')
+            .update({
+              'status': 'in_progress',
+              'started_at': DateTime.now().toUtc().toIso8601String(),
+              'home_score': 0,
+              'away_score': 0,
+              'home_wickets': 0,
+              'away_wickets': 0,
+              'current_innings': 1,
+              'home_bats_first': homeWinsToss,
+              'current_commentary':
+                  '${homeWinsToss ? _state.homeTeamName : _state.awayTeamName} won the toss and chose to bat',
+            })
+            .eq('id', widget.matchId);
+
+        _setState((s) => s.copyWith(
+              tossAnimating: false,
+              tossDecision: 'bat',
+              homeBatsFirst: homeWinsToss,
+              tossComplete: true,
+            ));
+
+        _invokeServerSimulation();
+      } catch (fallbackError) {
+        _setState((s) => s.copyWith(
+              tossAnimating: false,
+              error: 'Failed to save toss result: $e | fallback failed: $fallbackError',
+            ));
+      }
+    }
+  }
+
+  Future<void> _chooseTossDecision(
+    String decision, {
+    bool force = false,
+    bool silentFailure = false,
+  }) async {
+    final data = _matchData;
+    if (data == null) return;
+    if (_state.tossWinner.isEmpty) return;
+    if (!force && !_isCurrentUserTossWinner(_state.tossWinner, data)) return;
+
+    final homeBatsFirst = (_state.tossWinner == 'home' && decision == 'bat') ||
+        (_state.tossWinner == 'away' && decision == 'bowl');
+
+    _setState((s) => s.copyWith(tossAnimating: true));
+
+    try {
+      final latest = await SupabaseService.client
+          .from('multiplayer_matches')
+          .select('status, toss_decision')
+          .eq('id', widget.matchId)
+          .single();
+
+      final latestStatus = (latest['status'] ?? '').toString();
+      final latestDecision = (latest['toss_decision'] ?? '').toString();
+      if (latestStatus == 'in_progress' ||
+          latestStatus == 'completed' ||
+          latestDecision.isNotEmpty) {
+        _setState((s) => s.copyWith(tossAnimating: false));
+        _cancelTossDecisionFallback();
+        return;
+      }
+
       await SupabaseService.client
           .from('multiplayer_matches')
           .update({
@@ -452,19 +620,33 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
             'home_wickets': 0,
             'away_wickets': 0,
             'current_innings': 1,
+            'toss_decision': decision,
             'home_bats_first': homeBatsFirst,
             'current_commentary':
-                '${homeBatsFirst ? _state.homeTeamName : _state.awayTeamName} won the toss and chose to bat',
+                '${_state.tossWinner == 'home' ? _state.homeTeamName : _state.awayTeamName} won the toss and chose to ${decision == 'bat' ? 'bat' : 'bowl'}',
           })
           .eq('id', widget.matchId);
-    } catch (_) {}
 
-    // Brief delay to show toss result, then start
-    await Future.delayed(const Duration(seconds: 2));
-    _setState((s) => s.copyWith(tossComplete: true));
+      _setState((s) => s.copyWith(
+            tossAnimating: false,
+            tossDecision: decision,
+            homeBatsFirst: homeBatsFirst,
+            tossComplete: true,
+          ));
 
-    // Call the server-side Edge Function to simulate the match
-    _invokeServerSimulation();
+      _cancelTossDecisionFallback();
+
+      _invokeServerSimulation();
+    } catch (e) {
+      if (silentFailure) {
+        _setState((s) => s.copyWith(tossAnimating: false));
+        return;
+      }
+      _setState((s) => s.copyWith(
+            tossAnimating: false,
+            error: 'Failed to apply toss decision: $e',
+          ));
+    }
   }
 
   /// Invokes the Supabase Edge Function to run simulation server-side.
@@ -545,7 +727,10 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
   }
 
   void _onRealtimeUpdate(Map<String, dynamic> data) {
+    _matchData = data;
     final status = data['status'] as String?;
+    final tossWinner = _normalizeTossWinner(data['toss_winner'], data);
+    final tossDecision = data['toss_decision'] as String? ?? '';
     final commentary = data['current_commentary'] as String? ?? '';
     final hScore = data['home_score'] as int? ?? 0;
     final hWickets = data['home_wickets'] as int? ?? 0;
@@ -593,6 +778,7 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
     }
 
     if (status == 'completed') {
+      _cancelTossDecisionFallback();
       final winnerId = data['winner_user_id'];
       final userId = SupabaseService.currentUserId;
       bool? homeWon;
@@ -661,10 +847,32 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
       return;
     }
 
+    if (status != 'in_progress') {
+      _setState((s) => s.copyWith(
+            tossAnimating: false,
+            tossComplete: false,
+            tossWinner: tossWinner.isEmpty ? s.tossWinner : tossWinner,
+            tossDecision: tossDecision,
+            currentCommentary: commentary.isEmpty
+                ? s.currentCommentary
+                : commentary,
+          ));
+      if (tossWinner.isNotEmpty && tossDecision.isEmpty) {
+        _scheduleTossDecisionFallback();
+      } else {
+        _cancelTossDecisionFallback();
+      }
+      return;
+    }
+
+    _cancelTossDecisionFallback();
+
     // In progress update
     _setState((s) => s.copyWith(
           tossComplete: true,
           isSimulating: true,
+          tossWinner: tossWinner.isEmpty ? s.tossWinner : tossWinner,
+          tossDecision: tossDecision.isEmpty ? s.tossDecision : tossDecision,
           homeBatsFirst: homeBatsFirst ?? s.homeBatsFirst,
           homeScore: hScore,
           homeWickets: hWickets,
@@ -765,6 +973,13 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
   // ─── Toss Screen ──────────────────────────────────────────────────
 
   Widget _buildTossScreen() {
+    final isWinner = _matchData != null &&
+        _isCurrentUserTossWinner(_state.tossWinner, _matchData!);
+    final canChoose = _state.tossWinner.isNotEmpty &&
+        _state.tossDecision.isEmpty &&
+        isWinner &&
+        !_state.tossAnimating;
+
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(title: const Text('TOSS')),
@@ -818,7 +1033,8 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
                 'Flipping coin...',
                 style: TextStyle(fontSize: 18, color: Colors.white70),
               )
-            else if (_state.tossWinner.isNotEmpty) ...[
+            else if (_state.tossWinner.isNotEmpty &&
+                _state.tossDecision.isNotEmpty) ...[
               Text(
                 _state.tossWinner == 'home'
                     ? '${_state.homeTeamName} won the toss!'
@@ -834,6 +1050,43 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
                 'Elected to ${_state.tossDecision}',
                 style: const TextStyle(fontSize: 16, color: Colors.white54),
               ),
+            ] else if (_state.tossWinner.isNotEmpty) ...[
+              Text(
+                _state.tossWinner == 'home'
+                    ? '${_state.homeTeamName} won the toss!'
+                    : '${_state.awayTeamName} won the toss!',
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.accent,
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (canChoose) ...[
+                const Text(
+                  'Choose batting or bowling',
+                  style: TextStyle(fontSize: 14, color: Colors.white70),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ElevatedButton(
+                      onPressed: () => _chooseTossDecision('bat'),
+                      child: const Text('BAT'),
+                    ),
+                    const SizedBox(width: 12),
+                    OutlinedButton(
+                      onPressed: () => _chooseTossDecision('bowl'),
+                      child: const Text('BOWL'),
+                    ),
+                  ],
+                ),
+              ] else
+                const Text(
+                  'Waiting for toss winner to choose...',
+                  style: TextStyle(fontSize: 16, color: Colors.white54),
+                ),
             ] else
               const Text(
                 'Waiting for toss...',
