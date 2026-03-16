@@ -284,64 +284,69 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen>
   }
 
   Widget _buildBatsmanPanel(MatchState state) {
-    // Show only current innings batsmen who are not out (max 2 at crease)
     final activeBatsmen = state.currentBatsmen.take(2).toList();
-
     if (activeBatsmen.isEmpty) return const SizedBox();
 
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: AppTheme.surface,
-      child: Row(
-        children: activeBatsmen.map((b) {
-          return Expanded(
-            child: Row(
-              children: [
-                const Icon(Icons.sports_cricket, size: 14, color: AppTheme.accent),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    b.name,
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-                    overflow: TextOverflow.ellipsis,
-                  ),
+      color: AppTheme.surfaceLight,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.sports_cricket, size: 16, color: AppTheme.accent),
+              SizedBox(width: 8),
+              Text(
+                'AT CREASE',
+                style: TextStyle(fontSize: 10, color: Colors.white38),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          for (var i = 0; i < activeBatsmen.length; i++)
+            Padding(
+              padding: EdgeInsets.only(bottom: i < activeBatsmen.length - 1 ? 2 : 0),
+              child: Text(
+                '${activeBatsmen[i].name}${i == 0 ? '*' : ''} ${activeBatsmen[i].runs} (${activeBatsmen[i].balls})',
+                style: TextStyle(
+                  fontSize: i == 0 ? 14 : 13,
+                  fontWeight: i == 0 ? FontWeight.w600 : FontWeight.normal,
+                  color: i == 0 ? Colors.white : Colors.white70,
                 ),
-                Text(
-                  '${b.runs}(${b.balls})',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.accent,
-                  ),
-                ),
-              ],
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
-          );
-        }).toList(),
+        ],
       ),
     );
   }
 
   Widget _buildBowlerPanel(MatchState state) {
-    // Show the most recent bowler for the current innings
     final currentBowlers = state.currentBowlers;
     if (currentBowlers.isEmpty) return const SizedBox();
-
-    // The last bowler in the list is typically the current one
     final bowler = currentBowlers.last;
+    final figures = '${bowler.wickets}/${bowler.runs} (${bowler.oversDisplay})';
 
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      color: AppTheme.surfaceLight,
+      color: AppTheme.surface,
       child: Row(
         children: [
-          const Icon(Icons.sports_baseball, size: 14, color: Colors.redAccent),
-          const SizedBox(width: 6),
-          Text(bowler.name, style: const TextStyle(fontSize: 13)),
-          const Spacer(),
-          Text(
-            '${bowler.oversDisplay}-${bowler.maidens}-${bowler.runs}-${bowler.wickets}',
-            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+          const Icon(Icons.sports_baseball, size: 14, color: AppTheme.primary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '${bowler.name} · $figures',
+              style: const TextStyle(fontSize: 13, color: Colors.white70),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const Text(
+            'BOWLING',
+            style: TextStyle(fontSize: 10, color: Colors.white38),
           ),
         ],
       ),

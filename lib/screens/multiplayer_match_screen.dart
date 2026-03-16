@@ -364,6 +364,9 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
           homeBatsFirst: data['home_bats_first'] ?? true,
           coinsAwarded: coins,
           xpAwarded: xp,
+          homeBatsman: data['home_batsman'] ?? '',
+          awayBatsman: data['away_batsman'] ?? '',
+          currentBowler: data['current_bowler'] ?? '',
           batsmanStats: watcherBatsmanStats,
           bowlerStats: watcherBowlerStats,
           commentaryLog: _parseCommentaryLog(data['commentary_log']),
@@ -392,6 +395,7 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
           target: data['target'] ?? 0,
           homeBatsFirst: data['home_bats_first'] ?? true,
           homeBatsman: data['home_batsman'] ?? '',
+          awayBatsman: data['away_batsman'] ?? '',
           currentBowler: data['current_bowler'] ?? '',
           isSimulating: data['status'] == 'in_progress',
           batsmanStats: watcherBatsmanStats,
@@ -555,6 +559,7 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
     final eventType = data['last_event_type'] as String? ?? '';
     final lastRuns = data['last_runs'] as int? ?? 0;
     final homeBatsman = data['home_batsman'] as String? ?? '';
+    final awayBatsman = data['away_batsman'] as String? ?? '';
     final currentBowler = data['current_bowler'] as String? ?? '';
     final homeBatsFirst = data['home_bats_first'] as bool?;
 
@@ -621,6 +626,7 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
             target: target,
             commentaryLog: updatedLog,
             homeBatsman: homeBatsman,
+            awayBatsman: awayBatsman,
             currentBowler: currentBowler,
             batsmanStats: watcherBatsmanStats,
             bowlerStats: watcherBowlerStats,
@@ -673,6 +679,7 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
           lastEventType: eventType,
           lastRuns: lastRuns,
           homeBatsman: homeBatsman,
+          awayBatsman: awayBatsman,
           currentBowler: currentBowler,
           batsmanStats: watcherBatsmanStats,
           bowlerStats: watcherBowlerStats,
@@ -1040,7 +1047,7 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
         ),
 
         // Batsman panel
-        if (s.homeBatsman.isNotEmpty)
+        if (s.homeBatsman.isNotEmpty || s.awayBatsman.isNotEmpty || s.currentBatsmen.isNotEmpty)
           _buildWatcherBatsmanPanel(),
 
         // Bowler panel
@@ -1057,37 +1064,95 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
     );
   }
 
-  // ─── Watcher panels (use DB-synced names) ────────────────────────
+  // ─── Watcher panels (use DB-synced names + scorecard figures) ───
+
+  BatsmanStats? _findCurrentBatsmanStats(String name) {
+    if (name.trim().isEmpty) return null;
+    final innings = _state.currentInnings;
+    final candidates = _state.batsmanStats.values.where((b) => b.innings == innings);
+    for (final b in candidates) {
+      if (b.name == name) return b;
+    }
+    return null;
+  }
+
+  BowlerStats? _findCurrentBowlerStats(String name) {
+    if (name.trim().isEmpty) return null;
+    final innings = _state.currentInnings;
+    final candidates = _state.bowlerStats.values.where((b) => b.innings == innings);
+    for (final b in candidates) {
+      if (b.name == name) return b;
+    }
+    return null;
+  }
 
   Widget _buildWatcherBatsmanPanel() {
+    final strikerName = _state.homeBatsman.trim();
+    final nonStrikerName = _state.awayBatsman.trim();
+    final strikerStats = _findCurrentBatsmanStats(strikerName);
+    final nonStrikerStats = _findCurrentBatsmanStats(nonStrikerName);
+    final fallbackAtCrease = _state.currentBatsmen;
+    final hasPrimaryNames = strikerName.isNotEmpty || nonStrikerName.isNotEmpty;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       color: AppTheme.surfaceLight,
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.sports_cricket, size: 16, color: AppTheme.accent),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              _state.homeBatsman,
+          Row(
+            children: const [
+              Icon(Icons.sports_cricket, size: 16, color: AppTheme.accent),
+              SizedBox(width: 8),
+              Text(
+                'AT CREASE',
+                style: TextStyle(fontSize: 10, color: Colors.white38),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          if (hasPrimaryNames) ...[
+            Text(
+              '${strikerName.isEmpty ? 'Striker' : strikerName}* ${strikerStats == null ? '' : '${strikerStats.runs} (${strikerStats.balls})'}',
               style: const TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
                 color: Colors.white,
               ),
+              overflow: TextOverflow.ellipsis,
             ),
-          ),
-          const Text(
-            'BATTING',
-            style: TextStyle(fontSize: 10, color: Colors.white38),
-          ),
+            const SizedBox(height: 2),
+            Text(
+              '${nonStrikerName.isEmpty ? 'Non-striker' : nonStrikerName} ${nonStrikerStats == null ? '' : '${nonStrikerStats.runs} (${nonStrikerStats.balls})'}',
+              style: const TextStyle(
+                fontSize: 13,
+                color: Colors.white70,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ] else ...[
+            for (var i = 0; i < fallbackAtCrease.length && i < 2; i++)
+              Text(
+                '${fallbackAtCrease[i].name}${i == 0 ? '*' : ''} ${fallbackAtCrease[i].runs} (${fallbackAtCrease[i].balls})',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+          ],
         ],
       ),
     );
   }
 
   Widget _buildWatcherBowlerPanel() {
+    final bowlerName = _state.currentBowler.trim();
+    final bowler = _findCurrentBowlerStats(bowlerName);
+    final figures = bowler == null ? '' : '${bowler.wickets}/${bowler.runs} (${bowler.oversDisplay})';
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -1098,11 +1163,12 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              _state.currentBowler,
+              bowlerName.isEmpty ? 'Current Bowler' : '$bowlerName${figures.isEmpty ? '' : ' · $figures'}',
               style: const TextStyle(
                 fontSize: 13,
                 color: Colors.white70,
               ),
+              overflow: TextOverflow.ellipsis,
             ),
           ),
           const Text(

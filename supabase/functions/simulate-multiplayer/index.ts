@@ -143,6 +143,9 @@ class MatchEngine {
   get currentBatsman(): Player {
     return this.currentBatting[this.currentBatsmanIndex];
   }
+  get nonStriker(): Player {
+    return this.currentBatting[this.nonStrikerIndex];
+  }
   get currentBowler(): Player {
     return this.currentBowling[
       this.currentBowlerIndex % this.currentBowling.length
@@ -895,9 +898,11 @@ serve(async (req) => {
       const aWickets = homeBatsFirst ? engine.wickets2 : engine.wickets1;
 
       let batsmanName = "";
+      let nonStrikerName = "";
       let bowlerName = "";
       if (result.eventType !== "innings_break") {
         batsmanName = engine.getName(result.batsmanCardId);
+        nonStrikerName = engine.nonStriker.name;
         bowlerName = engine.getName(result.bowlerCardId);
       }
 
@@ -945,6 +950,7 @@ serve(async (req) => {
           last_runs: result.runs,
           target: engine.target,
           home_batsman: batsmanName,
+          away_batsman: nonStrikerName,
           current_bowler: bowlerName,
           scorecard_data: {
             batsmen: engine.batsmanStats,
@@ -1002,6 +1008,9 @@ serve(async (req) => {
         current_commentary: matchResult,
         winner_user_id: winnerId,
         target: engine.target,
+        home_batsman: engine.currentBatsman.name,
+        away_batsman: engine.nonStriker.name,
+        current_bowler: engine.currentBowler.name,
         scorecard_data: {
           batsmen: engine.batsmanStats,
           bowlers: engine.bowlerStats,
