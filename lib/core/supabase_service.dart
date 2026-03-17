@@ -6,9 +6,14 @@ class SupabaseService {
 
   // ---- AUTH ----
   static Future<AuthResponse> signUp(String email, String password, String username) async {
-    final response = await auth.signUp(email: email, password: password);
+    final response = await auth.signUp(
+      email: email,
+      password: password,
+      data: {'username': username, 'display_name': username},
+    );
     if (response.user != null) {
-      await client.from('users').insert({
+      // Trigger on auth.users creates the row; update it to ensure username is set
+      await client.from('users').upsert({
         'id': response.user!.id,
         'username': username,
         'display_name': username,

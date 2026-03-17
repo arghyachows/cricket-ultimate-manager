@@ -57,6 +57,45 @@ class MarketListing {
   }
 }
 
+class MarketBid {
+  final String id;
+  final String listingId;
+  final String bidderId;
+  final int bidAmount;
+  final String status; // 'active', 'outbid', 'won', 'lost'
+  final DateTime createdAt;
+  final MarketListing? listing;
+
+  const MarketBid({
+    required this.id,
+    required this.listingId,
+    required this.bidderId,
+    required this.bidAmount,
+    this.status = 'active',
+    required this.createdAt,
+    this.listing,
+  });
+
+  factory MarketBid.fromJson(Map<String, dynamic> json) {
+    return MarketBid(
+      id: json['id'],
+      listingId: json['listing_id'],
+      bidderId: json['bidder_id'],
+      bidAmount: json['bid_amount'],
+      status: json['status'] ?? 'active',
+      createdAt: DateTime.parse(json['created_at']),
+      listing: json['transfer_market'] != null
+          ? MarketListing.fromJson(json['transfer_market'])
+          : null,
+    );
+  }
+
+  bool get isActive => status == 'active';
+  bool get isWon => status == 'won';
+  bool get isOutbid => status == 'outbid';
+  bool get isLost => status == 'lost';
+}
+
 class PackType {
   final String id;
   final String name;

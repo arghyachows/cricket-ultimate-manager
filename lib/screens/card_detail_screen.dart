@@ -8,6 +8,7 @@ import '../core/supabase_service.dart';
 import '../models/models.dart';
 import '../providers/providers.dart';
 import '../widgets/player_card_widget.dart';
+import 'market_screen.dart' show showSellOnMarketDialog;
 
 int quickSellPrice(String rarity) =>
     AppConstants.quickSellPrices[rarity] ?? 25;
@@ -426,9 +427,7 @@ class CardDetailScreen extends ConsumerWidget {
             width: double.infinity,
             child: OutlinedButton.icon(
               onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Navigate to sell screen')),
-                );
+                showSellOnMarketDialog(context, ref, userCard);
               },
               icon: const Icon(Icons.sell),
               label: const Text('SELL ON MARKET'),

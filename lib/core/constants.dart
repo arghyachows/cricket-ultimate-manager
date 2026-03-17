@@ -35,6 +35,16 @@ class AppConstants {
   static const int maxListingPrice = 10000000;
   static const int listingDurationHours = 24;
   static const double marketTax = 0.05;
+  static const int minBidIncrement = 10;
+
+  /// Minimum starting bid per rarity when listing a card for sale
+  static const Map<String, int> minBidByRarity = {
+    'bronze': 50,
+    'silver': 200,
+    'gold': 1000,
+    'elite': 5000,
+    'legend': 25000,
+  };
 
   // Chemistry bonuses
   static const int countryChemistryBonus = 3;

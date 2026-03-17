@@ -111,7 +111,7 @@ class AuthController extends StateNotifier<AsyncValue<void>> {
     state = const AsyncValue.loading();
     try {
       await SupabaseService.signUp(email, password, username);
-      ref.read(currentUserProvider.notifier).loadUser();
+      await ref.read(currentUserProvider.notifier).loadUser();
       state = const AsyncValue.data(null);
       return true;
     } catch (e, st) {

@@ -15,7 +15,7 @@ class UserCardsNotifier extends StateNotifier<AsyncValue<List<UserCard>>> {
 
   Future<void> loadCards() async {
     try {
-      state = const AsyncValue.loading();
+      if (!state.hasValue) state = const AsyncValue.loading();
       final data = await SupabaseService.getUserCards();
       final cards = data.map((json) => UserCard.fromJson(json)).toList();
       state = AsyncValue.data(cards);
