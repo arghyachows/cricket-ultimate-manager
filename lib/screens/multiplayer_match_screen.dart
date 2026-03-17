@@ -11,6 +11,7 @@ import '../providers/match_provider.dart';
 import '../providers/multiplayer_provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/career_stats_provider.dart';
+import '../core/notification_service.dart';
 
 // ─── Local state for multiplayer match ─────────────────────────────────────
 
@@ -447,6 +448,17 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
           bowlerStats: watcherBowlerStats,
           commentaryLog: _parseCommentaryLog(data['commentary_log']),
         ));
+
+    // Send local notification
+    final resultLabel = userWon
+        ? 'Victory!'
+        : isDraw
+            ? 'Draw'
+            : 'Defeat';
+    NotificationService.instance.showMatchResult(
+      title: 'Multiplayer Match $resultLabel',
+      body: '${data['match_result'] ?? 'Match Complete'} — +$coins coins, +$xp XP',
+    );
   }
 
   void _syncFromDb(Map<String, dynamic> data) {
@@ -824,6 +836,17 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
       // Server awards rewards via Edge Function
       ref.invalidate(activeMultiplayerMatchProvider);
       ref.read(currentUserProvider.notifier).silentRefresh();
+
+      // Send local notification
+      final rtResultLabel = userWon
+          ? 'Victory!'
+          : isDraw
+              ? 'Draw'
+              : 'Defeat';
+      NotificationService.instance.showMatchResult(
+        title: 'Multiplayer Match $rtResultLabel',
+        body: '${matchResult ?? 'Match Complete'} — +$coins coins, +$xp XP',
+      );
 
       // Persist per-player career stats
       final hbfFinal = homeBatsFirst ?? _state.homeBatsFirst;

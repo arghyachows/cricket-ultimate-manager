@@ -4,9 +4,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'core/router.dart';
 import 'core/theme.dart';
+import 'core/notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  await NotificationService.instance.init();
 
   await Supabase.initialize(
     url: const String.fromEnvironment('SUPABASE_URL',

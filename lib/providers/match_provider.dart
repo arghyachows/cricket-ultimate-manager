@@ -4,6 +4,7 @@ import '../core/supabase_service.dart';
 import '../core/constants.dart';
 import '../models/models.dart';
 import '../engine/match_engine.dart';
+import '../core/notification_service.dart';
 import 'auth_provider.dart';
 import 'career_stats_provider.dart';
 
@@ -560,6 +561,18 @@ class MatchNotifier extends StateNotifier<MatchState> {
       coinsAwarded: coins,
       xpAwarded: xp,
       isMatchComplete: true,
+    );
+
+    // Send local notification
+    final resultLabel = homeWon == true
+        ? 'Victory!'
+        : homeWon == false
+            ? 'Defeat'
+            : 'Draw';
+    NotificationService.instance.showMatchResult(
+      title: 'Quick Match $resultLabel',
+      body:
+          '${state.homeTeamName} ${state.homeScore}/${state.homeWickets} vs ${state.awayTeamName} ${state.awayScore}/${state.awayWickets} — +$coins coins, +$xp XP',
     );
 
     // Save to match history
