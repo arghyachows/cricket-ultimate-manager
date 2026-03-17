@@ -9,7 +9,12 @@ import '../widgets/player_card_widget.dart';
 
 class PackOpeningScreen extends ConsumerStatefulWidget {
   final String packTypeId;
-  const PackOpeningScreen({super.key, required this.packTypeId});
+  final bool fromInventory;
+  const PackOpeningScreen({
+    super.key,
+    required this.packTypeId,
+    this.fromInventory = false,
+  });
 
   @override
   ConsumerState<PackOpeningScreen> createState() => _PackOpeningScreenState();
@@ -41,6 +46,19 @@ class _PackOpeningScreenState extends ConsumerState<PackOpeningScreen>
   @override
   Widget build(BuildContext context) {
     final packState = ref.watch(packOpeningProvider);
+
+    // Inventory packs bypass the store packType lookup entirely
+    if (widget.fromInventory) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        appBar: AppBar(
+          title: const Text('PACK OPENING'),
+          backgroundColor: Colors.transparent,
+        ),
+        body: _buildInventoryBody(packState),
+      );
+    }
+
     final packsAsync = ref.watch(packTypesProvider);
 
     return Scaffold(
@@ -101,6 +119,28 @@ class _PackOpeningScreenState extends ConsumerState<PackOpeningScreen>
         },
       ),
     );
+  }
+
+  Widget _buildInventoryBody(PackOpeningState packState) {
+    if (packState.isOpening) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(color: AppTheme.accent),
+            SizedBox(height: 16),
+            Text('Opening pack...', style: TextStyle(color: Colors.white70)),
+          ],
+        ),
+      );
+    }
+
+    if (packState.revealedCards.isNotEmpty) {
+      return _buildRevealView(packState);
+    }
+
+    // Fallback — shouldn't normally reach here
+    return const Center(child: Text('No cards to reveal'));
   }
 
   Widget _buildUnopenedPack(PackType pack) {

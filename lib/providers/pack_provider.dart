@@ -152,6 +152,16 @@ class PackOpeningNotifier extends StateNotifier<PackOpeningState> {
     }
   }
 
+  /// Load pre-generated cards (e.g. from inventory pack) into reveal state.
+  void openWithCards(List<UserCard> cards) {
+    state = PackOpeningState(
+      isOpening: false,
+      revealedCards: cards,
+      currentRevealIndex: -1,
+      allRevealed: false,
+    );
+  }
+
   void revealNext() {
     if (state.currentRevealIndex >= state.revealedCards.length - 1) {
       state = state.copyWith(allRevealed: true);

@@ -60,7 +60,11 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: AppConstants.packOpeningRoute,
             builder: (context, state) {
               final packTypeId = state.uri.queryParameters['packTypeId'];
-              return PackOpeningScreen(packTypeId: packTypeId ?? '');
+              final fromInventory = state.uri.queryParameters['fromInventory'] == 'true';
+              return PackOpeningScreen(
+                packTypeId: packTypeId ?? '',
+                fromInventory: fromInventory,
+              );
             },
           ),
           GoRoute(

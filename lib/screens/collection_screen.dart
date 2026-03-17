@@ -405,12 +405,9 @@ class _PackTileState extends ConsumerState<_PackTile> {
 
       if (!mounted) return;
 
-      // Show revealed cards in a dialog
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (ctx) => _PackRevealDialog(cards: cards),
-      );
+      // Load cards into the shared pack opening provider and navigate to reveal screen
+      ref.read(packOpeningProvider.notifier).openWithCards(cards);
+      context.go('${AppConstants.packOpeningRoute}?fromInventory=true');
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -554,82 +551,4 @@ class _RaritySegment {
   final double value;
   final Color color;
   const _RaritySegment(this.value, this.color);
-}
-
-class _PackRevealDialog extends StatelessWidget {
-  final List<UserCard> cards;
-  const _PackRevealDialog({required this.cards});
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: AppTheme.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      insetPadding: const EdgeInsets.all(16),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'PACK OPENED!',
-              style: TextStyle(
-                color: AppTheme.accent,
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 2,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '${cards.length} cards received',
-              style: const TextStyle(color: Colors.white54, fontSize: 13),
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              height: 280,
-              child: GridView.builder(
-                shrinkWrap: true,
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 4,
-                  childAspectRatio: 0.65,
-                  crossAxisSpacing: 6,
-                  mainAxisSpacing: 6,
-                ),
-                itemCount: cards.length,
-                itemBuilder: (context, index) {
-                  final card = cards[index];
-                  if (card.playerCard == null) return const SizedBox();
-                  return PlayerCardWidget(
-                    playerCard: card.playerCard!,
-                    userCard: card,
-                    size: CardSize.small,
-                  );
-                },
-              ),
-            ),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () => Navigator.of(context).pop(),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.accent,
-                  foregroundColor: Colors.black,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: const Text(
-                  'AWESOME!',
-                  style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
