@@ -143,6 +143,12 @@ class SupabaseService {
           table: 'transfer_market',
           callback: (payload) => onUpdate(payload.newRecord),
         )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'market_bids',
+          callback: (payload) => onUpdate(payload.newRecord),
+        )
         .subscribe();
   }
 

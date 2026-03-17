@@ -45,6 +45,10 @@ class MarketNotifier extends StateNotifier<AsyncValue<List<MarketListing>>> {
   void _subscribeToUpdates() {
     _channel = SupabaseService.subscribeToMarket((update) {
       loadListings();
+      // Cascade refresh so users see real-time bid updates, outbid status, coin changes
+      ref.read(myBidsProvider.notifier).load();
+      ref.read(myListingsProvider.notifier).load();
+      ref.read(currentUserProvider.notifier).silentRefresh();
     });
   }
 
