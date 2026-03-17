@@ -5,11 +5,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/theme.dart';
+import '../core/constants.dart';
 import '../core/supabase_service.dart';
 import '../models/models.dart';
 import '../providers/match_provider.dart';
 import '../providers/multiplayer_provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/card_packs_provider.dart';
 import '../providers/career_stats_provider.dart';
 import '../core/notification_service.dart';
 
@@ -71,6 +73,9 @@ class _MultiplayerMatchState {
   final String currentBowler;
   final String lastEventType;
   final int lastRuns;
+  /// Non-null when the user levelled up and earned a card pack this match.
+  final String? levelUpPackAwarded;
+  final int? newLevel;
 
   const _MultiplayerMatchState({
     this.isLoading = true,
@@ -109,6 +114,8 @@ class _MultiplayerMatchState {
     this.currentBowler = '',
     this.lastEventType = '',
     this.lastRuns = 0,
+    this.levelUpPackAwarded,
+    this.newLevel,
   });
 
   _MultiplayerMatchState copyWith({
@@ -148,6 +155,8 @@ class _MultiplayerMatchState {
     String? currentBowler,
     String? lastEventType,
     int? lastRuns,
+    String? levelUpPackAwarded,
+    int? newLevel,
   }) {
     return _MultiplayerMatchState(
       isLoading: isLoading ?? this.isLoading,
@@ -186,6 +195,8 @@ class _MultiplayerMatchState {
       currentBowler: currentBowler ?? this.currentBowler,
       lastEventType: lastEventType ?? this.lastEventType,
       lastRuns: lastRuns ?? this.lastRuns,
+      levelUpPackAwarded: levelUpPackAwarded ?? this.levelUpPackAwarded,
+      newLevel: newLevel ?? this.newLevel,
     );
   }
 
@@ -459,6 +470,22 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
       title: 'Multiplayer Match $resultLabel',
       body: '${data['match_result'] ?? 'Match Complete'} — +$coins coins, +$xp XP',
     );
+
+    // Detect level-up
+    final oldUser = ref.read(currentUserProvider).valueOrNull;
+    final oldLevel = oldUser?.level ?? 1;
+    final newXp = (oldUser?.xp ?? 0) + xp;
+    final computedNewLevel = (newXp ~/ AppConstants.xpPerLevel) + 1;
+    if (computedNewLevel > oldLevel) {
+      final packName = AppConstants.packNameForLevel(computedNewLevel);
+      _setState((s) => s.copyWith(
+            levelUpPackAwarded: packName,
+            newLevel: computedNewLevel,
+          ));
+    }
+
+    ref.read(currentUserProvider.notifier).silentRefresh();
+    ref.read(userCardPacksProvider.notifier).refresh();
   }
 
   void _syncFromDb(Map<String, dynamic> data) {
@@ -835,7 +862,22 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
 
       // Server awards rewards via Edge Function
       ref.invalidate(activeMultiplayerMatchProvider);
+
+      // Detect level-up before refresh
+      final oldUser = ref.read(currentUserProvider).valueOrNull;
+      final oldLevel = oldUser?.level ?? 1;
+      final newXp = (oldUser?.xp ?? 0) + xp;
+      final computedNewLevel = (newXp ~/ AppConstants.xpPerLevel) + 1;
+      if (computedNewLevel > oldLevel) {
+        final packName = AppConstants.packNameForLevel(computedNewLevel);
+        _setState((s) => s.copyWith(
+              levelUpPackAwarded: packName,
+              newLevel: computedNewLevel,
+            ));
+      }
+
       ref.read(currentUserProvider.notifier).silentRefresh();
+      ref.read(userCardPacksProvider.notifier).refresh();
 
       // Send local notification
       final rtResultLabel = userWon
@@ -1672,15 +1714,81 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
             ),
           ),
           const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: () => context.pop(),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: userWon ? AppTheme.accent : null,
-              foregroundColor: userWon ? Colors.black : null,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+          // Level-up & pack reward
+          if (s.levelUpPackAwarded != null) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    AppTheme.accent.withValues(alpha: 0.15),
+                    Colors.transparent,
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppTheme.accent.withValues(alpha: 0.4)),
+              ),
+              child: Column(
+                children: [
+                  const Icon(Icons.arrow_upward_rounded, color: AppTheme.accent, size: 28),
+                  const SizedBox(height: 4),
+                  Text(
+                    'LEVEL UP! → Level ${s.newLevel}',
+                    style: const TextStyle(
+                      color: AppTheme.accent,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.card_giftcard, color: Colors.white70, size: 18),
+                      const SizedBox(width: 6),
+                      Text(
+                        '${s.levelUpPackAwarded} earned!',
+                        style: const TextStyle(color: Colors.white70, fontSize: 14),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-            child: const Text('BACK TO LOBBY'),
+            const SizedBox(height: 12),
+          ],
+          // Action buttons
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (s.levelUpPackAwarded != null)
+                Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      context.go(AppConstants.collectionRoute);
+                    },
+                    icon: const Icon(Icons.card_giftcard, size: 18),
+                    label: const Text('OPEN PACKS'),
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(color: AppTheme.accent.withValues(alpha: 0.6)),
+                      foregroundColor: AppTheme.accent,
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    ),
+                  ),
+                ),
+              ElevatedButton(
+                onPressed: () => context.pop(),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: userWon ? AppTheme.accent : null,
+                  foregroundColor: userWon ? Colors.black : null,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                ),
+                child: const Text('BACK TO LOBBY'),
+              ),
+            ],
           ),
         ],
       ),

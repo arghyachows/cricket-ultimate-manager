@@ -21,6 +21,15 @@ class AppConstants {
   static const int xpPerLevel = 500;
   static const int maxLevel = 100;
 
+  /// Returns the pack name awarded for reaching a given level, or null if no change.
+  static String? packNameForLevel(int level) {
+    if (level <= 10) return 'Bronze Pack';
+    if (level <= 25) return 'Silver Pack';
+    if (level <= 45) return 'Gold Pack';
+    if (level <= 65) return 'Elite Pack';
+    return 'Legend Pack';
+  }
+
   // Market
   static const int minListingPrice = 100;
   static const int maxListingPrice = 10000000;

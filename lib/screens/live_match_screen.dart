@@ -527,17 +527,84 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen>
             ),
           ),
           const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: () {
-              ref.read(matchProvider.notifier).reset();
-              context.go(AppConstants.matchRoute);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: isWin ? AppTheme.accent : null,
-              foregroundColor: isWin ? Colors.black : null,
-              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+          // Level-up & pack reward
+          if (state.levelUpPackAwarded != null) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    AppTheme.accent.withValues(alpha: 0.15),
+                    Colors.transparent,
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppTheme.accent.withValues(alpha: 0.4)),
+              ),
+              child: Column(
+                children: [
+                  const Icon(Icons.arrow_upward_rounded, color: AppTheme.accent, size: 28),
+                  const SizedBox(height: 4),
+                  Text(
+                    'LEVEL UP! → Level ${state.newLevel}',
+                    style: const TextStyle(
+                      color: AppTheme.accent,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.card_giftcard, color: Colors.white70, size: 18),
+                      const SizedBox(width: 6),
+                      Text(
+                        '${state.levelUpPackAwarded} earned!',
+                        style: const TextStyle(color: Colors.white70, fontSize: 14),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-            child: const Text('CONTINUE'),
+            const SizedBox(height: 12),
+          ],
+          // Action buttons
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (state.levelUpPackAwarded != null)
+                Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      ref.read(matchProvider.notifier).reset();
+                      context.go(AppConstants.collectionRoute);
+                    },
+                    icon: const Icon(Icons.card_giftcard, size: 18),
+                    label: const Text('OPEN PACKS'),
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(color: AppTheme.accent.withValues(alpha: 0.6)),
+                      foregroundColor: AppTheme.accent,
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    ),
+                  ),
+                ),
+              ElevatedButton(
+                onPressed: () {
+                  ref.read(matchProvider.notifier).reset();
+                  context.go(AppConstants.matchRoute);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: isWin ? AppTheme.accent : null,
+                  foregroundColor: isWin ? Colors.black : null,
+                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                ),
+                child: const Text('CONTINUE'),
+              ),
+            ],
           ),
         ],
       ),

@@ -6,6 +6,7 @@ import '../models/models.dart';
 import '../engine/match_engine.dart';
 import '../core/notification_service.dart';
 import 'auth_provider.dart';
+import 'card_packs_provider.dart';
 import 'career_stats_provider.dart';
 
 // Match state
@@ -40,6 +41,9 @@ class MatchState {
   final int target;
   final List<String> xiOrder1;
   final List<String> xiOrder2;
+  /// Non-null when the user levelled up and earned a card pack this match.
+  final String? levelUpPackAwarded;
+  final int? newLevel;
 
   const MatchState({
     this.match,
@@ -66,6 +70,8 @@ class MatchState {
     this.target = 0,
     this.xiOrder1 = const [],
     this.xiOrder2 = const [],
+    this.levelUpPackAwarded,
+    this.newLevel,
   });
 
   bool get hasActiveMatch => isSimulating || isMatchComplete;
@@ -198,6 +204,8 @@ class MatchState {
     int? target,
     List<String>? xiOrder1,
     List<String>? xiOrder2,
+    String? levelUpPackAwarded,
+    int? newLevel,
   }) {
     return MatchState(
       match: match ?? this.match,
@@ -224,6 +232,8 @@ class MatchState {
       target: target ?? this.target,
       xiOrder1: xiOrder1 ?? this.xiOrder1,
       xiOrder2: xiOrder2 ?? this.xiOrder2,
+      levelUpPackAwarded: levelUpPackAwarded ?? this.levelUpPackAwarded,
+      newLevel: newLevel ?? this.newLevel,
     );
   }
 }
@@ -600,10 +610,23 @@ class MatchNotifier extends StateNotifier<MatchState> {
 
     // Update local user state immediately
     final userNotifier = ref.read(currentUserProvider.notifier);
+    final oldUser = ref.read(currentUserProvider).valueOrNull;
+    final oldLevel = oldUser?.level ?? 1;
     userNotifier.updateCoins(coins);
     userNotifier.updateXpAndLevel(xp);
+    final updatedUser = ref.read(currentUserProvider).valueOrNull;
+    final newLevel = updatedUser?.level ?? oldLevel;
 
-    // Persist to database
+    // Detect level-up → pack reward
+    if (newLevel > oldLevel) {
+      final packName = AppConstants.packNameForLevel(newLevel);
+      state = state.copyWith(
+        levelUpPackAwarded: packName,
+        newLevel: newLevel,
+      );
+    }
+
+    // Persist to database (also grants pack server-side on level-up)
     _persistMatchRewards(coins, xp, homeWon == true);
 
     // Persist player career stats
@@ -640,6 +663,8 @@ class MatchNotifier extends StateNotifier<MatchState> {
     }
     // Refresh user data from server
     ref.read(currentUserProvider.notifier).silentRefresh();
+    // Refresh card packs so new level-up pack appears
+    ref.read(userCardPacksProvider.notifier).refresh();
   }
 
   void skipToEnd() {
