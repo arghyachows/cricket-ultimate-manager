@@ -31,7 +31,11 @@ class DashboardScreen extends ConsumerWidget {
             if (user == null) {
               return const Center(child: Text('Not logged in'));
             }
-            return CustomScrollView(
+            return RefreshIndicator(
+              onRefresh: () async {
+                await ref.read(currentUserProvider.notifier).silentRefresh();
+              },
+              child: CustomScrollView(
               slivers: [
                 // Header
                 SliverToBoxAdapter(
@@ -109,6 +113,7 @@ class DashboardScreen extends ConsumerWidget {
                 ),
                 const SliverToBoxAdapter(child: SizedBox(height: 100)),
               ],
+            ),
             );
           },
         ),

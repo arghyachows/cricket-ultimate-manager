@@ -124,28 +124,34 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen>
               ),
             ),
             Expanded(
-              child: GridView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 6,
-                  childAspectRatio: 0.65,
-                  crossAxisSpacing: 6,
-                  mainAxisSpacing: 6,
-                ),
-                itemCount: cards.length,
-                itemBuilder: (context, index) {
-                  final card = cards[index];
-                  if (card.playerCard == null) return const SizedBox();
-
-                  return GestureDetector(
-                    onTap: () => context.go('/card/${card.id}'),
-                    child: PlayerCardWidget(
-                      playerCard: card.playerCard!,
-                      userCard: card,
-                      size: CardSize.small,
-                    ),
-                  );
+              child: RefreshIndicator(
+                onRefresh: () async {
+                  await ref.read(userCardsProvider.notifier).refresh();
+                  await ref.read(currentUserProvider.notifier).silentRefresh();
                 },
+                child: GridView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 6,
+                    childAspectRatio: 0.65,
+                    crossAxisSpacing: 6,
+                    mainAxisSpacing: 6,
+                  ),
+                  itemCount: cards.length,
+                  itemBuilder: (context, index) {
+                    final card = cards[index];
+                    if (card.playerCard == null) return const SizedBox();
+
+                    return GestureDetector(
+                      onTap: () => context.go('/card/${card.id}'),
+                      child: PlayerCardWidget(
+                        playerCard: card.playerCard!,
+                        userCard: card,
+                        size: CardSize.small,
+                      ),
+                    );
+                  },
+                ),
               ),
             ),
           ],
@@ -207,11 +213,14 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen>
               )
             else
               Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: packs.length,
-                  itemBuilder: (context, index) =>
-                      _PackTile(pack: packs[index]),
+                child: RefreshIndicator(
+                  onRefresh: () => ref.read(userCardPacksProvider.notifier).refresh(),
+                  child: ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: packs.length,
+                    itemBuilder: (context, index) =>
+                        _PackTile(pack: packs[index]),
+                  ),
                 ),
               ),
           ],

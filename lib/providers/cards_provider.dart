@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/supabase_service.dart';
 import '../models/models.dart';
 
@@ -9,8 +10,19 @@ final userCardsProvider =
 });
 
 class UserCardsNotifier extends StateNotifier<AsyncValue<List<UserCard>>> {
+  RealtimeChannel? _channel;
+
   UserCardsNotifier() : super(const AsyncValue.loading()) {
     loadCards();
+    _subscribeToUpdates();
+  }
+
+  void _subscribeToUpdates() {
+    final userId = SupabaseService.currentUserId;
+    if (userId == null) return;
+    _channel = SupabaseService.subscribeToUserCards(userId, () {
+      loadCards();
+    });
   }
 
   Future<void> loadCards() async {
@@ -35,6 +47,12 @@ class UserCardsNotifier extends StateNotifier<AsyncValue<List<UserCard>>> {
   }
 
   Future<void> refresh() => loadCards();
+
+  @override
+  void dispose() {
+    _channel?.unsubscribe();
+    super.dispose();
+  }
 }
 
 // Filter state for collection

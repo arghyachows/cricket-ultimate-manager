@@ -25,7 +25,10 @@ class ProfileScreen extends ConsumerWidget {
             return const Center(child: Text('No user data'));
           }
 
-          return SingleChildScrollView(
+          return RefreshIndicator(
+            onRefresh: () => ref.read(currentUserProvider.notifier).silentRefresh(),
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
             child: Column(
               children: [
                 // Profile Header
@@ -252,6 +255,7 @@ class ProfileScreen extends ConsumerWidget {
                   ),
                 ),
               ],
+            ),
             ),
           );
         },

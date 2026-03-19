@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/supabase_service.dart';
 import '../models/models.dart';
 
@@ -9,8 +10,19 @@ final teamProvider =
 });
 
 class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
+  RealtimeChannel? _channel;
+
   TeamNotifier() : super(const AsyncValue.loading()) {
     loadTeam();
+    _subscribeToUpdates();
+  }
+
+  void _subscribeToUpdates() {
+    final userId = SupabaseService.currentUserId;
+    if (userId == null) return;
+    _channel = SupabaseService.subscribeToSquad(userId, () {
+      loadTeam();
+    });
   }
 
   Future<void> _normalizePlayingXIBattingOrder(String squadId) async {
@@ -479,6 +491,12 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
   }
 
   Future<void> refresh() => loadTeam();
+
+  @override
+  void dispose() {
+    _channel?.unsubscribe();
+    super.dispose();
+  }
 }
 
 // Chemistry calculation

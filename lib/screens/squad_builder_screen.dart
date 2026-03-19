@@ -200,10 +200,15 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
         : lineup.fold<int>(0, (sum, p) => sum + (p.userCard?.playerCard?.rating ?? 0)) ~/
             lineup.length;
 
-    return ListView(
-      padding: const EdgeInsets.all(12),
-      children: [
-        _buildTeamSummaryCard(team, lineup.length, avgRating),
+    return RefreshIndicator(
+      onRefresh: () async {
+        await ref.read(teamProvider.notifier).refresh();
+        await ref.read(userCardsProvider.notifier).refresh();
+      },
+      child: ListView(
+        padding: const EdgeInsets.all(12),
+        children: [
+          _buildTeamSummaryCard(team, lineup.length, avgRating),
         const SizedBox(height: 10),
         if (lineup.isNotEmpty)
           Wrap(
@@ -286,6 +291,7 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
           ),
         ],
       ],
+    ),
     );
   }
 

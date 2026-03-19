@@ -713,22 +713,27 @@ class _SellTab extends ConsumerWidget {
         final tradeable = cards.where((c) => c.isTradeable && c.playerCard != null).toList();
 
         if (tradeable.isEmpty) {
-          return const Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.sell_outlined, size: 64, color: Colors.white24),
+          return RefreshIndicator(
+            onRefresh: () => ref.read(userCardsProvider.notifier).loadCards(),
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: const [
+                SizedBox(height: 200),
+                Center(child: Icon(Icons.sell_outlined, size: 64, color: Colors.white24)),
                 SizedBox(height: 16),
-                Text('No tradeable cards', style: TextStyle(color: Colors.white54)),
+                Center(child: Text('No tradeable cards', style: TextStyle(color: Colors.white54))),
                 SizedBox(height: 4),
-                Text('Open packs to get cards you can sell',
-                    style: TextStyle(color: Colors.white38, fontSize: 12)),
+                Center(child: Text('Open packs to get cards you can sell',
+                    style: TextStyle(color: Colors.white38, fontSize: 12))),
               ],
             ),
           );
         }
 
-        return ListView.builder(
+        return RefreshIndicator(
+          onRefresh: () => ref.read(userCardsProvider.notifier).loadCards(),
+          child: ListView.builder(
+          physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(12),
           itemCount: tradeable.length,
           itemBuilder: (context, index) {
@@ -779,6 +784,7 @@ class _SellTab extends ConsumerWidget {
               ),
             );
           },
+        ),
         );
       },
     );

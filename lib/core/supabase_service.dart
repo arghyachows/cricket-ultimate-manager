@@ -152,6 +152,58 @@ class SupabaseService {
         .subscribe();
   }
 
+  /// Subscribe to user_cards changes for the given user
+  static RealtimeChannel subscribeToUserCards(
+      String userId, void Function() onUpdate) {
+    return client
+        .channel('user_cards_$userId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'user_cards',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_id',
+            value: userId,
+          ),
+          callback: (_) => onUpdate(),
+        )
+        .subscribe();
+  }
+
+  /// Subscribe to users table changes for the given user
+  static RealtimeChannel subscribeToUser(
+      String userId, void Function() onUpdate) {
+    return client
+        .channel('user_$userId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'users',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'id',
+            value: userId,
+          ),
+          callback: (_) => onUpdate(),
+        )
+        .subscribe();
+  }
+
+  /// Subscribe to squad_players changes (team updates)
+  static RealtimeChannel subscribeToSquad(
+      String userId, void Function() onUpdate) {
+    return client
+        .channel('squad_$userId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'squad_players',
+          callback: (_) => onUpdate(),
+        )
+        .subscribe();
+  }
+
   // ---- MATCHES ----
   static Future<List<Map<String, dynamic>>> getMatches() async {
     final userId = currentUserId;

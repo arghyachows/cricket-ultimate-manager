@@ -26,21 +26,32 @@ final currentUserProvider =
 
 class CurrentUserNotifier extends StateNotifier<AsyncValue<UserModel?>> {
   final Ref ref;
+  RealtimeChannel? _channel;
 
   CurrentUserNotifier(this.ref) : super(const AsyncValue.loading()) {
     // Listen to auth state changes
     ref.listen(authStateProvider, (previous, next) {
       next.whenData((authState) {
         if (authState.session == null) {
-          // User logged out, clear the state
+          _channel?.unsubscribe();
+          _channel = null;
           state = const AsyncValue.data(null);
         } else {
-          // User logged in, load user data
           loadUser();
+          _subscribeToUpdates();
         }
       });
     });
     loadUser();
+    _subscribeToUpdates();
+  }
+
+  void _subscribeToUpdates() {
+    final userId = SupabaseService.currentUserId;
+    if (userId == null || _channel != null) return;
+    _channel = SupabaseService.subscribeToUser(userId, () {
+      silentRefresh();
+    });
   }
 
   Future<void> loadUser() async {

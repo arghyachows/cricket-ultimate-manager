@@ -38,13 +38,20 @@ class PackStoreScreen extends ConsumerWidget {
       body: packsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Error: $e')),
-        data: (packs) => ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: packs.length,
-          itemBuilder: (context, index) {
-            final pack = packs[index];
-            return _PackCard(pack: pack, user: user);
+        data: (packs) => RefreshIndicator(
+          onRefresh: () async {
+            ref.invalidate(packTypesProvider);
+            await ref.read(packTypesProvider.future);
           },
+          child: ListView.builder(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(16),
+            itemCount: packs.length,
+            itemBuilder: (context, index) {
+              final pack = packs[index];
+              return _PackCard(pack: pack, user: user);
+            },
+          ),
         ),
       ),
     );

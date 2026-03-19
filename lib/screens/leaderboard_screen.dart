@@ -13,11 +13,23 @@ class LeaderboardScreen extends ConsumerStatefulWidget {
 class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  List<Map<String, dynamic>> _entries = [];
+  bool _loading = true;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    try {
+      final data = await SupabaseService.getLeaderboard(limit: 50);
+      if (mounted) setState(() { _entries = data; _loading = false; });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   @override
@@ -53,32 +65,32 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen>
   }
 
   Widget _buildLeaderboardList(String type) {
-    return FutureBuilder<List<Map<String, dynamic>>>(
-      future: SupabaseService.getLeaderboard(limit: 50),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
-        }
-
-        final entries = snapshot.data ?? [];
-        if (entries.isEmpty) {
-          return const Center(
-            child: Text('No leaderboard data', style: TextStyle(color: Colors.white54)),
-          );
-        }
-
-        return ListView.builder(
-          padding: const EdgeInsets.all(12),
-          itemCount: entries.length,
-          itemBuilder: (context, index) {
-            final entry = entries[index];
-            return _buildLeaderboardTile(entry, index + 1);
-          },
-        );
-      },
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_entries.isEmpty) {
+      return RefreshIndicator(
+        onRefresh: _loadData,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: const [
+            SizedBox(height: 200),
+            Center(child: Text('No leaderboard data', style: TextStyle(color: Colors.white54))),
+          ],
+        ),
+      );
+    }
+    return RefreshIndicator(
+      onRefresh: _loadData,
+      child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(12),
+        itemCount: _entries.length,
+        itemBuilder: (context, index) {
+          final entry = _entries[index];
+          return _buildLeaderboardTile(entry, index + 1);
+        },
+      ),
     );
   }
 

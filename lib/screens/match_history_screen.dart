@@ -61,19 +61,25 @@ class _QuickMatchHistory extends ConsumerWidget {
     final history = ref.watch(matchHistoryProvider);
 
     if (history.isEmpty) {
-      return const Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.history, size: 64, color: Colors.white24),
-            SizedBox(height: 16),
-            Text('No quick matches played yet',
-                style: TextStyle(color: Colors.white38, fontSize: 16)),
-            SizedBox(height: 8),
-            Text('Play a quick match and it will appear here',
-                style: TextStyle(color: Colors.white24, fontSize: 13)),
-          ],
-        ),
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: const [
+          SizedBox(height: 200),
+          Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.history, size: 64, color: Colors.white24),
+                SizedBox(height: 16),
+                Text('No quick matches played yet',
+                    style: TextStyle(color: Colors.white38, fontSize: 16)),
+                SizedBox(height: 8),
+                Text('Play a quick match and it will appear here',
+                    style: TextStyle(color: Colors.white24, fontSize: 13)),
+              ],
+            ),
+          ),
+        ],
       );
     }
 
@@ -107,33 +113,42 @@ class _MultiplayerHistory extends ConsumerWidget {
       ),
       data: (history) {
         if (history.isEmpty) {
-          return const Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.people, size: 64, color: Colors.white24),
-                SizedBox(height: 16),
-                Text('No multiplayer matches played yet',
-                    style: TextStyle(color: Colors.white38, fontSize: 16)),
-                SizedBox(height: 8),
-                Text('Challenge someone in the multiplayer lobby!',
-                    style: TextStyle(color: Colors.white24, fontSize: 13)),
-              ],
-            ),
+          return ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            children: const [
+              SizedBox(height: 200),
+              Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.people, size: 64, color: Colors.white24),
+                    SizedBox(height: 16),
+                    Text('No multiplayer matches played yet',
+                        style: TextStyle(color: Colors.white38, fontSize: 16)),
+                    SizedBox(height: 8),
+                    Text('Challenge someone in the multiplayer lobby!',
+                        style: TextStyle(color: Colors.white24, fontSize: 13)),
+                  ],
+                ),
+              ),
+            ],
           );
         }
 
-        return ListView.builder(
-          padding: const EdgeInsets.all(12),
-          itemCount: history.length,
-          itemBuilder: (context, index) {
-            final match = history[index];
-            return _MatchHistoryCard(
-              match: match,
-              isMultiplayer: true,
-              onTap: () => _openScorecardSheet(context, match),
-            );
-          },
+        return RefreshIndicator(
+          onRefresh: () => ref.refresh(multiplayerMatchHistoryProvider.future),
+          child: ListView.builder(
+            padding: const EdgeInsets.all(12),
+            itemCount: history.length,
+            itemBuilder: (context, index) {
+              final match = history[index];
+              return _MatchHistoryCard(
+                match: match,
+                isMultiplayer: true,
+                onTap: () => _openScorecardSheet(context, match),
+              );
+            },
+          ),
         );
       },
     );
