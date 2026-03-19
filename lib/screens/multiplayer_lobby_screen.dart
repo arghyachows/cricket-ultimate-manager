@@ -12,6 +12,8 @@ class MultiplayerLobbyScreen extends ConsumerStatefulWidget {
 }
 
 class _MultiplayerLobbyScreenState extends ConsumerState<MultiplayerLobbyScreen> {
+  String? _joiningRoomId;
+
   @override
   void initState() {
     super.initState();
@@ -26,13 +28,6 @@ class _MultiplayerLobbyScreenState extends ConsumerState<MultiplayerLobbyScreen>
       backgroundColor: AppTheme.background,
       appBar: AppBar(
         title: const Text('MULTIPLAYER LOBBY'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.bug_report),
-            onPressed: () => context.push('/multiplayer/debug'),
-            tooltip: 'Debug',
-          ),
-        ],
       ),
       body: state.isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -62,13 +57,20 @@ class _MultiplayerLobbyScreenState extends ConsumerState<MultiplayerLobbyScreen>
       margin: const EdgeInsets.only(bottom: 12),
       color: AppTheme.surface,
       child: InkWell(
-        onTap: () async {
-          await ref.read(multiplayerProvider.notifier).joinRoom(room.id);
-          final mpState = ref.read(multiplayerProvider);
-          if (mounted && mpState.currentRoom != null && mpState.error == null) {
-            context.push('/multiplayer/room');
-          }
-        },
+        onTap: _joiningRoomId != null
+            ? null
+            : () async {
+                setState(() => _joiningRoomId = room.id);
+                try {
+                  await ref.read(multiplayerProvider.notifier).joinRoom(room.id);
+                  final mpState = ref.read(multiplayerProvider);
+                  if (mounted && mpState.currentRoom != null && mpState.error == null) {
+                    context.push('/multiplayer/room');
+                  }
+                } finally {
+                  if (mounted) setState(() => _joiningRoomId = null);
+                }
+              },
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Row(
@@ -82,7 +84,9 @@ class _MultiplayerLobbyScreenState extends ConsumerState<MultiplayerLobbyScreen>
                   ),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: const Icon(Icons.sports_cricket, color: Colors.white, size: 30),
+                child: _joiningRoomId == room.id
+                    ? const Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)))
+                    : const Icon(Icons.sports_cricket, color: Colors.white, size: 30),
               ),
               const SizedBox(width: 16),
               Expanded(

@@ -4,15 +4,33 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/theme.dart';
 import '../core/constants.dart';
 import '../providers/providers.dart';
+import '../providers/cards_provider.dart' show listedCardIdsProvider;
 import '../models/models.dart';
 
 /// Reusable sell-on-market dialog (called from card detail & sell tab)
 void showSellOnMarketDialog(BuildContext context, WidgetRef ref, UserCard card) {
+  // Block listing a player currently in the Playing XI
+  final team = ref.read(teamProvider).valueOrNull;
+  final squad = team?.activeSquad;
+  if (squad != null) {
+    final inXI = squad.players.any((p) => p.isPlayingXI && p.userCardId == card.id);
+    if (inXI) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Remove this player from your Playing XI before listing'),
+          backgroundColor: AppTheme.error,
+        ),
+      );
+      return;
+    }
+  }
+
   final pc = card.playerCard!;
   final minBid = AppConstants.minBidByRarity[pc.rarity] ?? 50;
   final bidController = TextEditingController(text: '$minBid');
   final buyNowController = TextEditingController(text: '${minBid * 3}');
   int duration = AppConstants.listingDurationHours;
+  bool listing = false;
 
   showDialog(
     context: context,
@@ -83,7 +101,7 @@ void showSellOnMarketDialog(BuildContext context, WidgetRef ref, UserCard card) 
               const Text('Auction Duration', style: TextStyle(fontSize: 13)),
               const SizedBox(height: 6),
               Row(
-                children: [12, 24, 48].map((h) {
+                children: [1, 3, 6, 12].map((h) {
                   final selected = duration == h;
                   return Padding(
                     padding: const EdgeInsets.only(right: 8),
@@ -107,11 +125,13 @@ void showSellOnMarketDialog(BuildContext context, WidgetRef ref, UserCard card) 
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx),
+            onPressed: listing ? null : () => Navigator.pop(ctx),
             child: const Text('CANCEL'),
           ),
           ElevatedButton(
-            onPressed: () async {
+            onPressed: listing
+                ? null
+                : () async {
               final bid = int.tryParse(bidController.text) ?? 0;
               final buyNow = int.tryParse(buyNowController.text) ?? 0;
 
@@ -134,7 +154,7 @@ void showSellOnMarketDialog(BuildContext context, WidgetRef ref, UserCard card) 
                 return;
               }
 
-              Navigator.pop(ctx);
+              setDialogState(() => listing = true);
               final success = await ref
                   .read(marketListingsProvider.notifier)
                   .listCard(
@@ -144,7 +164,9 @@ void showSellOnMarketDialog(BuildContext context, WidgetRef ref, UserCard card) 
                     durationHours: duration,
                   );
               ref.read(myListingsProvider.notifier).refresh();
+              ref.invalidate(listedCardIdsProvider);
 
+              if (ctx.mounted) Navigator.pop(ctx);
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
@@ -160,7 +182,9 @@ void showSellOnMarketDialog(BuildContext context, WidgetRef ref, UserCard card) 
               backgroundColor: AppTheme.accent,
               foregroundColor: Colors.black,
             ),
-            child: const Text('LIST FOR SALE'),
+            child: listing
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Text('LIST FOR SALE'),
           ),
         ],
       ),
@@ -308,14 +332,18 @@ class _BuyTab extends ConsumerWidget {
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (e, _) => Center(child: Text('Error: $e')),
             data: (listings) {
+              final userId = user?.id;
               final query = searchController.text.toLowerCase();
-              final filtered = query.isEmpty
-                  ? listings
-                  : listings.where((l) {
-                      final cardData = l.userCardData?['player_cards'];
-                      final name = (cardData?['player_name'] ?? '').toString().toLowerCase();
-                      return name.contains(query);
-                    }).toList();
+              final filtered = listings.where((l) {
+                // Hide seller's own listings
+                if (userId != null && l.sellerId == userId) return false;
+                if (query.isNotEmpty) {
+                  final cardData = l.userCardData?['player_cards'];
+                  final name = (cardData?['player_name'] ?? '').toString().toLowerCase();
+                  if (!name.contains(query)) return false;
+                }
+                return true;
+              }).toList();
 
               if (filtered.isEmpty) {
                 return const Center(
@@ -444,7 +472,11 @@ class _ListingCard extends ConsumerWidget {
             ),
             const SizedBox(height: 10),
             // Price row + action buttons
-            Row(
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
                 // Starting bid
                 _PriceChip(
@@ -452,14 +484,12 @@ class _ListingCard extends ConsumerWidget {
                   amount: listing.startingBid,
                   color: Colors.white54,
                 ),
-                const SizedBox(width: 8),
                 // Current bid
                 _PriceChip(
                   label: listing.currentBid > 0 ? 'Current Bid' : 'No bids',
                   amount: listing.currentBid > 0 ? listing.currentBid : null,
                   color: AppTheme.primaryLight,
                 ),
-                const Spacer(),
                 if (!isSeller) ...[
                   // Bid button
                   SizedBox(
@@ -478,7 +508,6 @@ class _ListingCard extends ConsumerWidget {
                       child: Text(isHighestBidder ? 'YOUR BID' : 'BID'),
                     ),
                   ),
-                  const SizedBox(width: 8),
                   // Buy now button
                   SizedBox(
                     height: 32,
@@ -520,7 +549,10 @@ class _ListingCard extends ConsumerWidget {
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) {
+        bool bidding = false;
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) => AlertDialog(
         backgroundColor: AppTheme.surface,
         title: const Text('Place Bid'),
         content: Column(
@@ -553,11 +585,13 @@ class _ListingCard extends ConsumerWidget {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx),
+            onPressed: bidding ? null : () => Navigator.pop(ctx),
             child: const Text('CANCEL'),
           ),
           ElevatedButton(
-            onPressed: () async {
+            onPressed: bidding
+                ? null
+                : () async {
               final amount = int.tryParse(controller.text) ?? 0;
               if (amount < minBid) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -574,11 +608,12 @@ class _ListingCard extends ConsumerWidget {
                 );
                 return;
               }
-              Navigator.pop(ctx);
+              setDialogState(() => bidding = true);
               final result = await ref
                   .read(marketListingsProvider.notifier)
                   .placeBid(listing.id, amount);
               final success = result['success'] == true;
+              if (ctx.mounted) Navigator.pop(ctx);
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
@@ -590,10 +625,14 @@ class _ListingCard extends ConsumerWidget {
                 );
               }
             },
-            child: const Text('PLACE BID'),
+            child: bidding
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Text('PLACE BID'),
           ),
         ],
       ),
+        );
+      },
     );
   }
 
@@ -610,7 +649,10 @@ class _ListingCard extends ConsumerWidget {
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) {
+        bool buying = false;
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) => AlertDialog(
         backgroundColor: AppTheme.surface,
         title: const Text('Buy Now'),
         content: Column(
@@ -627,16 +669,19 @@ class _ListingCard extends ConsumerWidget {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx),
+            onPressed: buying ? null : () => Navigator.pop(ctx),
             child: const Text('CANCEL'),
           ),
           ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(ctx);
+            onPressed: buying
+                ? null
+                : () async {
+              setDialogState(() => buying = true);
               final result = await ref
                   .read(marketListingsProvider.notifier)
                   .buyNow(listing.id);
               final success = result['success'] == true;
+              if (ctx.mounted) Navigator.pop(ctx);
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
@@ -652,10 +697,14 @@ class _ListingCard extends ConsumerWidget {
               backgroundColor: AppTheme.accent,
               foregroundColor: Colors.black,
             ),
-            child: const Text('BUY'),
+            child: buying
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Text('BUY'),
           ),
         ],
       ),
+        );
+      },
     );
   }
 }
@@ -710,7 +759,20 @@ class _SellTab extends ConsumerWidget {
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(child: Text('Error: $e')),
       data: (cards) {
-        final tradeable = cards.where((c) => c.isTradeable && c.playerCard != null).toList();
+        // Exclude cards in Playing XI and those already listed
+        final team = ref.watch(teamProvider).valueOrNull;
+        final squad = team?.activeSquad;
+        final xiCardIds = squad?.players
+            .where((p) => p.isPlayingXI)
+            .map((p) => p.userCardId)
+            .toSet() ?? {};
+        final listedIds = ref.watch(listedCardIdsProvider).valueOrNull ?? {};
+
+        final tradeable = cards.where((c) =>
+            c.isTradeable &&
+            c.playerCard != null &&
+            !xiCardIds.contains(c.id) &&
+            !listedIds.contains(c.id)).toList();
 
         if (tradeable.isEmpty) {
           return RefreshIndicator(
@@ -1130,7 +1192,10 @@ class _MyListingTile extends ConsumerWidget {
   void _confirmCancel(BuildContext context, WidgetRef ref) {
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) {
+        bool cancelling = false;
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) => AlertDialog(
         backgroundColor: AppTheme.surface,
         title: const Text('Cancel Listing'),
         content: listing.currentBid > 0
@@ -1140,16 +1205,19 @@ class _MyListingTile extends ConsumerWidget {
             : const Text('Remove this card from the market?'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx),
+            onPressed: cancelling ? null : () => Navigator.pop(ctx),
             child: const Text('KEEP'),
           ),
           ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(ctx);
+            onPressed: cancelling
+                ? null
+                : () async {
+              setDialogState(() => cancelling = true);
               final result = await ref
                   .read(marketListingsProvider.notifier)
                   .cancelListing(listing.id);
               final success = result['success'] == true;
+              if (ctx.mounted) Navigator.pop(ctx);
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
@@ -1161,10 +1229,14 @@ class _MyListingTile extends ConsumerWidget {
               }
             },
             style: ElevatedButton.styleFrom(backgroundColor: AppTheme.error),
-            child: const Text('CANCEL LISTING'),
+            child: cancelling
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Text('CANCEL LISTING'),
           ),
         ],
       ),
+        );
+      },
     );
   }
 }

@@ -33,7 +33,7 @@ class AppConstants {
   // Market
   static const int minListingPrice = 100;
   static const int maxListingPrice = 10000000;
-  static const int listingDurationHours = 24;
+  static const int listingDurationHours = 6;
   static const double marketTax = 0.05;
   static const int minBidIncrement = 10;
 

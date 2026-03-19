@@ -237,8 +237,9 @@ class SupabaseService {
   // ---- LEADERBOARD ----
   static Future<List<Map<String, dynamic>>> getLeaderboard({int limit = 50}) async {
     return await client
-        .from('leaderboard')
-        .select()
+        .from('users')
+        .select('id, username, level, season_tier, season_points, matches_played, matches_won')
+        .gt('matches_played', 0)
         .order('season_points', ascending: false)
         .limit(limit);
   }

@@ -3,6 +3,18 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/supabase_service.dart';
 import '../models/models.dart';
 
+// IDs of user_cards currently listed on the market (active listings)
+final listedCardIdsProvider = FutureProvider<Set<String>>((ref) async {
+  final userId = SupabaseService.currentUserId;
+  if (userId == null) return {};
+  final rows = await SupabaseService.client
+      .from('transfer_market')
+      .select('user_card_id')
+      .eq('seller_id', userId)
+      .eq('status', 'active');
+  return (rows as List).map((r) => r['user_card_id'] as String).toSet();
+});
+
 // All user cards
 final userCardsProvider =
     StateNotifierProvider<UserCardsNotifier, AsyncValue<List<UserCard>>>((ref) {
@@ -83,12 +95,14 @@ class CardFilter {
   }
 }
 
-// Filtered cards
+// Filtered cards (excludes cards currently listed on market)
 final filteredUserCardsProvider = Provider<List<UserCard>>((ref) {
   final cards = ref.watch(userCardsProvider).valueOrNull ?? [];
   final filter = ref.watch(cardFilterProvider);
+  final listedIds = ref.watch(listedCardIdsProvider).valueOrNull ?? {};
 
   var filtered = cards.where((c) {
+    if (listedIds.contains(c.id)) return false;
     if (filter.rarity != null && c.playerCard?.rarity != filter.rarity) {
       return false;
     }

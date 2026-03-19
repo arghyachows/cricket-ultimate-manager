@@ -44,6 +44,10 @@ class MatchState {
   /// Non-null when the user levelled up and earned a card pack this match.
   final String? levelUpPackAwarded;
   final int? newLevel;
+  /// Card ID of the batsman on strike (for AT CREASE display).
+  final String strikerCardId;
+  /// Card ID of the non-striker (for AT CREASE display).
+  final String nonStrikerCardId;
 
   const MatchState({
     this.match,
@@ -72,6 +76,8 @@ class MatchState {
     this.xiOrder2 = const [],
     this.levelUpPackAwarded,
     this.newLevel,
+    this.strikerCardId = '',
+    this.nonStrikerCardId = '',
   });
 
   bool get hasActiveMatch => isSimulating || isMatchComplete;
@@ -206,6 +212,8 @@ class MatchState {
     List<String>? xiOrder2,
     String? levelUpPackAwarded,
     int? newLevel,
+    String? strikerCardId,
+    String? nonStrikerCardId,
   }) {
     return MatchState(
       match: match ?? this.match,
@@ -234,6 +242,8 @@ class MatchState {
       xiOrder2: xiOrder2 ?? this.xiOrder2,
       levelUpPackAwarded: levelUpPackAwarded ?? this.levelUpPackAwarded,
       newLevel: newLevel ?? this.newLevel,
+      strikerCardId: strikerCardId ?? this.strikerCardId,
+      nonStrikerCardId: nonStrikerCardId ?? this.nonStrikerCardId,
     );
   }
 }
@@ -491,6 +501,20 @@ class MatchNotifier extends StateNotifier<MatchState> {
         );
       }
 
+      // Ensure both current batsmen (striker + non-striker) have stats entries
+      final sId = _engine!.currentStrikerCardId;
+      final nsId = _engine!.currentNonStrikerCardId;
+      if (sId != null) {
+        final sKey = '${result.innings}_$sId';
+        final sName = _engine!.getBatsmanName(sId);
+        batsmanStats.putIfAbsent(sKey, () => BatsmanStats(name: sName, innings: result.innings));
+      }
+      if (nsId != null) {
+        final nsKey = '${result.innings}_$nsId';
+        final nsName = _engine!.getBatsmanName(nsId);
+        batsmanStats.putIfAbsent(nsKey, () => BatsmanStats(name: nsName, innings: result.innings));
+      }
+
       // Update bowler stats
       final bowlerName = _engine!.getBowlerName(result.bowlerCardId);
       bowlerStats.putIfAbsent(
@@ -509,6 +533,14 @@ class MatchNotifier extends StateNotifier<MatchState> {
         ? _inningsScoreFromEvents([...state.events, result], 1)
         : null;
 
+    // Track which batsmen are currently at the crease
+    final newStrikerId = result.eventType != 'innings_break'
+        ? (_engine!.currentStrikerCardId ?? '')
+        : '';
+    final newNonStrikerId = result.eventType != 'innings_break'
+        ? (_engine!.currentNonStrikerCardId ?? '')
+        : '';
+
     state = state.copyWith(
       events: events,
       currentCommentary: result.commentary,
@@ -516,6 +548,8 @@ class MatchNotifier extends StateNotifier<MatchState> {
       batsmanStats: batsmanStats,
       bowlerStats: bowlerStats,
       target: newTarget,
+      strikerCardId: newStrikerId,
+      nonStrikerCardId: newNonStrikerId,
     );
   }
 

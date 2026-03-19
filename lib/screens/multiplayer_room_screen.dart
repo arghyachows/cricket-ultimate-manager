@@ -314,10 +314,12 @@ class _MultiplayerRoomScreenState extends ConsumerState<MultiplayerRoomScreen> {
 
   void _showChallengeDialog(BuildContext context, WidgetRef ref, user) {
     const int selectedOvers = 5;
+    bool sending = false;
     
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
           backgroundColor: AppTheme.surface,
           title: const Text('Challenge Player'),
           content: Column(
@@ -355,40 +357,48 @@ class _MultiplayerRoomScreenState extends ConsumerState<MultiplayerRoomScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: sending ? null : () => Navigator.pop(context),
               child: const Text('CANCEL'),
             ),
             ElevatedButton(
-              onPressed: () async {
-                await ref.read(multiplayerProvider.notifier).sendChallenge(
-                  user.userId,
-                  user.teamId,
-                  selectedOvers,
-                );
-                if (context.mounted) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Challenge sent!')),
-                  );
-                }
-              },
+              onPressed: sending
+                  ? null
+                  : () async {
+                      setDialogState(() => sending = true);
+                      await ref.read(multiplayerProvider.notifier).sendChallenge(
+                        user.userId,
+                        user.teamId,
+                        selectedOvers,
+                      );
+                      if (context.mounted) {
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Challenge sent!')),
+                        );
+                      }
+                    },
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.accent,
                 foregroundColor: Colors.black,
               ),
-              child: const Text('SEND CHALLENGE'),
+              child: sending
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('SEND CHALLENGE'),
             ),
           ],
         ),
+      ),
     );
   }
 
   void _showChallengesDialog(BuildContext context, WidgetRef ref, bool hasActiveMatch) {
     final state = ref.read(multiplayerProvider);
+    String? respondingId;
     
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
         backgroundColor: AppTheme.surface,
         title: const Text('Pending Challenges'),
         content: SizedBox(
@@ -398,6 +408,7 @@ class _MultiplayerRoomScreenState extends ConsumerState<MultiplayerRoomScreen> {
             itemCount: state.pendingChallenges.length,
             itemBuilder: (context, index) {
               final challenge = state.pendingChallenges[index];
+              final isResponding = respondingId == challenge.id;
               
               return Card(
                 color: AppTheme.surfaceLight,
@@ -421,17 +432,23 @@ class _MultiplayerRoomScreenState extends ConsumerState<MultiplayerRoomScreen> {
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
                           TextButton(
-                            onPressed: () async {
-                              await ref.read(multiplayerProvider.notifier).respondToChallenge(challenge.id, false);
-                              if (context.mounted) Navigator.pop(context);
-                            },
-                            child: const Text('DECLINE'),
+                            onPressed: respondingId != null
+                                ? null
+                                : () async {
+                                    setDialogState(() => respondingId = challenge.id);
+                                    await ref.read(multiplayerProvider.notifier).respondToChallenge(challenge.id, false);
+                                    if (context.mounted) Navigator.pop(context);
+                                  },
+                            child: isResponding
+                                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                                : const Text('DECLINE'),
                           ),
                           const SizedBox(width: 8),
                           ElevatedButton(
-                            onPressed: hasActiveMatch
+                            onPressed: hasActiveMatch || respondingId != null
                                 ? null
                                 : () async {
+                              setDialogState(() => respondingId = challenge.id);
                               Navigator.pop(context); // Close challenges dialog
                               
                               // Accept challenge — navigation happens via ref.listen when matchStartedId is set
@@ -460,6 +477,7 @@ class _MultiplayerRoomScreenState extends ConsumerState<MultiplayerRoomScreen> {
             child: const Text('CLOSE'),
           ),
         ],
+      ),
       ),
     );
   }

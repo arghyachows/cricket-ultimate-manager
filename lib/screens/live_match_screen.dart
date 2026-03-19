@@ -284,7 +284,22 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen>
   }
 
   Widget _buildBatsmanPanel(MatchState state) {
-    final activeBatsmen = state.currentBatsmen.take(2).toList();
+    // Use tracked striker/non-striker IDs for accurate display
+    final activeBatsmen = <BatsmanStats>[];
+    if (state.strikerCardId.isNotEmpty) {
+      final key = '${state.currentInnings}_${state.strikerCardId}';
+      final stats = state.batsmanStats[key];
+      if (stats != null) activeBatsmen.add(stats);
+    }
+    if (state.nonStrikerCardId.isNotEmpty) {
+      final key = '${state.currentInnings}_${state.nonStrikerCardId}';
+      final stats = state.batsmanStats[key];
+      if (stats != null) activeBatsmen.add(stats);
+    }
+    // Fallback for initial state or innings break
+    if (activeBatsmen.isEmpty) {
+      activeBatsmen.addAll(state.currentBatsmen.take(2));
+    }
     if (activeBatsmen.isEmpty) return const SizedBox();
 
     return Container(

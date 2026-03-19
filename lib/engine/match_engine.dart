@@ -90,6 +90,18 @@ class MatchEngine {
 
   int get maxOvers => overs;
 
+  /// Card ID of the batsman currently on strike (will face the next ball).
+  String? get currentStrikerCardId =>
+      _currentBatsmanIndex < _currentBatting.length
+          ? _currentBatting[_currentBatsmanIndex].userCardId
+          : null;
+
+  /// Card ID of the non-striker.
+  String? get currentNonStrikerCardId =>
+      _nonStrikerIndex < _currentBatting.length
+          ? _currentBatting[_nonStrikerIndex].userCardId
+          : null;
+
   bool get isFirstInnings => _innings == 1;
 
   int get _currentWickets => isFirstInnings ? _wickets1 : _wickets2;

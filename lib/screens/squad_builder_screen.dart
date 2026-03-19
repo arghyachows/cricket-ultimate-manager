@@ -5,6 +5,7 @@ import '../core/profanity_filter.dart';
 import '../core/theme.dart';
 import '../models/models.dart';
 import '../providers/providers.dart';
+import '../providers/cards_provider.dart' show listedCardIdsProvider;
 
 class SquadBuilderScreen extends ConsumerStatefulWidget {
   const SquadBuilderScreen({super.key});
@@ -18,6 +19,7 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
   final TextEditingController _teamNameController = TextEditingController();
   late final TabController _tabController;
   StatsSortField _sortField = StatsSortField.runs;
+  bool _autoPickLoading = false;
 
   static const Map<int, String> _xiSlotLabels = {
     1: 'Opener',
@@ -231,12 +233,19 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
               ),
             ),
             ElevatedButton.icon(
-              onPressed: () => _autoPickLineup(squad),
-              icon: const Icon(Icons.auto_fix_high, size: 16),
-              label: const Text('AUTO PICK'),
+              onPressed: _autoPickLoading ? null : () => _autoPickLineup(squad),
+              icon: _autoPickLoading
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
+                    )
+                  : const Icon(Icons.auto_fix_high, size: 16),
+              label: Text(_autoPickLoading ? 'PICKING...' : 'AUTO PICK'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.accent,
                 foregroundColor: Colors.black,
+                disabledBackgroundColor: AppTheme.accent.withValues(alpha: 0.5),
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               ),
             ),
@@ -623,7 +632,9 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
 
   Future<void> _autoPickLineup(Squad squad) async {
     final allCards = ref.read(userCardsProvider).valueOrNull ?? [];
-    if (allCards.isEmpty) {
+    final listedIds = ref.read(listedCardIdsProvider).valueOrNull ?? {};
+    final availableCards = allCards.where((c) => !listedIds.contains(c.id)).toList();
+    if (availableCards.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No cards in your collection to auto-pick')), 
@@ -631,12 +642,16 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
       return;
     }
 
-    await ref.read(teamProvider.notifier).autoPickLineup(allCards);
-
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Auto-picked lineup applied')), 
-    );
+    setState(() => _autoPickLoading = true);
+    try {
+      await ref.read(teamProvider.notifier).autoPickLineup(availableCards);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Auto-picked lineup applied')), 
+      );
+    } finally {
+      if (mounted) setState(() => _autoPickLoading = false);
+    }
   }
 
   void _showSwapPlayerSheet(SquadPlayer currentPlayer) {
@@ -656,6 +671,7 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
         return StatefulBuilder(
           builder: (context, setSheetState) {
             final allCards = ref.read(userCardsProvider).valueOrNull ?? [];
+            final listedIds = ref.read(listedCardIdsProvider).valueOrNull ?? {};
             final team = ref.read(teamProvider).valueOrNull;
             final squad = team?.activeSquad;
 
@@ -671,6 +687,7 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
                 .toSet();
 
             var availableCards = allCards.where((card) {
+              if (listedIds.contains(card.id)) return false;
               if (card.id == currentPlayer.userCardId) return false;
               if (assignedUserCardIds.contains(card.id)) return false;
               if (assignedPlayerCardIds.contains(card.cardId)) return false;
@@ -886,6 +903,7 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
         return StatefulBuilder(
           builder: (context, setSheetState) {
             final allCards = ref.read(userCardsProvider).valueOrNull ?? [];
+            final listedIds = ref.read(listedCardIdsProvider).valueOrNull ?? {};
             final team = ref.read(teamProvider).valueOrNull;
             final squad = team?.activeSquad;
 
@@ -897,6 +915,7 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
                 .toSet();
 
             var availableCards = allCards.where((card) {
+              if (listedIds.contains(card.id)) return false;
               if (assignedUserCardIds.contains(card.id)) return false;
               if (assignedPlayerCardIds.contains(card.cardId)) return false;
               return true;

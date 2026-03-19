@@ -96,7 +96,9 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen>
 
   Widget _buildLeaderboardTile(Map<String, dynamic> entry, int rank) {
     final username = entry['username'] ?? 'Player';
-    final rating = entry['win_rate'] ?? 0;
+    final seasonPoints = entry['season_points'] ?? 0;
+    final matchesWon = entry['matches_won'] ?? 0;
+    final matchesPlayed = entry['matches_played'] ?? 0;
     final level = entry['level'] ?? 1;
     final seasonTier = entry['season_tier'] ?? 'bronze';
 
@@ -198,21 +200,21 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen>
             ),
           ),
 
-          // Rating
+          // Stats
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                '${(rating * 100).toStringAsFixed(1)}%',
+                '$seasonPoints pts',
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 16,
                   color: isTop3 ? rankColor : AppTheme.accent,
                 ),
               ),
-              const Text(
-                'Win Rate',
-                style: TextStyle(color: Colors.white38, fontSize: 10),
+              Text(
+                '$matchesWon/$matchesPlayed won',
+                style: const TextStyle(color: Colors.white38, fontSize: 10),
               ),
             ],
           ),

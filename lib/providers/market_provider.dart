@@ -49,6 +49,7 @@ class MarketNotifier extends StateNotifier<AsyncValue<List<MarketListing>>> {
       ref.read(myBidsProvider.notifier).load();
       ref.read(myListingsProvider.notifier).load();
       ref.read(currentUserProvider.notifier).silentRefresh();
+      ref.invalidate(listedCardIdsProvider);
     });
   }
 
@@ -126,6 +127,7 @@ class MarketNotifier extends StateNotifier<AsyncValue<List<MarketListing>>> {
       await ref.read(userCardsProvider.notifier).refresh();
       await loadListings();
       ref.read(myBidsProvider.notifier).load();
+      ref.invalidate(listedCardIdsProvider);
 
       if (result is Map) return Map<String, dynamic>.from(result);
       return {'success': true};
@@ -149,6 +151,7 @@ class MarketNotifier extends StateNotifier<AsyncValue<List<MarketListing>>> {
       await loadListings();
       ref.read(myBidsProvider.notifier).load();
       ref.read(myListingsProvider.notifier).load();
+      ref.invalidate(listedCardIdsProvider);
 
       if (result is Map) return Map<String, dynamic>.from(result);
       return {'success': true};
