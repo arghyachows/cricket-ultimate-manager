@@ -235,7 +235,7 @@ class MatchScreen extends ConsumerWidget {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [AppTheme.primary.withValues(alpha: 0.5), AppTheme.surface],
+          colors: [AppTheme.primary.withValues(alpha: 0.5), Colors.transparent],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -335,7 +335,7 @@ class _MatchModeCard extends StatelessWidget {
       opacity: enabled ? 1.0 : 0.5,
       child: Container(
         decoration: BoxDecoration(
-          color: AppTheme.surface,
+          color: Colors.white.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: color.withValues(alpha: 0.3)),
         ),

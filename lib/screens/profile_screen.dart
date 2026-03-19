@@ -16,8 +16,6 @@ class ProfileScreen extends ConsumerWidget {
       backgroundColor: AppTheme.background,
       appBar: AppBar(
         title: const Text('Profile'),
-        backgroundColor: AppTheme.surface,
-        elevation: 0,
       ),
       body: userAsync.when(
         data: (user) {
@@ -36,14 +34,10 @@ class ProfileScreen extends ConsumerWidget {
                   width: double.infinity,
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
-                    color: AppTheme.surface,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.2),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
+                    color: Colors.white.withValues(alpha: 0.05),
+                    border: Border(
+                      bottom: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+                    ),
                   ),
                   child: Column(
                     children: [
@@ -291,7 +285,7 @@ class ProfileScreen extends ConsumerWidget {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: AppTheme.surface,
+        backgroundColor: const Color(0xE61D1E33),
         title: const Text(
           'Logout',
           style: TextStyle(color: Colors.white),
@@ -342,7 +336,7 @@ class _StatCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppTheme.surface,
+        color: Colors.white.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
@@ -396,7 +390,7 @@ class _InfoCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppTheme.surface,
+        color: Colors.white.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
@@ -469,7 +463,7 @@ class _ActionButton extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: AppTheme.surface,
+          color: Colors.white.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: buttonColor.withValues(alpha: 0.3),

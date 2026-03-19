@@ -79,7 +79,7 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen>
         Container(
           width: double.infinity,
           padding: const EdgeInsets.all(12),
-          color: AppTheme.surfaceLight,
+          color: Colors.white.withValues(alpha: 0.08),
           child: AnimatedSwitcher(
             duration: const Duration(milliseconds: 300),
             child: Text(
@@ -131,7 +131,7 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen>
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [AppTheme.primary.withValues(alpha: 0.6), AppTheme.surface],
+          colors: [AppTheme.primary.withValues(alpha: 0.6), Colors.transparent],
         ),
       ),
       child: Column(
@@ -305,7 +305,7 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen>
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: AppTheme.surfaceLight,
+      color: Colors.white.withValues(alpha: 0.08),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -347,7 +347,7 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen>
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      color: AppTheme.surface,
+      color: Colors.white.withValues(alpha: 0.05),
       child: Row(
         children: [
           const Icon(Icons.sports_baseball, size: 14, color: AppTheme.primary),
@@ -477,10 +477,10 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen>
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: isWin
-              ? [AppTheme.accent.withValues(alpha: 0.3), AppTheme.surface]
+              ? [AppTheme.accent.withValues(alpha: 0.3), Colors.transparent]
               : isDraw
-                  ? [Colors.blueAccent.withValues(alpha: 0.2), AppTheme.surface]
-                  : [AppTheme.error.withValues(alpha: 0.2), AppTheme.surface],
+                  ? [Colors.blueAccent.withValues(alpha: 0.2), Colors.transparent]
+                  : [AppTheme.error.withValues(alpha: 0.2), Colors.transparent],
         ),
       ),
       child: Column(
@@ -511,7 +511,7 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             decoration: BoxDecoration(
-              color: AppTheme.surfaceLight,
+              color: Colors.white.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Row(
@@ -707,13 +707,13 @@ class _ScorecardTab extends StatelessWidget {
 
   Widget _battingCard(List<BatsmanStats> batsmen) {
     return Container(
-      color: AppTheme.surface,
+      color: Colors.white.withValues(alpha: 0.05),
       child: Column(
         children: [
           // Header row
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            color: AppTheme.surfaceLight,
+            color: Colors.white.withValues(alpha: 0.08),
             child: const Row(
               children: [
                 Expanded(flex: 4, child: Text('Batter', style: TextStyle(fontSize: 11, color: Colors.white38, fontWeight: FontWeight.bold))),
@@ -773,14 +773,14 @@ class _ScorecardTab extends StatelessWidget {
     if (bowlers.isEmpty) return const SizedBox();
 
     return Container(
-      color: AppTheme.surface,
+      color: Colors.white.withValues(alpha: 0.05),
       margin: const EdgeInsets.only(bottom: 4),
       child: Column(
         children: [
           // Header row
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            color: AppTheme.surfaceLight,
+            color: Colors.white.withValues(alpha: 0.08),
             child: const Row(
               children: [
                 Expanded(flex: 4, child: Text('Bowler', style: TextStyle(fontSize: 11, color: Colors.white38, fontWeight: FontWeight.bold))),

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,8 +8,10 @@ import '../core/theme.dart';
 import '../core/constants.dart';
 import '../core/supabase_service.dart';
 import '../providers/providers.dart';
+import '../models/models.dart';
 import '../widgets/coin_display.dart';
 import '../widgets/daily_objectives_card.dart';
+import '../widgets/glass_container.dart';
 
 /// Tracks the match ID the user dismissed from the dashboard banner.
 /// Persists across widget rebuilds within the same app session.
@@ -21,6 +24,8 @@ class DashboardScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final userAsync = ref.watch(currentUserProvider);
     final matchState = ref.watch(matchProvider);
+    final teamAsync = ref.watch(teamProvider);
+    final chemistry = ref.watch(chemistryProvider);
 
     return Scaffold(
       body: SafeArea(
@@ -31,15 +36,18 @@ class DashboardScreen extends ConsumerWidget {
             if (user == null) {
               return const Center(child: Text('Not logged in'));
             }
+            final team = teamAsync.valueOrNull;
+            final squad = team?.activeSquad;
+            final xiCount = squad?.playingXI.length ?? 0;
             return RefreshIndicator(
               onRefresh: () async {
                 await ref.read(currentUserProvider.notifier).silentRefresh();
               },
               child: CustomScrollView(
               slivers: [
-                // Header
+                // Hero Header
                 SliverToBoxAdapter(
-                  child: _buildHeader(context, user, ref),
+                  child: _buildHeroHeader(context, user, team, squad, chemistry, xiCount, ref),
                 ),
                 // Live match banner (quick match)
                 if (matchState.hasActiveMatch)
@@ -50,56 +58,94 @@ class DashboardScreen extends ConsumerWidget {
                 SliverToBoxAdapter(
                   child: _MultiplayerMatchBanner(),
                 ),
+                // Squad Overview Card
+                if (team != null)
+                  SliverToBoxAdapter(
+                    child: _SquadOverviewCard(team: team, squad: squad, chemistry: chemistry),
+                  ),
+                // Quick actions header
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 4, height: 20,
+                          decoration: BoxDecoration(
+                            color: AppTheme.accent,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'QUICK ACTIONS',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1.5,
+                            color: Colors.white54,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
                 // Quick actions
                 SliverPadding(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
                   sliver: SliverGrid(
                     gridDelegate:
                         const SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: 2,
-                      mainAxisSpacing: 12,
-                      crossAxisSpacing: 12,
-                      childAspectRatio: 1.5,
+                      mainAxisSpacing: 8,
+                      crossAxisSpacing: 8,
+                      childAspectRatio: 2.6,
                     ),
                     delegate: SliverChildListDelegate([
                       _QuickActionCard(
-                        icon: Icons.card_giftcard_rounded,
-                        label: 'Open Packs',
-                        color: AppTheme.cardGold,
-                        onTap: () => context.go(AppConstants.packsRoute),
-                      ),
-                      _QuickActionCard(
                         icon: Icons.sports_cricket_rounded,
                         label: 'Play Match',
-                        color: AppTheme.primaryLight,
+                        subtitle: 'Quick or career mode',
+                        gradientColors: [const Color(0xFF1B5E20), const Color(0xFF388E3C)],
                         onTap: () => context.go(AppConstants.matchRoute),
+                      ),
+                      _QuickActionCard(
+                        icon: Icons.card_giftcard_rounded,
+                        label: 'Open Packs',
+                        subtitle: 'Collect new players',
+                        gradientColors: [const Color(0xFF6D4C00), const Color(0xFFB8860B)],
+                        onTap: () => context.go(AppConstants.packsRoute),
                       ),
                       _QuickActionCard(
                         icon: Icons.groups_rounded,
                         label: 'My Squad',
-                        color: Colors.blueAccent,
+                        subtitle: '$xiCount/11 in Playing XI',
+                        gradientColors: [const Color(0xFF1A237E), const Color(0xFF3949AB)],
                         onTap: () =>
                             context.go(AppConstants.squadBuilderRoute),
                       ),
                       _QuickActionCard(
+                        icon: Icons.storefront_rounded,
+                        label: 'Market',
+                        subtitle: 'Trade player cards',
+                        gradientColors: [const Color(0xFF004D40), const Color(0xFF00897B)],
+                        onTap: () => context.go(AppConstants.marketRoute),
+                      ),
+                      _QuickActionCard(
                         icon: Icons.emoji_events_rounded,
                         label: 'Tournaments',
-                        color: AppTheme.cardElite,
+                        subtitle: 'Compete for glory',
+                        gradientColors: [const Color(0xFF4A148C), const Color(0xFF7B1FA2)],
                         onTap: () =>
                             context.go(AppConstants.tournamentsRoute),
                       ),
                       _QuickActionCard(
                         icon: Icons.leaderboard_rounded,
                         label: 'Leaderboard',
-                        color: Colors.orangeAccent,
+                        subtitle: 'Global rankings',
+                        gradientColors: [const Color(0xFF7F2B00), const Color(0xFFBF6B00)],
                         onTap: () =>
                             context.go(AppConstants.leaderboardRoute),
-                      ),
-                      _QuickActionCard(
-                        icon: Icons.storefront_rounded,
-                        label: 'Market',
-                        color: Colors.tealAccent,
-                        onTap: () => context.go(AppConstants.marketRoute),
                       ),
                     ]),
                   ),
@@ -107,7 +153,7 @@ class DashboardScreen extends ConsumerWidget {
                 // Daily Objectives
                 const SliverToBoxAdapter(
                   child: Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    padding: EdgeInsets.fromLTRB(16, 20, 16, 0),
                     child: DailyObjectivesCard(objectives: []),
                   ),
                 ),
@@ -121,80 +167,152 @@ class DashboardScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildHeader(BuildContext context, user, WidgetRef ref) {
-    return Container(
-      padding: const EdgeInsets.all(20),
+  Widget _buildHeroHeader(BuildContext context, user, team, squad, int chemistry, int xiCount, WidgetRef ref) {
+    final xpCurrent = user.xp % AppConstants.xpPerLevel;
+    final xpMax = AppConstants.xpPerLevel;
+    final xpProgress = xpCurrent / xpMax;
+
+    return ClipRRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: Container(
+      padding: const EdgeInsets.fromLTRB(14, 6, 14, 8),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            AppTheme.primary.withValues(alpha: 0.6),
-            AppTheme.background,
+            AppTheme.primary.withValues(alpha: 0.4),
+            AppTheme.primary.withValues(alpha: 0.15),
+            Colors.white.withValues(alpha: 0.03),
           ],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          stops: const [0.0, 0.5, 1.0],
+        ),
+        border: Border(
+          bottom: BorderSide(
+            color: Colors.white.withValues(alpha: 0.08),
+            width: 0.5,
+          ),
         ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Top row: greeting + profile + level
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Welcome back,',
-                    style: Theme.of(context).textTheme.bodyLarge,
-                  ),
-                  Text(
-                    user.username,
-                    style: Theme.of(context)
-                        .textTheme
-                        .displayMedium
-                        ?.copyWith(color: AppTheme.accent),
-                  ),
-                ],
-              ),
-              Row(
-                children: [
-                  // Profile button
-                  IconButton(
-                    onPressed: () => context.go(AppConstants.profileRoute),
-                    icon: const Icon(Icons.person_rounded),
-                    color: AppTheme.accent,
-                    style: IconButton.styleFrom(
-                      backgroundColor: AppTheme.surface,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _greeting(),
+                      style: const TextStyle(fontSize: 11, color: Colors.white54),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  // Level badge
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [AppTheme.accent, AppTheme.cardGold],
+                    Text(
+                      user.username,
+                      style: Theme.of(context)
+                          .textTheme
+                          .displayMedium
+                          ?.copyWith(color: Colors.white, fontSize: 20),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (team != null)
+                      Text(
+                        team.teamName,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: AppTheme.accent.withValues(alpha: 0.8),
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                      borderRadius: BorderRadius.circular(20),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Profile button
+              GestureDetector(
+                onTap: () => context.go(AppConstants.profileRoute),
+                child: Container(
+                  width: 36, height: 36,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      colors: [AppTheme.accent, AppTheme.cardGold],
                     ),
+                  ),
+                  child: Center(
                     child: Text(
-                      'LV ${user.level}',
+                      'LV${user.level}',
                       style: const TextStyle(
                         color: Colors.black,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 11,
                       ),
                     ),
                   ),
-                ],
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          // Currency row
-          CoinDisplay(coins: user.coins, premiumTokens: user.premiumTokens),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
+          // XP bar
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Stack(
+                      children: [
+                        Container(
+                          height: 7,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ),
+                        FractionallySizedBox(
+                          widthFactor: xpProgress.clamp(0.0, 1.0),
+                          child: Container(
+                            height: 7,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [AppTheme.accent, AppTheme.cardGold],
+                              ),
+                              borderRadius: BorderRadius.circular(4),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppTheme.accent.withValues(alpha: 0.4),
+                                  blurRadius: 6,
+                                  offset: const Offset(0, 1),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '$xpCurrent / $xpMax XP',
+                      style: const TextStyle(fontSize: 11, color: Colors.white38),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // Currency + Season Tier row
+          Row(
+            children: [
+              CoinDisplay(coins: user.coins, premiumTokens: user.premiumTokens),
+              const Spacer(),
+              _SeasonBadge(tier: user.seasonTier, points: user.seasonPoints),
+            ],
+          ),
+          const SizedBox(height: 8),
           // Stats row
           Row(
             children: [
@@ -203,13 +321,13 @@ class DashboardScreen extends ConsumerWidget {
                 value: '${user.matchesPlayed}',
                 icon: Icons.sports_cricket,
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               _StatChip(
                 label: 'Won',
                 value: '${user.matchesWon}',
                 icon: Icons.emoji_events,
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               _StatChip(
                 label: 'Win %',
                 value: '${user.winRate.toStringAsFixed(0)}%',
@@ -217,23 +335,58 @@ class DashboardScreen extends ConsumerWidget {
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          // XP progress
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: LinearProgressIndicator(
-              value: (user.xp % AppConstants.xpPerLevel) /
-                  AppConstants.xpPerLevel,
-              backgroundColor: AppTheme.surfaceLight,
-              valueColor:
-                  const AlwaysStoppedAnimation<Color>(AppTheme.accent),
-              minHeight: 8,
-            ),
-          ),
-          const SizedBox(height: 4),
+        ],
+      ),
+      ),
+      ),
+    );
+  }
+
+  static String _greeting() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return 'Good Morning';
+    if (hour < 17) return 'Good Afternoon';
+    return 'Good Evening';
+  }
+}
+
+// ─── Season Badge ────────────────────────────────────────────────────
+
+class _SeasonBadge extends StatelessWidget {
+  final String tier;
+  final int points;
+
+  const _SeasonBadge({required this.tier, required this.points});
+
+  @override
+  Widget build(BuildContext context) {
+    final (Color color, IconData icon) = switch (tier) {
+      'legend' => (AppTheme.cardLegend, Icons.whatshot),
+      'elite' => (AppTheme.cardElite, Icons.diamond),
+      'gold' => (AppTheme.cardGold, Icons.star),
+      'silver' => (AppTheme.cardSilver, Icons.shield),
+      _ => (AppTheme.cardBronze, Icons.shield_outlined),
+    };
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 4),
           Text(
-            '${user.xp % AppConstants.xpPerLevel} / ${AppConstants.xpPerLevel} XP to next level',
-            style: const TextStyle(fontSize: 12, color: Colors.white54),
+            '${tier[0].toUpperCase()}${tier.substring(1)}',
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.bold,
+              fontSize: 12,
+            ),
           ),
         ],
       ),
@@ -241,50 +394,203 @@ class DashboardScreen extends ConsumerWidget {
   }
 }
 
+// ─── Squad Overview Card ─────────────────────────────────────────────
+
+class _SquadOverviewCard extends StatelessWidget {
+  final Team team;
+  final Squad? squad;
+  final int chemistry;
+
+  const _SquadOverviewCard({required this.team, this.squad, required this.chemistry});
+
+  @override
+  Widget build(BuildContext context) {
+    final xiCount = squad?.playingXI.length ?? 0;
+    final captain = squad?.captain;
+    final captainName = captain?.userCard?.playerCard?.playerName;
+    final rating = team.overallRating;
+
+    return GlassContainer(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.all(16),
+      borderRadius: 16,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.shield, size: 18, color: AppTheme.accent),
+              const SizedBox(width: 8),
+              Text(
+                team.teamName.toUpperCase(),
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1,
+                  color: AppTheme.accent,
+                ),
+              ),
+              const Spacer(),
+              if (captainName != null)
+                Text(
+                  'C: $captainName',
+                  style: const TextStyle(fontSize: 11, color: Colors.white38),
+                  overflow: TextOverflow.ellipsis,
+                ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              _SquadMiniStat(
+                label: 'RATING',
+                value: '$rating',
+                color: _ratingColor(rating),
+              ),
+              const SizedBox(width: 16),
+              _SquadMiniStat(
+                label: 'CHEMISTRY',
+                value: '$chemistry',
+                color: chemistry >= 50 ? AppTheme.primaryLight : Colors.orangeAccent,
+              ),
+              const SizedBox(width: 16),
+              _SquadMiniStat(
+                label: 'PLAYING XI',
+                value: '$xiCount/11',
+                color: xiCount >= 11 ? AppTheme.primaryLight : AppTheme.error,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  static Color _ratingColor(int rating) {
+    if (rating >= 80) return AppTheme.cardLegend;
+    if (rating >= 60) return AppTheme.cardGold;
+    if (rating >= 40) return AppTheme.cardSilver;
+    return AppTheme.cardBronze;
+  }
+}
+
+class _SquadMiniStat extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+
+  const _SquadMiniStat({required this.label, required this.value, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.06),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: color.withValues(alpha: 0.12)),
+        ),
+        child: Column(
+          children: [
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: color,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 9,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1,
+                color: Colors.white38,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Quick Action Card ───────────────────────────────────────────────
+
 class _QuickActionCard extends StatelessWidget {
   final IconData icon;
   final String label;
-  final Color color;
+  final String subtitle;
+  final List<Color> gradientColors;
   final VoidCallback onTap;
 
   const _QuickActionCard({
     required this.icon,
     required this.label,
-    required this.color,
+    required this.subtitle,
+    required this.gradientColors,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: AppTheme.surface,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: color.withValues(alpha: 0.3),
-              width: 1,
-            ),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 32, color: color),
-              const SizedBox(height: 8),
-              Text(
-                label,
-                style: TextStyle(
-                  color: color,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                gradient: LinearGradient(
+                  colors: [
+                    gradientColors[0].withValues(alpha: 0.3),
+                    gradientColors[1].withValues(alpha: 0.1),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.12),
+                  width: 0.5,
                 ),
               ),
-            ],
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, size: 18, color: Colors.white),
+                  const Spacer(),
+                  Text(
+                    label,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.5),
+                      fontSize: 10,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -308,8 +614,9 @@ class _StatChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: AppTheme.surfaceLight,
+        color: Colors.white.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -338,22 +645,12 @@ class _LiveMatchBanner extends StatelessWidget {
 
     return GestureDetector(
       onTap: () => context.go(AppConstants.liveMatchRoute),
-      child: Container(
+      child: GlassContainer(
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: isLive
-                ? [AppTheme.primaryLight.withValues(alpha: 0.3), AppTheme.surface]
-                : [AppTheme.accent.withValues(alpha: 0.2), AppTheme.surface],
-          ),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isLive
-                ? AppTheme.primaryLight.withValues(alpha: 0.5)
-                : AppTheme.accent.withValues(alpha: 0.4),
-          ),
-        ),
+        borderRadius: 16,
+        tint: isLive ? AppTheme.primaryLight : AppTheme.accent,
+        opacity: 0.12,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -718,30 +1015,16 @@ class _MultiplayerMatchBannerState extends ConsumerState<_MultiplayerMatchBanner
 
         return GestureDetector(
           onTap: () => context.push('/multiplayer/match/$matchId'),
-          child: Container(
+          child: GlassContainer(
             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: isCompleted
-                    ? (userWon
-                        ? [Colors.green.withValues(alpha: 0.25), AppTheme.surface]
-                        : [Colors.red.withValues(alpha: 0.2), AppTheme.surface])
-                    : isLive
-                        ? [Colors.deepPurple.withValues(alpha: 0.3), AppTheme.surface]
-                        : [AppTheme.primary.withValues(alpha: 0.2), AppTheme.surface],
-              ),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: isCompleted
-                    ? (userWon
-                        ? Colors.green.withValues(alpha: 0.5)
-                        : Colors.red.withValues(alpha: 0.4))
-                    : isLive
-                        ? Colors.deepPurple.withValues(alpha: 0.5)
-                        : AppTheme.primary.withValues(alpha: 0.4),
-              ),
-            ),
+            borderRadius: 16,
+            tint: isCompleted
+                ? (userWon ? Colors.green : Colors.red)
+                : isLive
+                    ? Colors.deepPurple
+                    : AppTheme.primary,
+            opacity: 0.12,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [

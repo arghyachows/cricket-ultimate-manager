@@ -36,7 +36,7 @@ void showSellOnMarketDialog(BuildContext context, WidgetRef ref, UserCard card) 
     context: context,
     builder: (ctx) => StatefulBuilder(
       builder: (ctx, setDialogState) => AlertDialog(
-        backgroundColor: AppTheme.surface,
+        backgroundColor: const Color(0xE61D1E33),
         title: Text('Sell ${pc.playerName}'),
         content: SingleChildScrollView(
           child: Column(
@@ -100,20 +100,19 @@ void showSellOnMarketDialog(BuildContext context, WidgetRef ref, UserCard card) 
               const SizedBox(height: 16),
               const Text('Auction Duration', style: TextStyle(fontSize: 13)),
               const SizedBox(height: 6),
-              Row(
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
                 children: [1, 3, 6, 12].map((h) {
                   final selected = duration == h;
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: ChoiceChip(
-                      label: Text('${h}h'),
-                      selected: selected,
-                      onSelected: (_) => setDialogState(() => duration = h),
-                      selectedColor: AppTheme.accent,
-                      labelStyle: TextStyle(
-                        color: selected ? Colors.black : Colors.white70,
-                        fontSize: 12,
-                      ),
+                  return ChoiceChip(
+                    label: Text('${h}h'),
+                    selected: selected,
+                    onSelected: (_) => setDialogState(() => duration = h),
+                    selectedColor: AppTheme.accent,
+                    labelStyle: TextStyle(
+                      color: selected ? Colors.black : Colors.white70,
+                      fontSize: 12,
                     ),
                   );
                 }).toList(),
@@ -398,7 +397,7 @@ class _ListingCard extends ConsumerWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: AppTheme.surface,
+        color: Colors.white.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: rarityColor.withValues(alpha: 0.3)),
       ),
@@ -553,7 +552,7 @@ class _ListingCard extends ConsumerWidget {
         bool bidding = false;
         return StatefulBuilder(
           builder: (ctx, setDialogState) => AlertDialog(
-        backgroundColor: AppTheme.surface,
+        backgroundColor: const Color(0xE61D1E33),
         title: const Text('Place Bid'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -653,7 +652,7 @@ class _ListingCard extends ConsumerWidget {
         bool buying = false;
         return StatefulBuilder(
           builder: (ctx, setDialogState) => AlertDialog(
-        backgroundColor: AppTheme.surface,
+        backgroundColor: const Color(0xE61D1E33),
         title: const Text('Buy Now'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -807,7 +806,7 @@ class _SellTab extends ConsumerWidget {
             return Container(
               margin: const EdgeInsets.only(bottom: 8),
               decoration: BoxDecoration(
-                color: AppTheme.surface,
+                color: Colors.white.withValues(alpha: 0.05),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: rarityColor.withValues(alpha: 0.2)),
               ),
@@ -942,7 +941,7 @@ class _BidTile extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: AppTheme.surface,
+        color: Colors.white.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: statusColor.withValues(alpha: 0.3)),
       ),
@@ -1103,7 +1102,7 @@ class _MyListingTile extends ConsumerWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: AppTheme.surface,
+        color: Colors.white.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: rarityColor.withValues(alpha: 0.2)),
       ),
@@ -1196,7 +1195,7 @@ class _MyListingTile extends ConsumerWidget {
         bool cancelling = false;
         return StatefulBuilder(
           builder: (ctx, setDialogState) => AlertDialog(
-        backgroundColor: AppTheme.surface,
+        backgroundColor: const Color(0xE61D1E33),
         title: const Text('Cancel Listing'),
         content: listing.currentBid > 0
             ? Text(

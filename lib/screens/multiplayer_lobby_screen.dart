@@ -55,7 +55,7 @@ class _MultiplayerLobbyScreenState extends ConsumerState<MultiplayerLobbyScreen>
   Widget _buildRoomCard(room) {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
-      color: AppTheme.surface,
+      color: Colors.white.withValues(alpha: 0.05),
       child: InkWell(
         onTap: _joiningRoomId != null
             ? null

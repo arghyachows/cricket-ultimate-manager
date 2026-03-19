@@ -67,7 +67,7 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
             margin: const EdgeInsets.symmetric(horizontal: 32),
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: AppTheme.surface,
+              color: Colors.white.withValues(alpha: 0.05),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: AppTheme.accent.withValues(alpha: 0.3)),
             ),
@@ -115,7 +115,7 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: AppTheme.surface,
+        color: Colors.white.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: statusColor.withValues(alpha: 0.3)),
       ),
@@ -239,7 +239,7 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: AppTheme.surface,
+        backgroundColor: const Color(0xE61D1E33),
         title: Text('Join ${tournament['name']}?'),
         content: Text('Entry fee: $entryFee coins'),
         actions: [

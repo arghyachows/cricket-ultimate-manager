@@ -193,7 +193,7 @@ class _MatchPreviewScreenState extends ConsumerState<MatchPreviewScreen>
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [AppTheme.primary.withValues(alpha: 0.5), AppTheme.surface],
+          colors: [AppTheme.primary.withValues(alpha: 0.5), Colors.transparent],
         ),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppTheme.primaryLight.withValues(alpha: 0.3)),
@@ -270,7 +270,7 @@ class _MatchPreviewScreenState extends ConsumerState<MatchPreviewScreen>
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppTheme.surface,
+        color: Colors.white.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.white12),
       ),
@@ -501,7 +501,7 @@ class _MatchPreviewScreenState extends ConsumerState<MatchPreviewScreen>
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppTheme.surface,
+        color: Colors.white.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.white12),
       ),
