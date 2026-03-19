@@ -363,7 +363,7 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
+        color: AppTheme.surface,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.white10),
       ),
@@ -414,7 +414,7 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
       key: key,
       margin: const EdgeInsets.only(bottom: 6),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
+        color: AppTheme.surface,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: player.isCaptain
@@ -526,7 +526,7 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
           children: [
             PopupMenuButton<String>(
               icon: const Icon(Icons.more_vert, size: 20, color: Colors.white54),
-              color: Colors.white.withValues(alpha: 0.08),
+              color: AppTheme.surfaceLight,
               onSelected: (value) => _handleLineupAction(value, player),
               itemBuilder: (_) => [
                 if (!player.isCaptain)
@@ -784,7 +784,7 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
                             return Container(
                               margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
                               decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.05),
+                                color: AppTheme.surface,
                                 borderRadius: BorderRadius.circular(10),
                                 border: Border.all(
                                   color: rarityColor.withValues(alpha: 0.2),
@@ -1003,7 +1003,7 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
                             return Container(
                               margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
                               decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.05),
+                                color: AppTheme.surface,
                                 borderRadius: BorderRadius.circular(10),
                                 border: Border.all(
                                   color: rarityColor.withValues(alpha: 0.2),
@@ -1168,7 +1168,7 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
       children: [
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          color: Colors.white.withValues(alpha: 0.05),
+          color: AppTheme.surface,
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
@@ -1273,7 +1273,7 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
       margin: const EdgeInsets.only(bottom: 6),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
+        color: AppTheme.surface,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: Colors.white10),
       ),

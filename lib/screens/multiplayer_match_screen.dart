@@ -1182,7 +1182,7 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [AppTheme.primary.withValues(alpha: 0.6), Colors.transparent],
+          colors: [AppTheme.primary.withValues(alpha: 0.6), AppTheme.surface],
         ),
       ),
       child: Column(
@@ -1349,7 +1349,7 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
         Container(
           width: double.infinity,
           padding: const EdgeInsets.all(12),
-          color: Colors.white.withValues(alpha: 0.08),
+          color: AppTheme.surfaceLight,
           child: AnimatedSwitcher(
             duration: const Duration(milliseconds: 300),
             child: Text(
@@ -1418,7 +1418,7 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: Colors.white.withValues(alpha: 0.08),
+      color: AppTheme.surfaceLight,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1477,7 +1477,7 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      color: Colors.white.withValues(alpha: 0.05),
+      color: AppTheme.surface,
       child: Row(
         children: [
           const Icon(Icons.sports_baseball, size: 14, color: AppTheme.primary),
@@ -1636,10 +1636,10 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: userWon
-              ? [AppTheme.accent.withValues(alpha: 0.3), Colors.transparent]
+              ? [AppTheme.accent.withValues(alpha: 0.3), AppTheme.surface]
               : isDraw
-                  ? [Colors.blueAccent.withValues(alpha: 0.2), Colors.transparent]
-                  : [AppTheme.error.withValues(alpha: 0.2), Colors.transparent],
+                  ? [Colors.blueAccent.withValues(alpha: 0.2), AppTheme.surface]
+                  : [AppTheme.error.withValues(alpha: 0.2), AppTheme.surface],
         ),
       ),
       child: Column(
@@ -1682,7 +1682,7 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.08),
+              color: AppTheme.surfaceLight,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Row(
@@ -1880,7 +1880,7 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
+        color: AppTheme.surface,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -1947,12 +1947,12 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
 
   Widget _battingCard(List<BatsmanStats> batsmen) {
     return Container(
-      color: Colors.white.withValues(alpha: 0.05),
+      color: AppTheme.surface,
       child: Column(
         children: [
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            color: Colors.white.withValues(alpha: 0.08),
+            color: AppTheme.surfaceLight,
             child: const Row(
               children: [
                 Expanded(
@@ -2075,13 +2075,13 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
     if (bowlers.isEmpty) return const SizedBox();
 
     return Container(
-      color: Colors.white.withValues(alpha: 0.05),
+      color: AppTheme.surface,
       margin: const EdgeInsets.only(bottom: 4),
       child: Column(
         children: [
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            color: Colors.white.withValues(alpha: 0.08),
+            color: AppTheme.surfaceLight,
             child: const Row(
               children: [
                 Expanded(

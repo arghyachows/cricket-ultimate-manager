@@ -143,7 +143,7 @@ class _MultiplayerDebugScreenState extends ConsumerState<MultiplayerDebugScreen>
         children: [
           // Connection Status
           Card(
-            color: Colors.white.withValues(alpha: 0.05),
+            color: AppTheme.surface,
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
@@ -216,7 +216,7 @@ class _MultiplayerDebugScreenState extends ConsumerState<MultiplayerDebugScreen>
 
           // Debug Log
           Card(
-            color: Colors.white.withValues(alpha: 0.05),
+            color: AppTheme.surface,
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(

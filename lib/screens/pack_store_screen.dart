@@ -80,13 +80,13 @@ class _PackCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         gradient: LinearGradient(
           colors: [
-            _packColor.withValues(alpha: 0.2),
-            Colors.white.withValues(alpha: 0.03),
+            _packColor.withValues(alpha: 0.3),
+            AppTheme.surface,
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        border: Border.all(color: _packColor.withValues(alpha: 0.3), width: 1),
+        border: Border.all(color: _packColor.withValues(alpha: 0.5), width: 2),
       ),
       child: Material(
         color: Colors.transparent,

@@ -232,7 +232,7 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen>
   void _showFilterSheet(BuildContext context, WidgetRef ref, CardFilter filter) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xE61D1E33),
+      backgroundColor: AppTheme.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
@@ -437,7 +437,7 @@ class _PackTileState extends ConsumerState<_PackTile> {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
         gradient: LinearGradient(
-          colors: [color.withValues(alpha: 0.25), Colors.transparent],
+          colors: [color.withValues(alpha: 0.25), AppTheme.surface],
           begin: Alignment.centerLeft,
           end: Alignment.centerRight,
         ),

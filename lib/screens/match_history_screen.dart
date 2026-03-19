@@ -195,7 +195,7 @@ class _MatchHistoryCard extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.05),
+          color: AppTheme.surface,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: resultColor.withValues(alpha: 0.3)),
         ),
@@ -413,12 +413,12 @@ class _ScorecardSheet extends StatelessWidget {
 
   Widget _battingTable(List<BatsmanStats> batsmen) {
     return Container(
-      color: Colors.white.withValues(alpha: 0.05),
+      color: AppTheme.surface,
       child: Column(
         children: [
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            color: Colors.white.withValues(alpha: 0.08),
+            color: AppTheme.surfaceLight,
             child: const Row(
               children: [
                 Expanded(flex: 4, child: Text('Batter', style: TextStyle(fontSize: 11, color: Colors.white38, fontWeight: FontWeight.bold))),
@@ -475,12 +475,12 @@ class _ScorecardSheet extends StatelessWidget {
     if (bowlers.isEmpty) return const SizedBox();
 
     return Container(
-      color: Colors.white.withValues(alpha: 0.05),
+      color: AppTheme.surface,
       child: Column(
         children: [
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            color: Colors.white.withValues(alpha: 0.08),
+            color: AppTheme.surfaceLight,
             child: const Row(
               children: [
                 Expanded(flex: 4, child: Text('Bowler', style: TextStyle(fontSize: 11, color: Colors.white38, fontWeight: FontWeight.bold))),

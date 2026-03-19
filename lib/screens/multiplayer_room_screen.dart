@@ -101,7 +101,7 @@ class _MultiplayerRoomScreenState extends ConsumerState<MultiplayerRoomScreen> {
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [AppTheme.primary.withValues(alpha: 0.6), Colors.transparent],
+                  colors: [AppTheme.primary.withValues(alpha: 0.6), AppTheme.surface],
                 ),
               ),
               child: Column(
@@ -320,7 +320,7 @@ class _MultiplayerRoomScreenState extends ConsumerState<MultiplayerRoomScreen> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: const Color(0xE61D1E33),
+          backgroundColor: AppTheme.surface,
           title: const Text('Challenge Player'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -333,7 +333,7 @@ class _MultiplayerRoomScreenState extends ConsumerState<MultiplayerRoomScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.08),
+                  color: AppTheme.surfaceLight,
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: AppTheme.accent.withOpacity(0.5)),
                 ),
@@ -399,7 +399,7 @@ class _MultiplayerRoomScreenState extends ConsumerState<MultiplayerRoomScreen> {
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-        backgroundColor: const Color(0xE61D1E33),
+        backgroundColor: AppTheme.surface,
         title: const Text('Pending Challenges'),
         content: SizedBox(
           width: double.maxFinite,
@@ -411,7 +411,7 @@ class _MultiplayerRoomScreenState extends ConsumerState<MultiplayerRoomScreen> {
               final isResponding = respondingId == challenge.id;
               
               return Card(
-                color: Colors.white.withValues(alpha: 0.08),
+                color: AppTheme.surfaceLight,
                 margin: const EdgeInsets.only(bottom: 8),
                 child: Padding(
                   padding: const EdgeInsets.all(12),

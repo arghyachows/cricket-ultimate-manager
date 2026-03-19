@@ -295,7 +295,7 @@ class CardDetailScreen extends ConsumerWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.05),
+          color: AppTheme.surface,
           borderRadius: BorderRadius.circular(10),
         ),
         child: Column(
@@ -344,7 +344,7 @@ class CardDetailScreen extends ConsumerWidget {
 
         return Container(
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.05),
+            color: AppTheme.surface,
             borderRadius: BorderRadius.circular(10),
           ),
           child: Column(
@@ -385,7 +385,7 @@ class CardDetailScreen extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.05),
+        color: AppTheme.surface,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -465,7 +465,7 @@ class CardDetailScreen extends ConsumerWidget {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xE61D1E33),
+        backgroundColor: AppTheme.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Quick Sell', style: TextStyle(fontWeight: FontWeight.bold)),
         content: Column(

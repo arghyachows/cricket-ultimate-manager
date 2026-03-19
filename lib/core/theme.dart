@@ -16,11 +16,6 @@ class AppTheme {
   static const Color error = Color(0xFFCF6679);
   static const Color success = Color(0xFF4CAF50);
 
-  // Glass colors
-  static Color get glassSurface => Colors.white.withValues(alpha: 0.06);
-  static Color get glassBorder => Colors.white.withValues(alpha: 0.12);
-  static Color get glassSurfaceLight => Colors.white.withValues(alpha: 0.10);
-
   static Color getRarityColor(String rarity) {
     switch (rarity) {
       case 'bronze':
@@ -68,8 +63,8 @@ class AppTheme {
         ),
       ),
       cardTheme: CardThemeData(
-        color: surface.withValues(alpha: 0.4),
-        elevation: 0,
+        color: surface,
+        elevation: 8,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
@@ -85,34 +80,23 @@ class AppTheme {
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: Colors.white.withValues(alpha: 0.06),
+        fillColor: surfaceLight,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: accent.withValues(alpha: 0.5)),
+          borderSide: BorderSide.none,
         ),
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       ),
-      appBarTheme: AppBarTheme(
-        backgroundColor: surface.withValues(alpha: 0.4),
+      appBarTheme: const AppBarTheme(
+        backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
-        scrolledUnderElevation: 0,
-        surfaceTintColor: Colors.transparent,
       ),
       bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-        backgroundColor: Colors.transparent,
+        backgroundColor: surface,
         selectedItemColor: accent,
         unselectedItemColor: Colors.white54,
-        elevation: 0,
       ),
     );
   }
