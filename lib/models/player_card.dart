@@ -92,6 +92,21 @@ class PlayerCard {
     }
   }
 
+  String get roleLabel {
+    switch (role) {
+      case 'batsman':
+        return 'Batsman';
+      case 'bowler':
+        return 'Bowler';
+      case 'all_rounder':
+        return 'All-Rounder';
+      case 'wicket_keeper':
+        return 'Wicket Keeper';
+      default:
+        return role.replaceAll('_', ' ');
+    }
+  }
+
   String get countryCode {
     const codes = {
       'India': 'IND',

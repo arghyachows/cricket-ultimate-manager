@@ -406,7 +406,6 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
     }
 
     final rarityColor = AppTheme.getRarityColor(card.rarity);
-    final slotLabel = _xiSlotLabels[battingOrder] ?? 'Slot $battingOrder';
 
     return Container(
       key: key,
@@ -516,7 +515,7 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
           ],
         ),
         subtitle: Text(
-          '$slotLabel • ${card.countryCode} • BAT ${card.batting} BOWL ${card.bowling}',
+          '${card.roleLabel} • ${card.countryCode} • BAT ${card.batting} BOWL ${card.bowling}',
           style: const TextStyle(color: Colors.white54, fontSize: 11),
         ),
         trailing: Row(
