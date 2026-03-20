@@ -365,32 +365,10 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
     int battingOf(UserCard c) => c.playerCard?.batting ?? 0;
     String roleOf(UserCard c) => c.playerCard?.role ?? 'batsman';
 
-    // Preserve existing lineup selections
-    final currentLineup = squad.lineup;
+    // Always pick the best 11 from scratch (ignore existing lineup)
     final selected = <UserCard>[];
     final selectedIds = <String>{};
     final selectedCardIds = <String>{};
-
-    for (final lp in currentLineup) {
-      final card = candidates.where((c) => c.id == lp.userCardId).firstOrNull;
-      if (card != null) {
-        selected.add(card);
-        selectedIds.add(card.id);
-        selectedCardIds.add(card.cardId);
-      }
-    }
-
-    final slotsToFill = 11 - selected.length;
-    if (slotsToFill <= 0) return; // Already full
-
-    // Count existing roles
-    final currentRoles = <String, int>{};
-    for (final c in selected) {
-      final role = roleOf(c);
-      currentRoles[role] = (currentRoles[role] ?? 0) + 1;
-    }
-
-    int needed(String role, int ideal) => (ideal - (currentRoles[role] ?? 0)).clamp(0, slotsToFill);
 
     void pick(String role, int count) {
       int picked = 0;
@@ -408,11 +386,11 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
       }
     }
 
-    // Fill role gaps: 4 bat, 1 WK, 2 AR, 4 bowl (minus existing)
-    pick('batsman', needed('batsman', 4));
-    pick('wicket_keeper', needed('wicket_keeper', 1));
-    pick('all_rounder', needed('all_rounder', 2));
-    pick('bowler', needed('bowler', 4));
+    // Target composition: 4 bat, 1 WK, 2 AR, 4 bowl
+    pick('batsman', 4);
+    pick('wicket_keeper', 1);
+    pick('all_rounder', 2);
+    pick('bowler', 4);
 
     // Fill remaining by overall rating (unique players)
     for (final card in candidates) {
@@ -431,7 +409,6 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
         if (!selectedIds.contains(card.id)) {
           selected.add(card);
           selectedIds.add(card.id);
-          selectedCardIds.add(card.cardId);
         }
       }
     }
@@ -474,50 +451,58 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
     final ordered = List<UserCard>.from(selected)
       ..sort((a, b) => battingOrderScore(b).compareTo(battingOrderScore(a)));
 
-    // Determine captain/VC: preserve existing if still present
-    final existingCaptainCardId = currentLineup
-        .where((lp) => lp.isCaptain)
-        .map((lp) => lp.userCardId)
-        .firstOrNull;
-    final existingVCCardId = currentLineup
-        .where((lp) => lp.isViceCaptain)
-        .map((lp) => lp.userCardId)
-        .firstOrNull;
-
-    String? captainCardId = selectedIds.contains(existingCaptainCardId ?? '')
-        ? existingCaptainCardId
-        : null;
-    String? vcCardId = selectedIds.contains(existingVCCardId ?? '')
-        ? existingVCCardId
-        : null;
-
-    if (captainCardId == null || vcCardId == null) {
-      final leadership = List<UserCard>.from(selected)
-        ..sort((a, b) => ratingOf(b).compareTo(ratingOf(a)));
-      for (final c in leadership) {
-        if (captainCardId == null) {
-          captainCardId = c.id;
-        } else if (vcCardId == null && c.id != captainCardId) {
-          vcCardId = c.id;
-          break;
-        }
+    // Captain = highest rated, VC = second highest
+    String? captainCardId;
+    String? vcCardId;
+    final leadership = List<UserCard>.from(selected)
+      ..sort((a, b) => ratingOf(b).compareTo(ratingOf(a)));
+    for (final c in leadership) {
+      if (captainCardId == null) {
+        captainCardId = c.id;
+      } else if (vcCardId == null && c.id != captainCardId) {
+        vcCardId = c.id;
+        break;
       }
     }
 
-    // Clear existing lineup and insert fresh
-    await SupabaseService.client
-        .from('lineup_players')
-        .delete()
-        .eq('squad_id', squad.id);
+    // Pause realtime to avoid state churn during multi-step write
+    _lineupChannel?.unsubscribe();
 
-    for (int i = 0; i < ordered.length; i++) {
-      await SupabaseService.client.from('lineup_players').insert({
-        'squad_id': squad.id,
-        'user_card_id': ordered[i].id,
-        'batting_order': i + 1,
-        'is_captain': ordered[i].id == captainCardId,
-        'is_vice_captain': ordered[i].id == vcCardId,
-      });
+    try {
+      // Clear existing lineup and insert fresh
+      await SupabaseService.client
+          .from('lineup_players')
+          .delete()
+          .eq('squad_id', squad.id);
+
+      // Batch insert all lineup players at once
+      final rows = <Map<String, dynamic>>[];
+      for (int i = 0; i < ordered.length; i++) {
+        rows.add({
+          'squad_id': squad.id,
+          'user_card_id': ordered[i].id,
+          'batting_order': i + 1,
+          'is_captain': ordered[i].id == captainCardId,
+          'is_vice_captain': ordered[i].id == vcCardId,
+        });
+      }
+      if (rows.isNotEmpty) {
+        await SupabaseService.client.from('lineup_players').insert(rows);
+      }
+    } finally {
+      // Re-subscribe to realtime
+      final userId = SupabaseService.currentUserId;
+      if (userId != null) {
+        _lineupChannel = SupabaseService.client
+            .channel('lineup_$userId')
+            .onPostgresChanges(
+              event: PostgresChangeEvent.all,
+              schema: 'public',
+              table: 'lineup_players',
+              callback: (_) => loadTeam(),
+            )
+            .subscribe();
+      }
     }
 
     await loadTeam();

@@ -103,16 +103,18 @@ void showSellOnMarketDialog(BuildContext context, WidgetRef ref, UserCard card) 
               Row(
                 children: [1, 3, 6, 12].map((h) {
                   final selected = duration == h;
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: ChoiceChip(
-                      label: Text('${h}h'),
-                      selected: selected,
-                      onSelected: (_) => setDialogState(() => duration = h),
-                      selectedColor: AppTheme.accent,
-                      labelStyle: TextStyle(
-                        color: selected ? Colors.black : Colors.white70,
-                        fontSize: 12,
+                  return Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: ChoiceChip(
+                        label: Text('${h}h'),
+                        selected: selected,
+                        onSelected: (_) => setDialogState(() => duration = h),
+                        selectedColor: AppTheme.accent,
+                        labelStyle: TextStyle(
+                          color: selected ? Colors.black : Colors.white70,
+                          fontSize: 12,
+                        ),
                       ),
                     ),
                   );
