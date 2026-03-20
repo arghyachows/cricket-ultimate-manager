@@ -141,9 +141,10 @@ class PackOpeningNotifier extends StateNotifier<PackOpeningState> {
         allRevealed: false,
       );
 
-      // Refresh user data from server
+      // Refresh user data and cards from server
       ref.read(currentUserProvider.notifier).refresh();
-      ref.read(userCardsProvider.notifier).addCards(generatedCards);
+      ref.read(userCardsProvider.notifier).refresh();
+      ref.invalidate(listedCardIdsProvider);
 
       return true;
     } catch (e) {
