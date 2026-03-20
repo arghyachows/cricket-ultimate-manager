@@ -905,7 +905,8 @@ serve(async (req) => {
       let nonStrikerName = "";
       let bowlerName = "";
       if (result.eventType !== "innings_break") {
-        batsmanName = engine.getName(result.batsmanCardId);
+        // Get current batsmen from engine (after strike may have swapped)
+        batsmanName = engine.currentBatsman.name;
         nonStrikerName = engine.nonStriker.name;
         bowlerName = engine.getName(result.bowlerCardId);
       }

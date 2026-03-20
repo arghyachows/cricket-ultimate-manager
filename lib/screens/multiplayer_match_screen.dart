@@ -1413,7 +1413,7 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
     final strikerStats = _findCurrentBatsmanStats(strikerName);
     final nonStrikerStats = _findCurrentBatsmanStats(nonStrikerName);
     final fallbackAtCrease = _state.currentBatsmen;
-    final hasPrimaryNames = strikerName.isNotEmpty || nonStrikerName.isNotEmpty;
+    final hasPrimaryNames = strikerName.isNotEmpty && nonStrikerName.isNotEmpty && strikerName != nonStrikerName;
 
     return Container(
       width: double.infinity,
@@ -1435,7 +1435,7 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
           const SizedBox(height: 6),
           if (hasPrimaryNames) ...[
             Text(
-              '${strikerName.isEmpty ? 'Striker' : strikerName}* ${strikerStats == null ? '' : '${strikerStats.runs} (${strikerStats.balls})'}',
+              '${strikerName}* ${strikerStats == null ? '' : '${strikerStats.runs} (${strikerStats.balls})'}',
               style: const TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
@@ -1445,7 +1445,26 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
             ),
             const SizedBox(height: 2),
             Text(
-              '${nonStrikerName.isEmpty ? 'Non-striker' : nonStrikerName} ${nonStrikerStats == null ? '' : '${nonStrikerStats.runs} (${nonStrikerStats.balls})'}',
+              '${nonStrikerName} ${nonStrikerStats == null ? '' : '${nonStrikerStats.runs} (${nonStrikerStats.balls})'}',
+              style: const TextStyle(
+                fontSize: 13,
+                color: Colors.white70,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ] else if (fallbackAtCrease.length >= 2) ...[
+            Text(
+              '${fallbackAtCrease[0].name}* ${fallbackAtCrease[0].runs} (${fallbackAtCrease[0].balls})',
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: Colors.white,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 2),
+            Text(
+              '${fallbackAtCrease[1].name} ${fallbackAtCrease[1].runs} (${fallbackAtCrease[1].balls})',
               style: const TextStyle(
                 fontSize: 13,
                 color: Colors.white70,
@@ -1453,16 +1472,13 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
               overflow: TextOverflow.ellipsis,
             ),
           ] else ...[
-            for (var i = 0; i < fallbackAtCrease.length && i < 2; i++)
-              Text(
-                '${fallbackAtCrease[i].name}${i == 0 ? '*' : ''} ${fallbackAtCrease[i].runs} (${fallbackAtCrease[i].balls})',
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                ),
-                overflow: TextOverflow.ellipsis,
+            const Text(
+              'Waiting for batsmen...',
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.white38,
               ),
+            ),
           ],
         ],
       ),
