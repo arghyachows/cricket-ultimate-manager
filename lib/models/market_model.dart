@@ -46,9 +46,9 @@ class MarketListing {
   }
 
   bool get isActive => status == 'active';
-  bool get hasExpired => DateTime.now().isAfter(expiresAt);
+  bool get hasExpired => DateTime.now().toUtc().isAfter(expiresAt);
 
-  Duration get timeRemaining => expiresAt.difference(DateTime.now());
+  Duration get timeRemaining => expiresAt.difference(DateTime.now().toUtc());
   String get timeRemainingDisplay {
     final remaining = timeRemaining;
     if (remaining.isNegative) return 'Expired';

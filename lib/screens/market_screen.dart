@@ -100,22 +100,18 @@ void showSellOnMarketDialog(BuildContext context, WidgetRef ref, UserCard card) 
               const SizedBox(height: 16),
               const Text('Auction Duration', style: TextStyle(fontSize: 13)),
               const SizedBox(height: 6),
-              Row(
+              Wrap(
+                spacing: 8,
                 children: [1, 3, 6, 12].map((h) {
                   final selected = duration == h;
-                  return Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: ChoiceChip(
-                        label: Text('${h}h'),
-                        selected: selected,
-                        onSelected: (_) => setDialogState(() => duration = h),
-                        selectedColor: AppTheme.accent,
-                        labelStyle: TextStyle(
-                          color: selected ? Colors.black : Colors.white70,
-                          fontSize: 12,
-                        ),
-                      ),
+                  return ChoiceChip(
+                    label: Text('${h}h'),
+                    selected: selected,
+                    onSelected: (_) => setDialogState(() => duration = h),
+                    selectedColor: AppTheme.accent,
+                    labelStyle: TextStyle(
+                      color: selected ? Colors.black : Colors.white70,
+                      fontSize: 12,
                     ),
                   );
                 }).toList(),

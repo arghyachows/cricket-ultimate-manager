@@ -75,7 +75,7 @@ class MarketNotifier extends StateNotifier<AsyncValue<List<MarketListing>>> {
         'user_card_id': userCardId,
         'buy_now_price': buyNowPrice,
         'starting_bid': startingBid,
-        'expires_at': DateTime.now()
+        'expires_at': DateTime.now().toUtc()
             .add(Duration(hours: durationHours))
             .toIso8601String(),
       });
