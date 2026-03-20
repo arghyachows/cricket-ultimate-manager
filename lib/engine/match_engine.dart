@@ -5,8 +5,8 @@ import '../models/models.dart';
 /// Takes into account batting/bowling ratings, chemistry,
 /// pitch conditions, form, fatigue, and randomness.
 class MatchEngine {
-  final List<SquadPlayer> homeXI;
-  final List<SquadPlayer> awayXI;
+  final List<LineupPlayer> homeXI;
+  final List<LineupPlayer> awayXI;
   final int homeChemistry;
   final int awayChemistry;
   final int overs;
@@ -43,14 +43,14 @@ class MatchEngine {
   int _target = 0;
 
   // Batting/Bowling order
-  late List<SquadPlayer> _battingOrder1;
-  late List<SquadPlayer> _bowlingOrder1;
-  late List<SquadPlayer> _battingOrder2;
-  late List<SquadPlayer> _bowlingOrder2;
+  late List<LineupPlayer> _battingOrder1;
+  late List<LineupPlayer> _bowlingOrder1;
+  late List<LineupPlayer> _battingOrder2;
+  late List<LineupPlayer> _bowlingOrder2;
 
   // Current innings references
-  late List<SquadPlayer> _currentBatting;
-  late List<SquadPlayer> _currentBowling;
+  late List<LineupPlayer> _currentBatting;
+  late List<LineupPlayer> _currentBowling;
 
   MatchEngine({
     required this.homeXI,
@@ -106,8 +106,8 @@ class MatchEngine {
 
   int get _currentWickets => isFirstInnings ? _wickets1 : _wickets2;
 
-  SquadPlayer get _currentBatsman => _currentBatting[_currentBatsmanIndex];
-  SquadPlayer get _currentBowler =>
+  LineupPlayer get _currentBatsman => _currentBatting[_currentBatsmanIndex];
+  LineupPlayer get _currentBowler =>
       _currentBowling[_currentBowlerIndex % _currentBowling.length];
 
   String getBatsmanName(String cardId) {
@@ -607,7 +607,7 @@ class MatchEngine {
   }
 
   /// Pick a fielder for caught/stumped dismissals from the bowling team
-  SquadPlayer? _pickFielder(String wicketType, SquadPlayer bowler) {
+  LineupPlayer? _pickFielder(String wicketType, LineupPlayer bowler) {
     if (wicketType == 'bowled' || wicketType == 'lbw') return null;
     // All players in the fielding side
     final allFielders = isFirstInnings

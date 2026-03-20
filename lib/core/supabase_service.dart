@@ -96,10 +96,11 @@ class SupabaseService {
     if (userId == null) return null;
     final result = await client
         .from('teams')
-        .select('*, squads(*, squad_players(*, user_cards(*, player_cards(*))))')
+        .select('*, squads(*, squad_players(*, user_cards(*, player_cards(*))), lineup_players(*, user_cards(*, player_cards(*))))')
         .eq('user_id', userId)
         .eq('is_active', true)
         .order('position', referencedTable: 'squads.squad_players')
+        .order('batting_order', referencedTable: 'squads.lineup_players')
         .maybeSingle();
     return result;
   }

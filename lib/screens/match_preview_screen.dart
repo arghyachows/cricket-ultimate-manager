@@ -38,7 +38,7 @@ class _MatchPreviewScreenState extends ConsumerState<MatchPreviewScreen>
   late final String _pitchType;
   late final String _weather;
   late String _aiTeamName;
-  late List<SquadPlayer> _aiXI;
+  late List<LineupPlayer> _aiXI;
   late int _aiChemistry;
 
   String _selectedDifficulty = 'Village';

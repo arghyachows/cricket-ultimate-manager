@@ -13,7 +13,7 @@ void showSellOnMarketDialog(BuildContext context, WidgetRef ref, UserCard card) 
   final team = ref.read(teamProvider).valueOrNull;
   final squad = team?.activeSquad;
   if (squad != null) {
-    final inXI = squad.players.any((p) => p.isPlayingXI && p.userCardId == card.id);
+    final inXI = squad.isInLineup(card.id);
     if (inXI) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -762,8 +762,7 @@ class _SellTab extends ConsumerWidget {
         // Exclude cards in Playing XI and those already listed
         final team = ref.watch(teamProvider).valueOrNull;
         final squad = team?.activeSquad;
-        final xiCardIds = squad?.players
-            .where((p) => p.isPlayingXI)
+        final xiCardIds = squad?.lineup
             .map((p) => p.userCardId)
             .toSet() ?? {};
         final listedIds = ref.watch(listedCardIdsProvider).valueOrNull ?? {};

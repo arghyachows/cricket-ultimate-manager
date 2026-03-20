@@ -10,7 +10,8 @@ final teamProvider =
 });
 
 class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
-  RealtimeChannel? _channel;
+  RealtimeChannel? _squadChannel;
+  RealtimeChannel? _lineupChannel;
 
   TeamNotifier() : super(const AsyncValue.loading()) {
     loadTeam();
@@ -20,35 +21,19 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
   void _subscribeToUpdates() {
     final userId = SupabaseService.currentUserId;
     if (userId == null) return;
-    _channel = SupabaseService.subscribeToSquad(userId, () {
+    _squadChannel = SupabaseService.subscribeToSquad(userId, () {
       loadTeam();
     });
-  }
-
-  Future<void> _normalizePlayingXIBattingOrder(String squadId) async {
-    final rows = await SupabaseService.client
-        .from('squad_players')
-        .select('id, position, batting_order')
-        .eq('squad_id', squadId)
-        .eq('is_playing_xi', true);
-
-    final players = List<Map<String, dynamic>>.from(rows);
-    players.sort((a, b) {
-      final ao = a['batting_order'] as int?;
-      final bo = b['batting_order'] as int?;
-      if (ao != null && bo != null) return ao.compareTo(bo);
-      if (ao != null) return -1;
-      if (bo != null) return 1;
-      final ap = (a['position'] as int?) ?? 999;
-      final bp = (b['position'] as int?) ?? 999;
-      return ap.compareTo(bp);
-    });
-
-    for (int i = 0; i < players.length; i++) {
-      await SupabaseService.client
-          .from('squad_players')
-          .update({'batting_order': i + 1}).eq('id', players[i]['id']);
-    }
+    // Also listen to lineup_players changes
+    _lineupChannel = SupabaseService.client
+        .channel('lineup_$userId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'lineup_players',
+          callback: (_) => loadTeam(),
+        )
+        .subscribe();
   }
 
   Future<void> loadTeam() async {
@@ -73,7 +58,6 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
   Future<Team?> createTeam(String name) async {
     try {
       await SupabaseService.createTeam(name);
-      // Reload to get full team with squads joined
       await loadTeam();
       return state.valueOrNull;
     } catch (e) {
@@ -81,8 +65,11 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
     }
   }
 
-  Future<void> addPlayerToSquad(String squadId, String userCardId, int position,
-      {bool isPlayingXI = false}) async {
+  // ──────────────────────────────────────────────
+  // SQUAD (Roster) operations
+  // ──────────────────────────────────────────────
+
+  Future<void> addPlayerToSquad(String squadId, String userCardId, int position) async {
     // Remove any existing player at this position
     await SupabaseService.client
         .from('squad_players')
@@ -101,176 +88,264 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
       'squad_id': squadId,
       'user_card_id': userCardId,
       'position': position,
-      'is_playing_xi': isPlayingXI,
-      'batting_order': isPlayingXI ? position : null,
     });
 
-    await _normalizePlayingXIBattingOrder(squadId);
-    await loadTeam();
-  }
-
-  /// Swap a player in the Playing XI with a new card from the collection.
-  /// Keeps the same position & batting order slot; the old card stays in squad but leaves XI.
-  Future<void> swapPlayingXIPlayer(String oldSquadPlayerId, String newUserCardId) async {
-    // Fetch old player's slot info
-    final oldRow = await SupabaseService.client
-        .from('squad_players')
-        .select('squad_id, position, batting_order, is_captain, is_vice_captain')
-        .eq('id', oldSquadPlayerId)
-        .maybeSingle();
-    if (oldRow == null) return;
-
-    final squadId = oldRow['squad_id'] as String;
-    final battingOrder = oldRow['batting_order'] as int?;
-    final wasCaptain = oldRow['is_captain'] as bool? ?? false;
-    final wasVC = oldRow['is_vice_captain'] as bool? ?? false;
-
-    // Remove old player from XI (keep in squad)
-    await SupabaseService.client
-        .from('squad_players')
-        .update({
-          'is_playing_xi': false,
-          'batting_order': null,
-          'is_captain': false,
-          'is_vice_captain': false,
-        })
-        .eq('id', oldSquadPlayerId);
-
-    // Check if new card is already in the squad
-    final existingRow = await SupabaseService.client
-        .from('squad_players')
-        .select('id')
-        .eq('squad_id', squadId)
-        .eq('user_card_id', newUserCardId)
-        .maybeSingle();
-
-    if (existingRow != null) {
-      // Card already in squad — promote it to XI at the same batting position
-      await SupabaseService.client
-          .from('squad_players')
-          .update({
-            'is_playing_xi': true,
-            'batting_order': battingOrder,
-            'is_captain': wasCaptain,
-            'is_vice_captain': wasVC,
-          })
-          .eq('id', existingRow['id']);
-    } else {
-      // Card not in squad — insert it directly into XI
-      // First find an available squad position for the new card
-      final allRows = await SupabaseService.client
-          .from('squad_players')
-          .select('position')
-          .eq('squad_id', squadId);
-      final usedPositions = (allRows as List).map((r) => r['position'] as int).toSet();
-      int newPos = 1;
-      for (int i = 1; i <= 30; i++) {
-        if (!usedPositions.contains(i)) { newPos = i; break; }
-      }
-
-      await SupabaseService.client.from('squad_players').insert({
-        'squad_id': squadId,
-        'user_card_id': newUserCardId,
-        'position': newPos,
-        'is_playing_xi': true,
-        'batting_order': battingOrder,
-        'is_captain': wasCaptain,
-        'is_vice_captain': wasVC,
-      });
-    }
-
-    await _normalizePlayingXIBattingOrder(squadId);
     await loadTeam();
   }
 
   Future<void> removePlayerFromSquad(String squadPlayerId) async {
+    // Also remove from lineup if present
     final player = await SupabaseService.client
         .from('squad_players')
-        .select('squad_id, is_playing_xi')
+        .select('squad_id, user_card_id')
         .eq('id', squadPlayerId)
         .maybeSingle();
+
+    if (player != null) {
+      await SupabaseService.client
+          .from('lineup_players')
+          .delete()
+          .eq('squad_id', player['squad_id'])
+          .eq('user_card_id', player['user_card_id']);
+    }
 
     await SupabaseService.client
         .from('squad_players')
         .delete()
         .eq('id', squadPlayerId);
 
-    final squadId = player?['squad_id'] as String?;
-    final wasXI = player?['is_playing_xi'] as bool? ?? false;
-    if (squadId != null && wasXI) {
-      await _normalizePlayingXIBattingOrder(squadId);
-    }
     await loadTeam();
   }
 
-  Future<void> setPlayingXI(String squadPlayerId, bool isXI) async {
-    final player = await SupabaseService.client
-        .from('squad_players')
-        .select('squad_id, position')
-        .eq('id', squadPlayerId)
-        .maybeSingle();
-    final squadId = player?['squad_id'] as String?;
-    final position = player?['position'] as int?;
+  // ──────────────────────────────────────────────
+  // LINEUP (Playing XI) operations
+  // ──────────────────────────────────────────────
+
+  /// Add a card to the lineup at the next available batting order slot.
+  Future<void> addToLineup(String squadId, String userCardId) async {
+    final squad = state.valueOrNull?.activeSquad;
+    if (squad == null) return;
+    if (squad.lineup.length >= 11) return;
+
+    // Find next available batting order (1-11)
+    final usedOrders = squad.lineup.map((l) => l.battingOrder).toSet();
+    int order = 1;
+    for (int i = 1; i <= 11; i++) {
+      if (!usedOrders.contains(i)) { order = i; break; }
+    }
+
+    // Also ensure the card is in the squad roster
+    final inSquad = squad.players.any((p) => p.userCardId == userCardId);
+    if (!inSquad) {
+      // Auto-add to squad at next available position
+      final usedPositions = squad.players.map((p) => p.position).toSet();
+      int pos = 1;
+      for (int i = 1; i <= 30; i++) {
+        if (!usedPositions.contains(i)) { pos = i; break; }
+      }
+      await SupabaseService.client.from('squad_players').insert({
+        'squad_id': squadId,
+        'user_card_id': userCardId,
+        'position': pos,
+      });
+    }
+
+    await SupabaseService.client.from('lineup_players').insert({
+      'squad_id': squadId,
+      'user_card_id': userCardId,
+      'batting_order': order,
+    });
+
+    await loadTeam();
+  }
+
+  /// Remove a card from the lineup (keeps in squad).
+  Future<void> removeFromLineup(String lineupPlayerId) async {
+    final squad = state.valueOrNull?.activeSquad;
+    if (squad == null) return;
 
     await SupabaseService.client
-        .from('squad_players')
-        .update({
-          'is_playing_xi': isXI,
-          'batting_order': isXI ? position : null,
-        }).eq('id', squadPlayerId);
+        .from('lineup_players')
+        .delete()
+        .eq('id', lineupPlayerId);
 
-    if (squadId != null) {
-      await _normalizePlayingXIBattingOrder(squadId);
-    }
+    // Normalize batting orders to be contiguous
+    await _normalizeLineupOrder(squad.id);
     await loadTeam();
   }
 
-  Future<void> setCaptain(String squadPlayerId) async {
-    final team = state.valueOrNull;
-    if (team == null) return;
-    final squad = team.activeSquad;
+  /// Swap a lineup player with a new card from the collection.
+  Future<void> swapLineupPlayer(String lineupPlayerId, String newUserCardId) async {
+    // Get the current lineup entry
+    final oldRow = await SupabaseService.client
+        .from('lineup_players')
+        .select('squad_id, batting_order, is_captain, is_vice_captain')
+        .eq('id', lineupPlayerId)
+        .maybeSingle();
+    if (oldRow == null) return;
+
+    final squadId = oldRow['squad_id'] as String;
+    final battingOrder = oldRow['batting_order'] as int;
+    final wasCaptain = oldRow['is_captain'] as bool? ?? false;
+    final wasVC = oldRow['is_vice_captain'] as bool? ?? false;
+
+    // Delete old lineup entry
+    await SupabaseService.client
+        .from('lineup_players')
+        .delete()
+        .eq('id', lineupPlayerId);
+
+    // Ensure new card is in the squad roster
+    final squad = state.valueOrNull?.activeSquad;
+    if (squad != null) {
+      final inSquad = squad.players.any((p) => p.userCardId == newUserCardId);
+      if (!inSquad) {
+        final usedPositions = squad.players.map((p) => p.position).toSet();
+        int pos = 1;
+        for (int i = 1; i <= 30; i++) {
+          if (!usedPositions.contains(i)) { pos = i; break; }
+        }
+        await SupabaseService.client.from('squad_players').insert({
+          'squad_id': squadId,
+          'user_card_id': newUserCardId,
+          'position': pos,
+        });
+      }
+    }
+
+    // Insert new lineup entry at the same batting order
+    await SupabaseService.client.from('lineup_players').insert({
+      'squad_id': squadId,
+      'user_card_id': newUserCardId,
+      'batting_order': battingOrder,
+      'is_captain': wasCaptain,
+      'is_vice_captain': wasVC,
+    });
+
+    await loadTeam();
+  }
+
+  Future<void> setCaptain(String lineupPlayerId) async {
+    final squad = state.valueOrNull?.activeSquad;
     if (squad == null) return;
 
     // Clear existing captain
-    for (final player in squad.players.where((p) => p.isCaptain)) {
+    for (final lp in squad.lineup.where((p) => p.isCaptain)) {
       await SupabaseService.client
-          .from('squad_players')
-          .update({'is_captain': false}).eq('id', player.id);
+          .from('lineup_players')
+          .update({'is_captain': false}).eq('id', lp.id);
     }
 
     // Set new captain
     await SupabaseService.client
-        .from('squad_players')
-        .update({'is_captain': true}).eq('id', squadPlayerId);
+        .from('lineup_players')
+        .update({'is_captain': true}).eq('id', lineupPlayerId);
     await loadTeam();
   }
 
-  Future<void> setViceCaptain(String squadPlayerId) async {
-    final team = state.valueOrNull;
-    if (team == null) return;
-    final squad = team.activeSquad;
+  Future<void> setViceCaptain(String lineupPlayerId) async {
+    final squad = state.valueOrNull?.activeSquad;
     if (squad == null) return;
 
     // Clear existing vice captain
-    for (final player in squad.players.where((p) => p.isViceCaptain)) {
+    for (final lp in squad.lineup.where((p) => p.isViceCaptain)) {
       await SupabaseService.client
-          .from('squad_players')
-          .update({'is_vice_captain': false}).eq('id', player.id);
+          .from('lineup_players')
+          .update({'is_vice_captain': false}).eq('id', lp.id);
     }
 
     // Set new vice captain
     await SupabaseService.client
-        .from('squad_players')
-        .update({'is_vice_captain': true}).eq('id', squadPlayerId);
+        .from('lineup_players')
+        .update({'is_vice_captain': true}).eq('id', lineupPlayerId);
     await loadTeam();
   }
 
-  Future<void> setBattingOrder(String squadPlayerId, int order) async {
-    await SupabaseService.client
-        .from('squad_players')
-        .update({'batting_order': order}).eq('id', squadPlayerId);
+  /// Reorder the lineup: move item at [oldIndex] to [newIndex] (0-based).
+  Future<void> reorderLineup(List<LineupPlayer> currentOrder, int oldIndex, int newIndex) async {
+    if (newIndex > oldIndex) newIndex--;
+    if (oldIndex == newIndex) return;
+
+    final reordered = List<LineupPlayer>.from(currentOrder);
+    final item = reordered.removeAt(oldIndex);
+    reordered.insert(newIndex, item);
+
+    // Optimistically update local state
+    final team = state.valueOrNull;
+    if (team != null) {
+      final squad = team.activeSquad;
+      if (squad != null) {
+        final updatedLineup = <LineupPlayer>[];
+        for (int i = 0; i < reordered.length; i++) {
+          final lp = reordered[i];
+          updatedLineup.add(LineupPlayer(
+            id: lp.id,
+            squadId: lp.squadId,
+            userCardId: lp.userCardId,
+            battingOrder: i + 1,
+            isCaptain: lp.isCaptain,
+            isViceCaptain: lp.isViceCaptain,
+            userCard: lp.userCard,
+          ));
+        }
+        final updatedSquads = team.squads.map((s) {
+          if (s.id == squad.id) {
+            return Squad(
+              id: s.id,
+              teamId: s.teamId,
+              squadName: s.squadName,
+              formation: s.formation,
+              isActive: s.isActive,
+              players: s.players,
+              lineup: updatedLineup,
+            );
+          }
+          return s;
+        }).toList();
+        state = AsyncValue.data(Team(
+          id: team.id,
+          userId: team.userId,
+          teamName: team.teamName,
+          logoUrl: team.logoUrl,
+          chemistry: team.chemistry,
+          overallRating: team.overallRating,
+          isActive: team.isActive,
+          squads: updatedSquads,
+        ));
+      }
+    }
+
+    // Persist new batting order to DB
+    for (int i = 0; i < reordered.length; i++) {
+      await SupabaseService.client
+          .from('lineup_players')
+          .update({'batting_order': i + 1}).eq('id', reordered[i].id);
+    }
+
     await loadTeam();
   }
+
+  /// Re-number batting_order 1..N contiguously.
+  Future<void> _normalizeLineupOrder(String squadId) async {
+    final rows = await SupabaseService.client
+        .from('lineup_players')
+        .select('id, batting_order')
+        .eq('squad_id', squadId)
+        .order('batting_order');
+
+    final players = List<Map<String, dynamic>>.from(rows);
+    for (int i = 0; i < players.length; i++) {
+      if (players[i]['batting_order'] != i + 1) {
+        await SupabaseService.client
+            .from('lineup_players')
+            .update({'batting_order': i + 1}).eq('id', players[i]['id']);
+      }
+    }
+  }
+
+  // ──────────────────────────────────────────────
+  // AUTO-PICK LINEUP
+  // ──────────────────────────────────────────────
 
   Future<void> autoPickLineup(List<UserCard> allCards) async {
     final team = state.valueOrNull;
@@ -290,17 +365,40 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
     int battingOf(UserCard c) => c.playerCard?.batting ?? 0;
     String roleOf(UserCard c) => c.playerCard?.role ?? 'batsman';
 
-    // Pick best per role: 4 bat, 1 WK, 2 AR, 4 bowl
+    // Preserve existing lineup selections
+    final currentLineup = squad.lineup;
     final selected = <UserCard>[];
-    final selectedIds = <String>{};      // user_card UUIDs
-    final selectedCardIds = <String>{};  // underlying player_card UUIDs (prevent same player twice)
+    final selectedIds = <String>{};
+    final selectedCardIds = <String>{};
+
+    for (final lp in currentLineup) {
+      final card = candidates.where((c) => c.id == lp.userCardId).firstOrNull;
+      if (card != null) {
+        selected.add(card);
+        selectedIds.add(card.id);
+        selectedCardIds.add(card.cardId);
+      }
+    }
+
+    final slotsToFill = 11 - selected.length;
+    if (slotsToFill <= 0) return; // Already full
+
+    // Count existing roles
+    final currentRoles = <String, int>{};
+    for (final c in selected) {
+      final role = roleOf(c);
+      currentRoles[role] = (currentRoles[role] ?? 0) + 1;
+    }
+
+    int needed(String role, int ideal) => (ideal - (currentRoles[role] ?? 0)).clamp(0, slotsToFill);
 
     void pick(String role, int count) {
       int picked = 0;
       for (final card in candidates) {
         if (picked >= count) break;
+        if (selected.length >= 11) break;
         if (selectedIds.contains(card.id)) continue;
-        if (selectedCardIds.contains(card.cardId)) continue; // skip duplicate player
+        if (selectedCardIds.contains(card.cardId)) continue;
         if (roleOf(card) == role) {
           selected.add(card);
           selectedIds.add(card.id);
@@ -310,12 +408,13 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
       }
     }
 
-    pick('batsman', 4);
-    pick('wicket_keeper', 1);
-    pick('all_rounder', 2);
-    pick('bowler', 4);
+    // Fill role gaps: 4 bat, 1 WK, 2 AR, 4 bowl (minus existing)
+    pick('batsman', needed('batsman', 4));
+    pick('wicket_keeper', needed('wicket_keeper', 1));
+    pick('all_rounder', needed('all_rounder', 2));
+    pick('bowler', needed('bowler', 4));
 
-    // Fill any remaining slots by overall rating
+    // Fill remaining by overall rating (unique players)
     for (final card in candidates) {
       if (selected.length >= 11) break;
       if (!selectedIds.contains(card.id) && !selectedCardIds.contains(card.cardId)) {
@@ -325,47 +424,41 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
       }
     }
 
+    // Last resort: allow duplicate underlying players
+    if (selected.length < 11) {
+      for (final card in candidates) {
+        if (selected.length >= 11) break;
+        if (!selectedIds.contains(card.id)) {
+          selected.add(card);
+          selectedIds.add(card.id);
+          selectedCardIds.add(card.cardId);
+        }
+      }
+    }
+
     if (selected.isEmpty) return;
 
-    // Add any selected cards not yet in the squad
+    // Ensure all selected cards are in the squad roster
     final existingUserCardIds = squad.players.map((sp) => sp.userCardId).toSet();
     final usedPositions = squad.players.map((sp) => sp.position).toSet();
 
-    int nextAvailablePosition() {
-      for (int i = 1; i <= 30; i++) {
-        if (!usedPositions.contains(i)) {
-          usedPositions.add(i);
-          return i;
-        }
-      }
-      return -1;
-    }
-
-    bool squadChanged = false;
     for (final card in selected) {
       if (!existingUserCardIds.contains(card.id)) {
-        final pos = nextAvailablePosition();
-        if (pos == -1) continue; // squad is full (30 players)
+        int pos = 1;
+        for (int i = 1; i <= 30; i++) {
+          if (!usedPositions.contains(i)) { pos = i; break; }
+        }
+        usedPositions.add(pos);
         await SupabaseService.client.from('squad_players').insert({
           'squad_id': squad.id,
           'user_card_id': card.id,
           'position': pos,
-          'is_playing_xi': false,
         });
         existingUserCardIds.add(card.id);
-        squadChanged = true;
       }
     }
 
-    // Reload if new players were inserted so we have their squad_player IDs
-    if (squadChanged) await loadTeam();
-
-    final refreshedSquad = state.valueOrNull?.activeSquad ?? squad;
-    final spByUserCardId = <String, SquadPlayer>{
-      for (final sp in refreshedSquad.players) sp.userCardId: sp,
-    };
-
-    // Batting order: batsmen first, then WK, all-rounders, bowlers; within each by batting
+    // Sort selected by batting order score for the full lineup
     int battingOrderScore(UserCard c) {
       final role = roleOf(c);
       final bonus = role == 'batsman'
@@ -378,115 +471,55 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
       return battingOf(c) * 2 + ratingOf(c) + bonus;
     }
 
-    final battingOrder = List<UserCard>.from(selected)
+    final ordered = List<UserCard>.from(selected)
       ..sort((a, b) => battingOrderScore(b).compareTo(battingOrderScore(a)));
 
-    final battingOrderBySPId = <String, int>{};
-    for (int i = 0; i < battingOrder.length; i++) {
-      final sp = spByUserCardId[battingOrder[i].id];
-      if (sp != null) battingOrderBySPId[sp.id] = i + 1;
-    }
+    // Determine captain/VC: preserve existing if still present
+    final existingCaptainCardId = currentLineup
+        .where((lp) => lp.isCaptain)
+        .map((lp) => lp.userCardId)
+        .firstOrNull;
+    final existingVCCardId = currentLineup
+        .where((lp) => lp.isViceCaptain)
+        .map((lp) => lp.userCardId)
+        .firstOrNull;
 
-    // Captain = highest rated, VC = second highest
-    final leadership = List<UserCard>.from(selected)
-      ..sort((a, b) => ratingOf(b).compareTo(ratingOf(a)));
-    final captainSPId = spByUserCardId[leadership.first.id]?.id;
-    final vcSPId = leadership.length > 1 ? spByUserCardId[leadership[1].id]?.id : null;
+    String? captainCardId = selectedIds.contains(existingCaptainCardId ?? '')
+        ? existingCaptainCardId
+        : null;
+    String? vcCardId = selectedIds.contains(existingVCCardId ?? '')
+        ? existingVCCardId
+        : null;
 
-    // Update all squad_players: set XI status, batting order, captain/VC
-    for (final sp in refreshedSquad.players) {
-      final isXI = selectedIds.contains(sp.userCardId);
-      await SupabaseService.client
-          .from('squad_players')
-          .update({
-            'is_playing_xi': isXI,
-            'batting_order': isXI ? battingOrderBySPId[sp.id] : null,
-            'is_captain': sp.id == captainSPId,
-            'is_vice_captain': vcSPId != null && sp.id == vcSPId,
-          })
-          .eq('id', sp.id);
-    }
-
-    await _normalizePlayingXIBattingOrder(refreshedSquad.id);
-    await loadTeam();
-  }
-
-  /// Reorder Playing XI: move the player at [oldIndex] to [newIndex] (0-based)
-  /// Reorders the playing XI and persists the new batting_order values.
-  /// Uses batting_order (no UNIQUE constraint) to avoid DB conflict issues.
-  Future<void> reorderPlayingXI(List<SquadPlayer> currentOrder, int oldIndex, int newIndex) async {
-    if (newIndex > oldIndex) newIndex--;
-    if (oldIndex == newIndex) return;
-
-    final reordered = List<SquadPlayer>.from(currentOrder);
-    final item = reordered.removeAt(oldIndex);
-    reordered.insert(newIndex, item);
-
-    // Build new batting order map (1-based)
-    final battingOrderUpdates = <String, int>{};
-    for (int i = 0; i < reordered.length; i++) {
-      battingOrderUpdates[reordered[i].id] = i + 1;
-    }
-
-    // Optimistically update local state so the UI doesn't snap back
-    final team = state.valueOrNull;
-    if (team != null) {
-      final squad = team.activeSquad;
-      if (squad != null) {
-        final updatedPlayers = squad.players.map((p) {
-          final newOrder = battingOrderUpdates[p.id];
-          if (newOrder != null && newOrder != p.battingOrder) {
-            return SquadPlayer(
-              id: p.id,
-              squadId: p.squadId,
-              userCardId: p.userCardId,
-              position: p.position,
-              isPlayingXI: p.isPlayingXI,
-              isCaptain: p.isCaptain,
-              isViceCaptain: p.isViceCaptain,
-              battingOrder: newOrder,
-              bowlingOrder: p.bowlingOrder,
-              userCard: p.userCard,
-            );
-          }
-          return p;
-        }).toList();
-        final updatedSquads = team.squads.map((s) {
-          if (s.id == squad.id) {
-            return Squad(
-              id: s.id,
-              teamId: s.teamId,
-              squadName: s.squadName,
-              formation: s.formation,
-              isActive: s.isActive,
-              players: updatedPlayers,
-            );
-          }
-          return s;
-        }).toList();
-        state = AsyncValue.data(Team(
-          id: team.id,
-          userId: team.userId,
-          teamName: team.teamName,
-          logoUrl: team.logoUrl,
-          chemistry: team.chemistry,
-          overallRating: team.overallRating,
-          isActive: team.isActive,
-          squads: updatedSquads,
-        ));
+    if (captainCardId == null || vcCardId == null) {
+      final leadership = List<UserCard>.from(selected)
+        ..sort((a, b) => ratingOf(b).compareTo(ratingOf(a)));
+      for (final c in leadership) {
+        if (captainCardId == null) {
+          captainCardId = c.id;
+        } else if (vcCardId == null && c.id != captainCardId) {
+          vcCardId = c.id;
+          break;
+        }
       }
     }
 
-    // Persist batting_order to DB — no UNIQUE constraint, so no conflict risk.
-    for (int i = 0; i < reordered.length; i++) {
-      await SupabaseService.client
-          .from('squad_players')
-          .update({'batting_order': i + 1}).eq('id', reordered[i].id);
+    // Clear existing lineup and insert fresh
+    await SupabaseService.client
+        .from('lineup_players')
+        .delete()
+        .eq('squad_id', squad.id);
+
+    for (int i = 0; i < ordered.length; i++) {
+      await SupabaseService.client.from('lineup_players').insert({
+        'squad_id': squad.id,
+        'user_card_id': ordered[i].id,
+        'batting_order': i + 1,
+        'is_captain': ordered[i].id == captainCardId,
+        'is_vice_captain': ordered[i].id == vcCardId,
+      });
     }
 
-    if (reordered.isNotEmpty) {
-      await _normalizePlayingXIBattingOrder(reordered.first.squadId);
-    }
     await loadTeam();
   }
 
@@ -494,12 +527,13 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
 
   @override
   void dispose() {
-    _channel?.unsubscribe();
+    _squadChannel?.unsubscribe();
+    _lineupChannel?.unsubscribe();
     super.dispose();
   }
 }
 
-// Chemistry calculation
+// Chemistry calculation — uses lineup (LineupPlayer)
 final chemistryProvider = Provider<int>((ref) {
   final team = ref.watch(teamProvider).valueOrNull;
   if (team == null) return 0;
@@ -508,7 +542,7 @@ final chemistryProvider = Provider<int>((ref) {
   return _calculateChemistry(squad.playingXI);
 });
 
-int _calculateChemistry(List<SquadPlayer> playingXI) {
+int _calculateChemistry(List<LineupPlayer> playingXI) {
   int chemistry = 0;
 
   // Country links

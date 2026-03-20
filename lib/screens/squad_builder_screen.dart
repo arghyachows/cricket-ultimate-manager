@@ -270,7 +270,7 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
               child: child,
             ),
             onReorder: (oldIndex, newIndex) {
-              ref.read(teamProvider.notifier).reorderPlayingXI(
+              ref.read(teamProvider.notifier).reorderLineup(
                     lineup,
                     oldIndex,
                     newIndex,
@@ -384,9 +384,8 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
           const SizedBox(height: 10),
           ElevatedButton.icon(
             onPressed: () {
-              final freePos = _nextAvailableXiPosition(squad);
-              if (freePos != null) {
-                _showAddPlayerSheet(freePos);
+              if (squad.lineup.length < 11) {
+                _showAddPlayerSheet(squad);
               }
             },
             icon: const Icon(Icons.person_add),
@@ -398,7 +397,7 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
   }
 
   Widget _buildLineupTile(
-    SquadPlayer player, {
+    LineupPlayer player, {
     required int battingOrder,
     Key? key,
   }) {
@@ -570,14 +569,13 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
         ),
         trailing: const Icon(Icons.add, color: Colors.white54),
         onTap: () {
-          final freePos = _nextAvailableXiPosition(squad);
-          if (freePos == null) {
+          if (squad.lineup.length >= 11) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Playing XI is full (11/11)')),
             );
             return;
           }
-          _showAddPlayerSheet(freePos);
+          _showAddPlayerSheet(squad);
         },
       ),
     );
@@ -602,20 +600,7 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
     );
   }
 
-  int? _nextAvailableXiPosition(Squad squad) {
-    final usedPositions = squad.players
-        .where((p) => p.isPlayingXI)
-        .map((p) => p.position)
-        .toSet();
-    for (int i = 1; i <= 11; i++) {
-      if (!usedPositions.contains(i)) {
-        return i;
-      }
-    }
-    return null;
-  }
-
-  void _handleLineupAction(String action, SquadPlayer player) {
+  void _handleLineupAction(String action, LineupPlayer player) {
     final notifier = ref.read(teamProvider.notifier);
     switch (action) {
       case 'captain':
@@ -654,7 +639,7 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
     }
   }
 
-  void _showSwapPlayerSheet(SquadPlayer currentPlayer) {
+  void _showSwapPlayerSheet(LineupPlayer currentPlayer) {
     final currentCard = currentPlayer.userCard?.playerCard;
     final currentName = currentCard?.playerName ?? 'Player';
 
@@ -675,13 +660,13 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
             final team = ref.read(teamProvider).valueOrNull;
             final squad = team?.activeSquad;
 
-            // Exclude cards already in XI (except the one being swapped out)
-            final xiPlayers = squad?.players.where((p) => p.isPlayingXI) ?? [];
-            final assignedUserCardIds = xiPlayers
+            // Exclude cards already in the lineup (except the one being swapped out)
+            final lineupPlayers = squad?.lineup ?? [];
+            final assignedUserCardIds = lineupPlayers
                 .where((p) => p.id != currentPlayer.id)
                 .map((p) => p.userCardId)
                 .toSet();
-            final assignedPlayerCardIds = xiPlayers
+            final assignedPlayerCardIds = lineupPlayers
                 .where((p) => p.id != currentPlayer.id && p.userCard?.playerCard != null)
                 .map((p) => p.userCard!.cardId)
                 .toSet();
@@ -868,7 +853,7 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
                                   ),
                                 ),
                                 onTap: () {
-                                  ref.read(teamProvider.notifier).swapPlayingXIPlayer(
+                                  ref.read(teamProvider.notifier).swapLineupPlayer(
                                         currentPlayer.id,
                                         userCard.id,
                                       );
@@ -889,7 +874,7 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
     );
   }
 
-  void _showAddPlayerSheet(int position) {
+  void _showAddPlayerSheet(Squad targetSquad) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -907,9 +892,9 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
             final team = ref.read(teamProvider).valueOrNull;
             final squad = team?.activeSquad;
 
-            final xiPlayers = squad?.players.where((p) => p.isPlayingXI) ?? [];
-            final assignedUserCardIds = xiPlayers.map((p) => p.userCardId).toSet();
-            final assignedPlayerCardIds = xiPlayers
+            final lineupPlayers = squad?.lineup ?? [];
+            final assignedUserCardIds = lineupPlayers.map((p) => p.userCardId).toSet();
+            final assignedPlayerCardIds = lineupPlayers
                 .where((p) => p.userCard?.playerCard != null)
                 .map((p) => p.userCard!.cardId)
                 .toSet();
@@ -946,7 +931,7 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
                       child: Column(
                         children: [
                           Text(
-                            'SELECT PLAYER — XI SLOT $position',
+                            'SELECT PLAYER FOR LINEUP',
                             style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -1090,11 +1075,9 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
                                   final activeTeam = ref.read(teamProvider).valueOrNull;
                                   final activeSquad = activeTeam?.activeSquad;
                                   if (activeSquad != null) {
-                                    ref.read(teamProvider.notifier).addPlayerToSquad(
+                                    ref.read(teamProvider.notifier).addToLineup(
                                           activeSquad.id,
                                           userCard.id,
-                                          position,
-                                          isPlayingXI: position <= 11,
                                         );
                                   }
                                   Navigator.of(bottomSheetContext).pop();

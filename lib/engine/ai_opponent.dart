@@ -47,7 +47,7 @@ class AIOpponent {
   /// Generate 11 SquadPlayers from DB player_cards.
   /// Composition: 4 batsmen, 1 wicket_keeper, 2 all_rounders, 4 bowlers.
   /// Rarity pool depends on [difficulty]: Village/Domestic/International.
-  static Future<List<SquadPlayer>> generateXI({
+  static Future<List<LineupPlayer>> generateXI({
     String difficulty = 'Village',
   }) async {
     final rarities = _rarityPools[difficulty] ?? ['bronze', 'silver'];
@@ -95,8 +95,8 @@ class AIOpponent {
       }
     }
 
-    // Convert to SquadPlayers
-    final players = <SquadPlayer>[];
+    // Convert to LineupPlayers
+    final players = <LineupPlayer>[];
     for (int i = 0; i < picked.length; i++) {
       final card = picked[i];
       final fakeId = 'ai_${i + 1}_${_rng.nextInt(99999)}';
@@ -112,12 +112,10 @@ class AIOpponent {
         playerCard: card,
       );
 
-      players.add(SquadPlayer(
+      players.add(LineupPlayer(
         id: fakeId,
         squadId: 'ai_squad',
         userCardId: fakeId,
-        position: i + 1,
-        isPlayingXI: true,
         battingOrder: i + 1,
         userCard: userCard,
       ));

@@ -226,7 +226,7 @@ class MatchScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildTeamCard(BuildContext context, team, int chemistry, List<SquadPlayer> xi) {
+  Widget _buildTeamCard(BuildContext context, team, int chemistry, List<LineupPlayer> xi) {
     final xiCount = xi.length;
     final avgRating = xi.isEmpty
         ? 0

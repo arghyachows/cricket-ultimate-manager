@@ -377,8 +377,8 @@ class MatchNotifier extends StateNotifier<MatchState> {
   List<MatchSummary> get matchHistory => List.unmodifiable(_matchHistory);
 
   Future<void> startMatch({
-    required List<SquadPlayer> homeXI,
-    required List<SquadPlayer> awayXI,
+    required List<LineupPlayer> homeXI,
+    required List<LineupPlayer> awayXI,
     required String homeTeamId,
     required String awayTeamId,
     required int homeChemistry,

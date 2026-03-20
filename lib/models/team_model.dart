@@ -48,7 +48,8 @@ class Squad {
   final String squadName;
   final String formation;
   final bool isActive;
-  final List<SquadPlayer> players;
+  final List<SquadPlayer> players;       // 30-slot roster
+  final List<LineupPlayer> lineup;       // Playing XI (0-11 entries)
 
   const Squad({
     required this.id,
@@ -57,6 +58,7 @@ class Squad {
     this.formation = '4-3-4',
     this.isActive = true,
     this.players = const [],
+    this.lineup = const [],
   });
 
   factory Squad.fromJson(Map<String, dynamic> json) {
@@ -65,6 +67,13 @@ class Squad {
             .toList() ??
         [];
     playersList.sort((a, b) => a.position.compareTo(b.position));
+
+    final lineupList = (json['lineup_players'] as List<dynamic>?)
+            ?.map((l) => LineupPlayer.fromJson(l))
+            .toList() ??
+        [];
+    lineupList.sort((a, b) => a.battingOrder.compareTo(b.battingOrder));
+
     return Squad(
       id: json['id'],
       teamId: json['team_id'],
@@ -72,54 +81,45 @@ class Squad {
       formation: json['formation'] ?? '4-3-4',
       isActive: json['is_active'] ?? true,
       players: playersList,
+      lineup: lineupList,
     );
   }
 
-  List<SquadPlayer> get playingXI =>
-      players.where((p) => p.isPlayingXI).toList()
-        ..sort((a, b) {
-          final ao = a.battingOrder, bo = b.battingOrder;
-          if (ao != null && bo != null) return ao.compareTo(bo);
-          if (ao != null) return -1;
-          if (bo != null) return 1;
-          return a.position.compareTo(b.position);
-        });
+  /// Playing XI as SquadPlayer-like objects for match engine compatibility.
+  /// Returns LineupPlayers sorted by batting order.
+  List<LineupPlayer> get playingXI => List.from(lineup)
+    ..sort((a, b) => a.battingOrder.compareTo(b.battingOrder));
 
-  SquadPlayer? get captain =>
-      players.where((p) => p.isCaptain).firstOrNull;
+  LineupPlayer? get captain =>
+      lineup.where((p) => p.isCaptain).firstOrNull;
 
-  SquadPlayer? get viceCaptain =>
-      players.where((p) => p.isViceCaptain).firstOrNull;
+  LineupPlayer? get viceCaptain =>
+      lineup.where((p) => p.isViceCaptain).firstOrNull;
 
-  List<SquadPlayer> get bowlers => playingXI
+  List<LineupPlayer> get bowlers => playingXI
       .where((p) =>
           p.userCard?.playerCard?.role == 'bowler' ||
           p.userCard?.playerCard?.role == 'all_rounder')
       .toList();
+
+  /// Check if a user_card is in the lineup
+  bool isInLineup(String userCardId) =>
+      lineup.any((l) => l.userCardId == userCardId);
 }
 
+/// Pure roster entry — no lineup/batting/captain info.
 class SquadPlayer {
   final String id;
   final String squadId;
   final String userCardId;
-  final int position;
-  final bool isPlayingXI;
-  final bool isCaptain;
-  final bool isViceCaptain;
-  final int? battingOrder;
-  final int? bowlingOrder;
-  final UserCard? userCard; // Joined data
+  final int position;          // 1-30
+  final UserCard? userCard;    // Joined data
 
   const SquadPlayer({
     required this.id,
     required this.squadId,
     required this.userCardId,
     required this.position,
-    this.isPlayingXI = false,
-    this.isCaptain = false,
-    this.isViceCaptain = false,
-    this.battingOrder,
-    this.bowlingOrder,
     this.userCard,
   });
 
@@ -129,11 +129,41 @@ class SquadPlayer {
       squadId: json['squad_id'],
       userCardId: json['user_card_id'],
       position: json['position'],
-      isPlayingXI: json['is_playing_xi'] ?? false,
+      userCard: json['user_cards'] != null
+          ? UserCard.fromJson(json['user_cards'])
+          : null,
+    );
+  }
+}
+
+/// A player in the Playing XI lineup.
+class LineupPlayer {
+  final String id;
+  final String squadId;
+  final String userCardId;
+  final int battingOrder;      // 1-11
+  final bool isCaptain;
+  final bool isViceCaptain;
+  final UserCard? userCard;    // Joined data
+
+  const LineupPlayer({
+    required this.id,
+    required this.squadId,
+    required this.userCardId,
+    required this.battingOrder,
+    this.isCaptain = false,
+    this.isViceCaptain = false,
+    this.userCard,
+  });
+
+  factory LineupPlayer.fromJson(Map<String, dynamic> json) {
+    return LineupPlayer(
+      id: json['id'],
+      squadId: json['squad_id'],
+      userCardId: json['user_card_id'],
+      battingOrder: json['batting_order'],
       isCaptain: json['is_captain'] ?? false,
       isViceCaptain: json['is_vice_captain'] ?? false,
-      battingOrder: json['batting_order'],
-      bowlingOrder: json['bowling_order'],
       userCard: json['user_cards'] != null
           ? UserCard.fromJson(json['user_cards'])
           : null,
