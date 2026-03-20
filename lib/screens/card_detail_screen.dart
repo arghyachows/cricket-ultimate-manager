@@ -217,7 +217,7 @@ class CardDetailScreen extends ConsumerWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
-                    card.country,
+                    card.league ?? '',
                     style: const TextStyle(
                       color: Colors.white70,
                       shadows: [

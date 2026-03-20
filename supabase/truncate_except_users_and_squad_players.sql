@@ -1,50 +1,55 @@
--- Reset most game data while keeping:
--- 1) all users
--- 2) only user_cards currently used in squad_players (players in squads)
+-- Clear ALL user game data.
+--
+-- KEEPS (static/structural tables — untouched):
+--   users, player_cards, pack_types, season_rewards
+--
+-- CLEARS everything else:
+--   user_cards, teams, squads, squad_players, lineup_players,
+--   matches, match_events, multiplayer_rooms, room_presence,
+--   match_challenges, multiplayer_matches, transfer_market,
+--   market_bids, transactions, pack_openings, tournaments,
+--   tournament_participants, daily_objectives, leaderboard,
+--   user_player_stats
 --
 -- Run in Supabase SQL Editor.
 
 BEGIN;
 
--- 1) Clear match/session/progression data
+-- Truncate all user game data in dependency order (children first).
+-- RESTART IDENTITY resets auto-increment sequences.
+-- CASCADE handles any remaining FK references.
 TRUNCATE TABLE
+  lineup_players,
+  market_bids,
+  transfer_market,
+  transactions,
   match_events,
-  matches,
   multiplayer_matches,
   match_challenges,
   room_presence,
-  transactions,
-  transfer_market,
+  squad_players,
   pack_openings,
   tournament_participants,
   tournaments,
   daily_objectives,
   leaderboard,
-  user_player_stats
+  user_player_stats,
+  matches,
+  squads,
+  teams,
+  user_cards,
+  users
 RESTART IDENTITY CASCADE;
 
--- 2) Keep only cards that are currently in any squad
-DELETE FROM user_cards uc
-WHERE NOT EXISTS (
-  SELECT 1
-  FROM squad_players sp
-  WHERE sp.user_card_id = uc.id
-);
-
--- 3) Remove empty squads (no players left)
-DELETE FROM squads s
-WHERE NOT EXISTS (
-  SELECT 1
-  FROM squad_players sp
-  WHERE sp.squad_id = s.id
-);
-
--- 4) Remove teams with no remaining squads
-DELETE FROM teams t
-WHERE NOT EXISTS (
-  SELECT 1
-  FROM squads s
-  WHERE s.team_id = t.id
-);
+-- Reset all user progression back to starting values
+UPDATE users SET
+  coins           = 5000,
+  premium_tokens  = 50,
+  xp              = 0,
+  level           = 1,
+  season_tier     = 'bronze',
+  season_points   = 0,
+  matches_played  = 0,
+  matches_won     = 0;
 
 COMMIT;

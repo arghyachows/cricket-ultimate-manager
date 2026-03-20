@@ -40,7 +40,7 @@ begin
   values (
     NEW.id,
     'Starter Pack',
-    11,
+    15,
     40,   -- 40% bronze
     35,   -- 35% silver
     25,   -- 25% gold
@@ -60,7 +60,7 @@ create trigger trg_grant_starter_pack
 
 -- 3) Grant starter pack to all existing users who don't have one yet
 insert into user_card_packs (user_id, pack_name, card_count, bronze_chance, silver_chance, gold_chance, elite_chance, legend_chance, source)
-select u.id, 'Starter Pack', 11, 40, 35, 25, 0, 0, 'starter'
+select u.id, 'Starter Pack', 15, 40, 35, 25, 0, 0, 'starter'
 from users u
 where not exists (
   select 1 from user_card_packs p where p.user_id = u.id and p.source = 'starter'

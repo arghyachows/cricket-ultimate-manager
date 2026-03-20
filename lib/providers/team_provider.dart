@@ -12,6 +12,7 @@ final teamProvider =
 class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
   RealtimeChannel? _squadChannel;
   RealtimeChannel? _lineupChannel;
+  bool _pauseLineupUpdates = false;
 
   TeamNotifier() : super(const AsyncValue.loading()) {
     loadTeam();
@@ -31,7 +32,7 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'lineup_players',
-          callback: (_) => loadTeam(),
+          callback: (_) { if (!_pauseLineupUpdates) loadTeam(); },
         )
         .subscribe();
   }
@@ -262,18 +263,21 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
   }
 
   /// Reorder the lineup: move item at [oldIndex] to [newIndex] (0-based).
-  Future<void> reorderLineup(List<LineupPlayer> currentOrder, int oldIndex, int newIndex) async {
+  Future<void> reorderLineup(int oldIndex, int newIndex) async {
     if (newIndex > oldIndex) newIndex--;
     if (oldIndex == newIndex) return;
 
-    final reordered = List<LineupPlayer>.from(currentOrder);
+    final team = state.valueOrNull;
+    if (team == null) return;
+    final squad = team.activeSquad;
+    if (squad == null) return;
+
+    final reordered = List<LineupPlayer>.from(squad.lineup);
     final item = reordered.removeAt(oldIndex);
     reordered.insert(newIndex, item);
 
     // Optimistically update local state
-    final team = state.valueOrNull;
     if (team != null) {
-      final squad = team.activeSquad;
       if (squad != null) {
         final updatedLineup = <LineupPlayer>[];
         for (int i = 0; i < reordered.length; i++) {
@@ -315,13 +319,18 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
       }
     }
 
-    // Persist new batting order to DB
-    for (int i = 0; i < reordered.length; i++) {
-      await SupabaseService.client
-          .from('lineup_players')
-          .update({'batting_order': i + 1}).eq('id', reordered[i].id);
+    // Persist via RPC — single atomic UPDATE avoids unique constraint conflicts
+    // and SECURITY DEFINER bypasses RLS restrictions on batting_order updates.
+    _pauseLineupUpdates = true;
+    try {
+      final playerIds = reordered.map((p) => p.id).toList();
+      await SupabaseService.client.rpc('reorder_lineup', params: {
+        'p_squad_id': squad.id,
+        'p_player_ids': playerIds,
+      });
+    } finally {
+      _pauseLineupUpdates = false;
     }
-
     await loadTeam();
   }
 

@@ -48,16 +48,53 @@ class UserCardPacksNotifier
 
     final generatedCards = <UserCard>[];
 
-    for (int i = 0; i < pack.cardCount; i++) {
-      final rarity = _pickRarity(pack);
+    // Starter packs get a guaranteed role composition:
+    // 5 batsmen, 5 bowlers, 3 all-rounders, 2 wicket-keepers (= 15 cards)
+    final roleSlots = pack.source == 'starter'
+        ? [
+            'batsman', 'batsman', 'batsman', 'batsman', 'batsman',
+            'bowler',  'bowler',  'bowler',  'bowler',  'bowler',
+            'all_rounder', 'all_rounder', 'all_rounder',
+            'wicket_keeper', 'wicket_keeper',
+          ]
+        : List.generate(pack.cardCount, (_) => null); // null = any role
 
-      final result = await SupabaseService.client
+    for (int i = 0; i < pack.cardCount; i++) {
+      final rarity   = _pickRarity(pack);
+      final roleFilter = i < roleSlots.length ? roleSlots[i] : null;
+
+      var query = SupabaseService.client
           .from('player_cards')
           .select()
           .eq('rarity', rarity)
           .eq('is_available', true);
 
-      final cards = result as List;
+      if (roleFilter != null) {
+        query = query.eq('role', roleFilter);
+      }
+
+      var result = await query;
+      var cards = result as List;
+
+      // Fallback: if no card found with this rarity+role, broaden to any rarity
+      if (cards.isEmpty && roleFilter != null) {
+        final fallback = await SupabaseService.client
+            .from('player_cards')
+            .select()
+            .eq('role', roleFilter)
+            .eq('is_available', true);
+        cards = fallback as List;
+      }
+
+      // Final fallback: any available card
+      if (cards.isEmpty) {
+        final fallback = await SupabaseService.client
+            .from('player_cards')
+            .select()
+            .eq('is_available', true);
+        cards = fallback as List;
+      }
+
       if (cards.isEmpty) continue;
 
       final randomCard = cards[Random().nextInt(cards.length)];
@@ -81,8 +118,8 @@ class UserCardPacksNotifier
         .update({'opened': true})
         .eq('id', pack.id);
 
-    // Refresh local state
-    ref.read(userCardsProvider.notifier).addCards(generatedCards);
+    // Refresh local state (reload from DB — avoids duplicates from realtime + addCards)
+    await ref.read(userCardsProvider.notifier).refresh();
 
     // Remove opened pack from local list
     final current = state.valueOrNull ?? [];

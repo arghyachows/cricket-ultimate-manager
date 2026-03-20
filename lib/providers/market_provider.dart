@@ -80,6 +80,7 @@ class MarketNotifier extends StateNotifier<AsyncValue<List<MarketListing>>> {
             .toIso8601String(),
       });
       ref.read(userCardsProvider.notifier).refresh();
+      ref.invalidate(listedCardIdsProvider);
       await loadListings();
       return true;
     } catch (e) {

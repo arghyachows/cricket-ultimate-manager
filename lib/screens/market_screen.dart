@@ -386,7 +386,7 @@ class _ListingCard extends ConsumerWidget {
     final rating = cardData['rating'] ?? 0;
     final rarity = cardData['rarity'] ?? 'bronze';
     final role = cardData['role'] ?? '';
-    final country = cardData['country'] ?? '';
+    final league = cardData['league'] ?? '';
     final rarityColor = AppTheme.getRarityColor(rarity);
     final userId = ref.watch(currentUserProvider).valueOrNull?.id;
     final userCoins = ref.watch(currentUserProvider).valueOrNull?.coins ?? 0;
@@ -446,7 +446,7 @@ class _ListingCard extends ConsumerWidget {
                         Text(role.toString().replaceAll('_', ' ').toUpperCase(),
                             style: TextStyle(color: rarityColor, fontSize: 11)),
                         const SizedBox(width: 8),
-                        Text(country,
+                        Text(league,
                             style: const TextStyle(
                                 color: Colors.white54, fontSize: 11)),
                       ]),
@@ -766,7 +766,6 @@ class _SellTab extends ConsumerWidget {
         final listedIds = ref.watch(listedCardIdsProvider).valueOrNull ?? {};
 
         final tradeable = cards.where((c) =>
-            c.isTradeable &&
             c.playerCard != null &&
             !xiCardIds.contains(c.id) &&
             !listedIds.contains(c.id)).toList();

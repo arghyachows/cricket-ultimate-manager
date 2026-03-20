@@ -271,7 +271,6 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
             ),
             onReorder: (oldIndex, newIndex) {
               ref.read(teamProvider.notifier).reorderLineup(
-                    lineup,
                     oldIndex,
                     newIndex,
                   );

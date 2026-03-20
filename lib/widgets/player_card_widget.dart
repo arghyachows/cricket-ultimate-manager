@@ -228,10 +228,10 @@ class PlayerCardWidget extends StatelessWidget {
 
                   const Spacer(),
 
-                  // Country flag placeholder
+                  // League
                   if (size == CardSize.large) ...[
                     Text(
-                      card.country,
+                      card.league ?? '',
                       style: TextStyle(
                         fontSize: dimensions.fontSize - 2,
                         color: Colors.white54,
