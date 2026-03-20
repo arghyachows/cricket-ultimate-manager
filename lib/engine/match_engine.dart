@@ -394,123 +394,216 @@ class MatchEngine {
     required int bowlingRating,
     required int chemistry,
   }) {
-    // Base probabilities
-    double dotProb = 0.35;
-    double singleProb = 0.30;
-    double doubleProb = 0.10;
-    double tripleProb = 0.02;
-    double fourProb = 0.10;
-    double sixProb = 0.04;
-    double wicketProb = 0.05;
-    double wideProb = 0.02;
-    double noBallProb = 0.02;
+    final batsman = _currentBatsman;
+    final bowler = _currentBowler;
+    
+    // Base T20 probabilities
+    var probs = {
+      'dot': 0.30,
+      'single': 0.30,
+      'double': 0.10,
+      'triple': 0.02,
+      'four': 0.15,
+      'six': 0.08,
+      'wicket': 0.05,
+      'wide': 0.015,
+      'no_ball': 0.015,
+    };
 
-    // Batting skill modifier
-    final batMod = (battingRating - 50) / 200.0;
-    fourProb += batMod * 0.08;
-    sixProb += batMod * 0.04;
-    singleProb += batMod * 0.05;
-    dotProb -= batMod * 0.10;
-    wicketProb -= batMod * 0.04;
+    // ─── Step 1: Calculate matchup score ───────────────────────────────
+    final matchupScore = battingRating - bowlingRating;
+    final normalized = matchupScore / 100.0; // range ~ -1 to +1
 
-    // Bowling skill modifier
-    final bowlMod = (bowlingRating - 50) / 200.0;
-    dotProb += bowlMod * 0.10;
-    wicketProb += bowlMod * 0.06;
-    fourProb -= bowlMod * 0.06;
-    sixProb -= bowlMod * 0.03;
-    singleProb -= bowlMod * 0.04;
+    // ─── Step 2: Adjust based on matchup ───────────────────────────────
+    probs['four'] = probs['four']! + 0.1 * normalized;
+    probs['six'] = probs['six']! + 0.08 * normalized;
+    probs['dot'] = probs['dot']! - 0.1 * normalized;
+    probs['wicket'] = probs['wicket']! - 0.05 * normalized;
+    probs['single'] = probs['single']! + 0.03 * normalized;
 
-    // Chemistry modifier
-    final chemMod = chemistry / 500.0;
-    fourProb += chemMod * 0.02;
-    sixProb += chemMod * 0.01;
-    wicketProb -= chemMod * 0.02;
+    // ─── Step 3: Add player trait impacts ──────────────────────────────
+    final aggression = batsman.userCard?.playerCard?.rating?.toDouble() ?? battingRating.toDouble();
+    final technique = battingRating.toDouble();
+    final power = battingRating.toDouble();
+    final consistency = battingRating.toDouble();
+    
+    final pace = bowlingRating.toDouble();
+    final accuracy = bowlingRating.toDouble();
+    final variations = bowlingRating.toDouble();
 
-    // Pitch modifier
+    // Aggressive batsman
+    probs['six'] = probs['six']! + aggression * 0.001;
+    probs['wicket'] = probs['wicket']! + aggression * 0.0005;
+    probs['dot'] = probs['dot']! - aggression * 0.0008;
+    
+    // Powerful batsman
+    probs['six'] = probs['six']! + power * 0.0008;
+    probs['four'] = probs['four']! + power * 0.0006;
+    
+    // Technical batsman
+    probs['single'] = probs['single']! + technique * 0.0005;
+    probs['double'] = probs['double']! + technique * 0.0003;
+    probs['wicket'] = probs['wicket']! - technique * 0.0004;
+    
+    // Consistent batsman
+    probs['dot'] = probs['dot']! + consistency * 0.0003;
+    probs['wicket'] = probs['wicket']! - consistency * 0.0005;
+
+    // Accurate bowler
+    probs['dot'] = probs['dot']! + accuracy * 0.001;
+    probs['wicket'] = probs['wicket']! + accuracy * 0.0007;
+    probs['wide'] = probs['wide']! - accuracy * 0.0003;
+    probs['no_ball'] = probs['no_ball']! - accuracy * 0.0002;
+    
+    // Pace bowler
+    probs['wicket'] = probs['wicket']! + pace * 0.0005;
+    probs['dot'] = probs['dot']! + pace * 0.0003;
+    
+    // Variations
+    probs['wicket'] = probs['wicket']! + variations * 0.0003;
+    probs['dot'] = probs['dot']! + variations * 0.0002;
+
+    // ─── Step 4: Context awareness ─────────────────────────────────────
+    final currentScore = isFirstInnings ? _score1 : _score2;
+    final currentWickets = _currentWickets;
+    final ballsRemaining = (maxOvers * 6) - (_overNumber * 6 + _ballNumber);
+    
+    // Death overs (16-20)
+    if (_overNumber >= 16) {
+      probs['six'] = probs['six']! + 0.05;
+      probs['four'] = probs['four']! + 0.03;
+      probs['wicket'] = probs['wicket']! + 0.03;
+      probs['dot'] = probs['dot']! - 0.05;
+      probs['single'] = probs['single']! - 0.02;
+    }
+    
+    // Powerplay (1-6)
+    if (_overNumber < 6) {
+      probs['four'] = probs['four']! + 0.03;
+      probs['six'] = probs['six']! + 0.02;
+      probs['dot'] = probs['dot']! - 0.02;
+    }
+    
+    // Middle overs (7-15)
+    if (_overNumber >= 6 && _overNumber < 16) {
+      probs['single'] = probs['single']! + 0.05;
+      probs['double'] = probs['double']! + 0.02;
+      probs['dot'] = probs['dot']! + 0.02;
+      probs['six'] = probs['six']! - 0.02;
+    }
+
+    // Chasing scenario
+    if (!isFirstInnings && _target > 0) {
+      final runsNeeded = _target + 1 - currentScore;
+      final requiredRunRate = ballsRemaining > 0 ? (runsNeeded / ballsRemaining) * 6 : 0.0;
+      
+      // High required run rate
+      if (requiredRunRate > 10) {
+        probs['six'] = probs['six']! + 0.07;
+        probs['four'] = probs['four']! + 0.04;
+        probs['wicket'] = probs['wicket']! + 0.04;
+        probs['dot'] = probs['dot']! - 0.08;
+      } else if (requiredRunRate > 8) {
+        probs['six'] = probs['six']! + 0.04;
+        probs['four'] = probs['four']! + 0.03;
+        probs['wicket'] = probs['wicket']! + 0.02;
+        probs['dot'] = probs['dot']! - 0.04;
+      }
+      
+      // Easy chase
+      if (requiredRunRate < 6) {
+        probs['single'] = probs['single']! + 0.05;
+        probs['dot'] = probs['dot']! + 0.03;
+        probs['six'] = probs['six']! - 0.03;
+        probs['wicket'] = probs['wicket']! - 0.02;
+      }
+    }
+    
+    // Wickets in hand
+    if (currentWickets >= 7) {
+      // Tail-enders
+      probs['wicket'] = probs['wicket']! + 0.05;
+      probs['dot'] = probs['dot']! + 0.05;
+      probs['six'] = probs['six']! - 0.03;
+      probs['four'] = probs['four']! - 0.03;
+    } else if (currentWickets <= 2) {
+      // Set batsmen
+      probs['wicket'] = probs['wicket']! - 0.02;
+      probs['single'] = probs['single']! + 0.02;
+    }
+
+    // ─── Step 5: Pitch effects ─────────────────────────────────────────
     switch (pitchCondition) {
       case 'batting_friendly':
-        fourProb += 0.04;
-        sixProb += 0.02;
-        wicketProb -= 0.02;
+      case 'flat':
+        probs['four'] = probs['four']! + 0.05;
+        probs['six'] = probs['six']! + 0.05;
+        probs['wicket'] = probs['wicket']! - 0.03;
+        probs['dot'] = probs['dot']! - 0.03;
         break;
       case 'bowling_friendly':
-        wicketProb += 0.03;
-        dotProb += 0.05;
-        fourProb -= 0.03;
-        sixProb -= 0.02;
+      case 'green':
+        probs['wicket'] = probs['wicket']! + 0.05;
+        probs['dot'] = probs['dot']! + 0.05;
+        probs['four'] = probs['four']! - 0.03;
+        probs['six'] = probs['six']! - 0.03;
         break;
       case 'spin_friendly':
-        wicketProb += 0.02;
-        dotProb += 0.03;
+      case 'dusty':
+        probs['wicket'] = probs['wicket']! + 0.03;
+        probs['dot'] = probs['dot']! + 0.04;
+        probs['six'] = probs['six']! - 0.02;
         break;
       case 'seam_friendly':
-        wicketProb += 0.02;
-        fourProb -= 0.02;
+        probs['wicket'] = probs['wicket']! + 0.03;
+        probs['four'] = probs['four']! - 0.02;
+        probs['dot'] = probs['dot']! + 0.02;
         break;
     }
 
-    // Clamp all probabilities
-    dotProb = dotProb.clamp(0.05, 0.60);
-    singleProb = singleProb.clamp(0.10, 0.45);
-    doubleProb = doubleProb.clamp(0.02, 0.20);
-    tripleProb = tripleProb.clamp(0.005, 0.05);
-    fourProb = fourProb.clamp(0.02, 0.25);
-    sixProb = sixProb.clamp(0.01, 0.15);
-    wicketProb = wicketProb.clamp(0.01, 0.15);
-    wideProb = wideProb.clamp(0.01, 0.05);
-    noBallProb = noBallProb.clamp(0.005, 0.03);
+    // Chemistry bonus
+    final chemMod = chemistry / 500.0;
+    probs['four'] = probs['four']! + chemMod * 0.02;
+    probs['six'] = probs['six']! + chemMod * 0.01;
+    probs['wicket'] = probs['wicket']! - chemMod * 0.02;
 
-    // Normalize
-    final total = dotProb +
-        singleProb +
-        doubleProb +
-        tripleProb +
-        fourProb +
-        sixProb +
-        wicketProb +
-        wideProb +
-        noBallProb;
+    // ─── Step 6: Clamp and normalize ───────────────────────────────────
+    probs['dot'] = probs['dot']!.clamp(0.05, 0.6);
+    probs['single'] = probs['single']!.clamp(0.1, 0.45);
+    probs['double'] = probs['double']!.clamp(0.02, 0.2);
+    probs['triple'] = probs['triple']!.clamp(0.005, 0.05);
+    probs['four'] = probs['four']!.clamp(0.02, 0.3);
+    probs['six'] = probs['six']!.clamp(0.01, 0.2);
+    probs['wicket'] = probs['wicket']!.clamp(0.01, 0.2);
+    probs['wide'] = probs['wide']!.clamp(0.005, 0.05);
+    probs['no_ball'] = probs['no_ball']!.clamp(0.005, 0.03);
 
-    dotProb /= total;
-    singleProb /= total;
-    doubleProb /= total;
-    tripleProb /= total;
-    fourProb /= total;
-    sixProb /= total;
-    wicketProb /= total;
-    wideProb /= total;
-    noBallProb /= total;
+    final total = probs.values.reduce((a, b) => a + b);
+    probs.forEach((key, value) {
+      probs[key] = value / total;
+    });
 
-    // Roll
+    // ─── Step 7: Sample outcome ────────────────────────────────────────
     final roll = _rng.nextDouble();
     double cumulative = 0;
-
-    cumulative += dotProb;
-    if (roll < cumulative) return BallOutcome.dot;
-
-    cumulative += singleProb;
-    if (roll < cumulative) return BallOutcome.single;
-
-    cumulative += doubleProb;
-    if (roll < cumulative) return BallOutcome.double;
-
-    cumulative += tripleProb;
-    if (roll < cumulative) return BallOutcome.triple;
-
-    cumulative += fourProb;
-    if (roll < cumulative) return BallOutcome.four;
-
-    cumulative += sixProb;
-    if (roll < cumulative) return BallOutcome.six;
-
-    cumulative += wicketProb;
-    if (roll < cumulative) return BallOutcome.wicket;
-
-    cumulative += wideProb;
-    if (roll < cumulative) return BallOutcome.wide;
-
-    return BallOutcome.noBall;
+    
+    for (final entry in probs.entries) {
+      cumulative += entry.value;
+      if (roll < cumulative) {
+        switch (entry.key) {
+          case 'dot': return BallOutcome.dot;
+          case 'single': return BallOutcome.single;
+          case 'double': return BallOutcome.double;
+          case 'triple': return BallOutcome.triple;
+          case 'four': return BallOutcome.four;
+          case 'six': return BallOutcome.six;
+          case 'wicket': return BallOutcome.wicket;
+          case 'wide': return BallOutcome.wide;
+          case 'no_ball': return BallOutcome.noBall;
+        }
+      }
+    }
+    return BallOutcome.dot;
   }
 
   void _swapStrike() {

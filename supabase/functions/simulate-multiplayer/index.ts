@@ -16,6 +16,15 @@ interface Player {
   batting: number;
   bowling: number;
   fielding: number;
+  // Extended attributes for realistic simulation
+  aggression?: number;
+  technique?: number;
+  power?: number;
+  consistency?: number;
+  pace?: number;
+  swing?: number;
+  accuracy?: number;
+  variations?: number;
 }
 
 interface BatsmanStats {
@@ -494,106 +503,204 @@ class MatchEngine {
     bowlingRating: number,
     chemistry: number
   ): string {
-    let dotProb = 0.35;
-    let singleProb = 0.3;
-    let doubleProb = 0.1;
-    let tripleProb = 0.02;
-    let fourProb = 0.1;
-    let sixProb = 0.04;
-    let wicketProb = 0.05;
-    let wideProb = 0.02;
-    let noBallProb = 0.02;
+    const batsman = this.currentBatsman;
+    const bowler = this.currentBowler;
+    
+    // Base T20 probabilities
+    let probs = {
+      dot: 0.30,
+      single: 0.30,
+      double: 0.10,
+      triple: 0.02,
+      four: 0.15,
+      six: 0.08,
+      wicket: 0.05,
+      wide: 0.015,
+      no_ball: 0.015,
+    };
 
-    const batMod = (battingRating - 50) / 200;
-    fourProb += batMod * 0.08;
-    sixProb += batMod * 0.04;
-    singleProb += batMod * 0.05;
-    dotProb -= batMod * 0.1;
-    wicketProb -= batMod * 0.04;
+    // ─── Step 1: Calculate matchup score ───────────────────────────
+    const matchupScore = battingRating - bowlingRating;
+    const normalized = matchupScore / 100; // range ~ -1 to +1
 
-    const bowlMod = (bowlingRating - 50) / 200;
-    dotProb += bowlMod * 0.1;
-    wicketProb += bowlMod * 0.06;
-    fourProb -= bowlMod * 0.06;
-    sixProb -= bowlMod * 0.03;
-    singleProb -= bowlMod * 0.04;
+    // ─── Step 2: Adjust based on matchup ───────────────────────────
+    probs.four += 0.1 * normalized;
+    probs.six += 0.08 * normalized;
+    probs.dot -= 0.1 * normalized;
+    probs.wicket -= 0.05 * normalized;
+    probs.single += 0.03 * normalized;
 
-    const chemMod = chemistry / 500;
-    fourProb += chemMod * 0.02;
-    sixProb += chemMod * 0.01;
-    wicketProb -= chemMod * 0.02;
+    // ─── Step 3: Add player trait impacts ──────────────────────────
+    const aggression = batsman.aggression ?? battingRating;
+    const technique = batsman.technique ?? battingRating;
+    const power = batsman.power ?? battingRating;
+    const consistency = batsman.consistency ?? battingRating;
+    
+    const pace = bowler.pace ?? bowlingRating;
+    const swing = bowler.swing ?? bowlingRating;
+    const accuracy = bowler.accuracy ?? bowlingRating;
+    const variations = bowler.variations ?? bowlingRating;
 
+    // Aggressive batsman
+    probs.six += aggression * 0.001;
+    probs.wicket += aggression * 0.0005;
+    probs.dot -= aggression * 0.0008;
+    
+    // Powerful batsman
+    probs.six += power * 0.0008;
+    probs.four += power * 0.0006;
+    
+    // Technical batsman
+    probs.single += technique * 0.0005;
+    probs.double += technique * 0.0003;
+    probs.wicket -= technique * 0.0004;
+    
+    // Consistent batsman
+    probs.dot += consistency * 0.0003;
+    probs.wicket -= consistency * 0.0005;
+
+    // Accurate bowler
+    probs.dot += accuracy * 0.001;
+    probs.wicket += accuracy * 0.0007;
+    probs.wide -= accuracy * 0.0003;
+    probs.no_ball -= accuracy * 0.0002;
+    
+    // Pace bowler
+    probs.wicket += pace * 0.0005;
+    probs.dot += pace * 0.0003;
+    
+    // Swing/variations
+    probs.wicket += (swing + variations) * 0.0003;
+    probs.dot += (swing + variations) * 0.0002;
+
+    // ─── Step 4: Context awareness ─────────────────────────────────
+    const currentScore = this.isFirstInnings ? this.score1 : this.score2;
+    const currentWickets = this.currentWickets;
+    const ballsRemaining = (this.maxOvers * 6) - (this.overNumber * 6 + this.ballNumber);
+    
+    // Death overs (16-20)
+    if (this.overNumber >= 16) {
+      probs.six += 0.05;
+      probs.four += 0.03;
+      probs.wicket += 0.03;
+      probs.dot -= 0.05;
+      probs.single -= 0.02;
+    }
+    
+    // Powerplay (1-6)
+    if (this.overNumber < 6) {
+      probs.four += 0.03;
+      probs.six += 0.02;
+      probs.dot -= 0.02;
+    }
+    
+    // Middle overs (7-15)
+    if (this.overNumber >= 6 && this.overNumber < 16) {
+      probs.single += 0.05;
+      probs.double += 0.02;
+      probs.dot += 0.02;
+      probs.six -= 0.02;
+    }
+
+    // Chasing scenario
+    if (!this.isFirstInnings && this.target > 0) {
+      const runsNeeded = this.target + 1 - currentScore;
+      const requiredRunRate = ballsRemaining > 0 ? (runsNeeded / ballsRemaining) * 6 : 0;
+      
+      // High required run rate
+      if (requiredRunRate > 10) {
+        probs.six += 0.07;
+        probs.four += 0.04;
+        probs.wicket += 0.04;
+        probs.dot -= 0.08;
+      } else if (requiredRunRate > 8) {
+        probs.six += 0.04;
+        probs.four += 0.03;
+        probs.wicket += 0.02;
+        probs.dot -= 0.04;
+      }
+      
+      // Easy chase
+      if (requiredRunRate < 6) {
+        probs.single += 0.05;
+        probs.dot += 0.03;
+        probs.six -= 0.03;
+        probs.wicket -= 0.02;
+      }
+    }
+    
+    // Wickets in hand
+    if (currentWickets >= 7) {
+      // Tail-enders
+      probs.wicket += 0.05;
+      probs.dot += 0.05;
+      probs.six -= 0.03;
+      probs.four -= 0.03;
+    } else if (currentWickets <= 2) {
+      // Set batsmen
+      probs.wicket -= 0.02;
+      probs.single += 0.02;
+    }
+
+    // ─── Step 5: Pitch effects ─────────────────────────────────────
     switch (this.pitchCondition) {
       case "batting_friendly":
-        fourProb += 0.04;
-        sixProb += 0.02;
-        wicketProb -= 0.02;
+      case "flat":
+        probs.four += 0.05;
+        probs.six += 0.05;
+        probs.wicket -= 0.03;
+        probs.dot -= 0.03;
         break;
       case "bowling_friendly":
-        wicketProb += 0.03;
-        dotProb += 0.05;
-        fourProb -= 0.03;
-        sixProb -= 0.02;
+      case "green":
+        probs.wicket += 0.05;
+        probs.dot += 0.05;
+        probs.four -= 0.03;
+        probs.six -= 0.03;
         break;
       case "spin_friendly":
-        wicketProb += 0.02;
-        dotProb += 0.03;
+      case "dusty":
+        probs.wicket += 0.03;
+        probs.dot += 0.04;
+        probs.six -= 0.02;
         break;
       case "seam_friendly":
-        wicketProb += 0.02;
-        fourProb -= 0.02;
+        probs.wicket += 0.03;
+        probs.four -= 0.02;
+        probs.dot += 0.02;
         break;
     }
 
-    dotProb = clamp(dotProb, 0.05, 0.6);
-    singleProb = clamp(singleProb, 0.1, 0.45);
-    doubleProb = clamp(doubleProb, 0.02, 0.2);
-    tripleProb = clamp(tripleProb, 0.005, 0.05);
-    fourProb = clamp(fourProb, 0.02, 0.25);
-    sixProb = clamp(sixProb, 0.01, 0.15);
-    wicketProb = clamp(wicketProb, 0.01, 0.15);
-    wideProb = clamp(wideProb, 0.01, 0.05);
-    noBallProb = clamp(noBallProb, 0.005, 0.03);
+    // Chemistry bonus
+    const chemMod = chemistry / 500;
+    probs.four += chemMod * 0.02;
+    probs.six += chemMod * 0.01;
+    probs.wicket -= chemMod * 0.02;
 
-    const total =
-      dotProb +
-      singleProb +
-      doubleProb +
-      tripleProb +
-      fourProb +
-      sixProb +
-      wicketProb +
-      wideProb +
-      noBallProb;
-    dotProb /= total;
-    singleProb /= total;
-    doubleProb /= total;
-    tripleProb /= total;
-    fourProb /= total;
-    sixProb /= total;
-    wicketProb /= total;
-    wideProb /= total;
-    noBallProb /= total;
+    // ─── Step 6: Clamp and normalize ───────────────────────────────
+    probs.dot = clamp(probs.dot, 0.05, 0.6);
+    probs.single = clamp(probs.single, 0.1, 0.45);
+    probs.double = clamp(probs.double, 0.02, 0.2);
+    probs.triple = clamp(probs.triple, 0.005, 0.05);
+    probs.four = clamp(probs.four, 0.02, 0.3);
+    probs.six = clamp(probs.six, 0.01, 0.2);
+    probs.wicket = clamp(probs.wicket, 0.01, 0.2);
+    probs.wide = clamp(probs.wide, 0.005, 0.05);
+    probs.no_ball = clamp(probs.no_ball, 0.005, 0.03);
 
+    const total = Object.values(probs).reduce((a, b) => a + b, 0);
+    for (const key in probs) {
+      probs[key as keyof typeof probs] /= total;
+    }
+
+    // ─── Step 7: Sample outcome ────────────────────────────────────
     const roll = Math.random();
     let cum = 0;
-    cum += dotProb;
-    if (roll < cum) return "dot";
-    cum += singleProb;
-    if (roll < cum) return "single";
-    cum += doubleProb;
-    if (roll < cum) return "double";
-    cum += tripleProb;
-    if (roll < cum) return "triple";
-    cum += fourProb;
-    if (roll < cum) return "four";
-    cum += sixProb;
-    if (roll < cum) return "six";
-    cum += wicketProb;
-    if (roll < cum) return "wicket";
-    cum += wideProb;
-    if (roll < cum) return "wide";
-    return "no_ball";
+    for (const [outcome, prob] of Object.entries(probs)) {
+      cum += prob;
+      if (roll < cum) return outcome;
+    }
+    return "dot";
   }
 
   private swapStrike() {
@@ -1143,13 +1250,24 @@ async function loadTeamXI(
 function mapPlayer(sp: any): Player {
   const uc = sp.user_cards ?? sp.user_card;
   const pc = uc?.player_cards ?? uc?.player_card;
+  const batting = pc?.batting ?? 50;
+  const bowling = pc?.bowling ?? 50;
   return {
     userCardId: sp.user_card_id ?? uc?.id ?? crypto.randomUUID(),
     name: pc?.player_name ?? "Player",
     role: pc?.role ?? "batsman",
-    batting: pc?.batting ?? 50,
-    bowling: pc?.bowling ?? 50,
+    batting,
+    bowling,
     fielding: pc?.fielding ?? 50,
+    // Derive extended attributes from base stats with variation
+    aggression: batting + (Math.random() * 20 - 10),
+    technique: batting + (Math.random() * 15 - 7.5),
+    power: batting + (Math.random() * 20 - 10),
+    consistency: batting + (Math.random() * 15 - 7.5),
+    pace: bowling + (Math.random() * 20 - 10),
+    swing: bowling + (Math.random() * 15 - 7.5),
+    accuracy: bowling + (Math.random() * 20 - 10),
+    variations: bowling + (Math.random() * 15 - 7.5),
   };
 }
 
@@ -1180,12 +1298,24 @@ function generateFallbackXI(): Player[] {
     "J. Khan",
     "K. Brown",
   ];
-  return roles.map((role, i) => ({
-    userCardId: crypto.randomUUID(),
-    name: names[i],
-    role,
-    batting: role === "bowler" ? 35 : role === "all_rounder" ? 55 : 65,
-    bowling: role === "batsman" ? 25 : role === "all_rounder" ? 55 : 70,
-    fielding: 50,
-  }));
+  return roles.map((role, i) => {
+    const batting = role === "bowler" ? 35 : role === "all_rounder" ? 55 : 65;
+    const bowling = role === "batsman" ? 25 : role === "all_rounder" ? 55 : 70;
+    return {
+      userCardId: crypto.randomUUID(),
+      name: names[i],
+      role,
+      batting,
+      bowling,
+      fielding: 50,
+      aggression: batting + (Math.random() * 20 - 10),
+      technique: batting + (Math.random() * 15 - 7.5),
+      power: batting + (Math.random() * 20 - 10),
+      consistency: batting + (Math.random() * 15 - 7.5),
+      pace: bowling + (Math.random() * 20 - 10),
+      swing: bowling + (Math.random() * 15 - 7.5),
+      accuracy: bowling + (Math.random() * 20 - 10),
+      variations: bowling + (Math.random() * 15 - 7.5),
+    };
+  });
 }
