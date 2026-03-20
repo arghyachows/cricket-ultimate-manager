@@ -578,24 +578,28 @@ class MatchEngine {
     const currentWickets = this.currentWickets;
     const ballsRemaining = (this.maxOvers * 6) - (this.overNumber * 6 + this.ballNumber);
     
-    // Death overs (16-20)
-    if (this.overNumber >= 16) {
+    // Dynamic phase boundaries based on match format
+    const totalBalls = this.maxOvers * 6;
+    const ballsElapsed = this.overNumber * 6 + this.ballNumber;
+    const powerplayEnd = Math.min(10, Math.floor(this.maxOvers * 0.3));
+    const middleOversEnd = Math.floor(this.maxOvers * 0.8);
+    
+    // Death overs (final 20% of match)
+    if (this.overNumber >= middleOversEnd) {
       probs.six += 0.05;
       probs.four += 0.03;
       probs.wicket += 0.03;
       probs.dot -= 0.05;
       probs.single -= 0.02;
     }
-    
-    // Powerplay (1-6)
-    if (this.overNumber < 6) {
+    // Powerplay (first 30% of match)
+    else if (this.overNumber < powerplayEnd) {
       probs.four += 0.03;
       probs.six += 0.02;
       probs.dot -= 0.02;
     }
-    
-    // Middle overs (7-15)
-    if (this.overNumber >= 6 && this.overNumber < 16) {
+    // Middle overs (30%-80% of match)
+    else {
       probs.single += 0.05;
       probs.double += 0.02;
       probs.dot += 0.02;

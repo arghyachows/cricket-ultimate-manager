@@ -468,24 +468,28 @@ class MatchEngine {
     final currentWickets = _currentWickets;
     final ballsRemaining = (maxOvers * 6) - (_overNumber * 6 + _ballNumber);
     
-    // Death overs (16-20)
-    if (_overNumber >= 16) {
+    // Dynamic phase boundaries based on match format
+    final totalBalls = maxOvers * 6;
+    final ballsElapsed = _overNumber * 6 + _ballNumber;
+    final powerplayEnd = (maxOvers * 0.3).floor().clamp(0, 10);
+    final middleOversEnd = (maxOvers * 0.8).floor();
+    
+    // Death overs (final 20% of match)
+    if (_overNumber >= middleOversEnd) {
       probs['six'] = probs['six']! + 0.05;
       probs['four'] = probs['four']! + 0.03;
       probs['wicket'] = probs['wicket']! + 0.03;
       probs['dot'] = probs['dot']! - 0.05;
       probs['single'] = probs['single']! - 0.02;
     }
-    
-    // Powerplay (1-6)
-    if (_overNumber < 6) {
+    // Powerplay (first 30% of match)
+    else if (_overNumber < powerplayEnd) {
       probs['four'] = probs['four']! + 0.03;
       probs['six'] = probs['six']! + 0.02;
       probs['dot'] = probs['dot']! - 0.02;
     }
-    
-    // Middle overs (7-15)
-    if (_overNumber >= 6 && _overNumber < 16) {
+    // Middle overs (30%-80% of match)
+    else {
       probs['single'] = probs['single']! + 0.05;
       probs['double'] = probs['double']! + 0.02;
       probs['dot'] = probs['dot']! + 0.02;
