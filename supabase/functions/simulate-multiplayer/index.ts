@@ -7,6 +7,24 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+const AI_WORKER_URL = Deno.env.get("CLOUDFLARE_AI_WORKER_URL") || "";
+
+async function getAICommentary(context: any, fallback: string): Promise<string> {
+  if (!AI_WORKER_URL) return fallback;
+  try {
+    const response = await fetch(AI_WORKER_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ context: { ...context, fallbackCommentary: fallback } }),
+    });
+    if (response.ok) {
+      const data = await response.json();
+      return data.commentary || fallback;
+    }
+  } catch (_) {}
+  return fallback;
+}
+
 // ─── Types ──────────────────────────────────────────────────────────
 
 interface Player {
@@ -1042,8 +1060,32 @@ serve(async (req) => {
       const battingInInnings1 = homeBatsFirst ? hOversDisplay : aOversDisplay;
       const battingInInnings2 = homeBatsFirst ? aOversDisplay : hOversDisplay;
       const currentOvers = result.innings === 1 ? battingInInnings1 : battingInInnings2;
+      
+      const battingTeam = result.innings === 1 ? (homeBatsFirst ? homeTeamName : awayTeamName) : (homeBatsFirst ? awayTeamName : homeTeamName);
+      const bowlingTeam = result.innings === 1 ? (homeBatsFirst ? awayTeamName : homeTeamName) : (homeBatsFirst ? homeTeamName : awayTeamName);
+      const powerplayEnd = Math.min(10, Math.floor(maxOvers * 0.3));
+      const middleOversEnd = Math.floor(maxOvers * 0.8);
+      const phase = result.overNumber < powerplayEnd ? "powerplay" : result.overNumber >= middleOversEnd ? "death" : "middle";
+      
+      const aiPromise = getAICommentary({
+        battingTeam,
+        bowlingTeam,
+        batsman: batsmanName,
+        bowler: bowlerName,
+        eventType: result.eventType,
+        runs: result.runs,
+        score: result.scoreAfter,
+        wickets: result.wicketsAfter,
+        overs: currentOvers,
+        phase,
+        wicketType: result.wicketType,
+        fielder: result.fielderCardId ? engine.getName(result.fielderCardId) : null,
+      }, result.commentary);
+      
+      const finalCommentary = await Promise.race([aiPromise, delay(800).then(() => result.commentary)]);
+      
       commentaryLog.push({
-        commentary: result.commentary,
+        commentary: finalCommentary,
         eventType: result.eventType,
         runs: result.runs,
         innings: result.innings,
@@ -1059,7 +1101,7 @@ serve(async (req) => {
           away_score: aScore,
           away_wickets: aWickets,
           current_innings: result.innings,
-          current_commentary: result.commentary,
+          current_commentary: finalCommentary,
           home_overs_display: hOversDisplay,
           away_overs_display: aOversDisplay,
           last_event_type: result.eventType,

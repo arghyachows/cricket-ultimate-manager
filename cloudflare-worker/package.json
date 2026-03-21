@@ -1,0 +1,13 @@
+{
+  "name": "cricket-commentary-ai",
+  "version": "1.0.0",
+  "description": "AI-powered cricket commentary using Cloudflare Workers AI",
+  "main": "commentary-ai.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}
