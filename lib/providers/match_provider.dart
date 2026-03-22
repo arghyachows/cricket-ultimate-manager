@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 import '../core/supabase_service.dart';
 import '../core/constants.dart';
 import '../core/cloudflare_quick_match_service.dart';
+import '../core/node_backend_service.dart';
 import '../models/models.dart';
 import '../engine/match_engine.dart';
 import '../core/notification_service.dart';
@@ -368,7 +369,8 @@ class MatchNotifier extends StateNotifier<MatchState> {
   Timer? _pollingTimer;
   MatchEngine? _engine;
   String? _cloudflareMatchId;
-  bool _useCloudflare = true;
+  bool _useCloudflare = false; // Changed to false to use Node.js by default
+  bool _useNodeBackend = true; // Use Node.js backend
 
   MatchNotifier(this.ref) : super(const MatchState());
 
@@ -425,7 +427,31 @@ class MatchNotifier extends StateNotifier<MatchState> {
           .toList(),
     );
 
-    // Try Cloudflare first
+    // Try Node.js backend first
+    if (_useNodeBackend) {
+      print('🎯 PRIMARY: Trying Node.js backend first...');
+      final success = await _startNodeBackendMatch(
+        homeXI: homeXI,
+        awayXI: awayXI,
+        homeChemistry: homeChemistry,
+        awayChemistry: awayChemistry,
+        homeTeamName: homeTeamName,
+        awayTeamName: awayTeamName,
+        overs: overs,
+        pitchCondition: pitchCondition,
+        homeBatsFirst: homeBatsFirst,
+      );
+
+      if (success) {
+        print('✅ SUCCESS: Using Node.js backend for match simulation');
+        return;
+      }
+
+      print('⚠️ FALLBACK: Node.js backend failed, trying Cloudflare...');
+      _useNodeBackend = false;
+    }
+
+    // Try Cloudflare as fallback
     if (_useCloudflare) {
       final success = await _startCloudflareMatch(
         homeXI: homeXI,
@@ -532,6 +558,243 @@ class MatchNotifier extends StateNotifier<MatchState> {
       print('❌ Cloudflare match start exception: $e');
       print('Stack trace: $stackTrace');
       return false;
+    }
+  }
+
+  Future<bool> _startNodeBackendMatch({
+    required List<LineupPlayer> homeXI,
+    required List<LineupPlayer> awayXI,
+    required int homeChemistry,
+    required int awayChemistry,
+    required String homeTeamName,
+    required String awayTeamName,
+    required int overs,
+    required String pitchCondition,
+    required bool homeBatsFirst,
+  }) async {
+    try {
+      print('🚀 Attempting Node.js backend match simulation...');
+      _cloudflareMatchId = const Uuid().v4();
+      print('📝 Match ID: $_cloudflareMatchId');
+
+      // Initialize Socket.IO
+      NodeBackendService.initSocket();
+
+      // Convert LineupPlayer to simple map format
+      final homeXIData = homeXI.map((p) => {
+        'userCardId': p.userCardId,
+        'name': p.userCard?.playerCard?.playerName ?? 'Unknown',
+        'role': p.userCard?.playerCard?.role ?? 'batsman',
+        'batting': p.userCard?.effectiveBatting ?? 50,
+        'bowling': p.userCard?.effectiveBowling ?? 50,
+        'fielding': p.userCard?.playerCard?.fielding ?? 50,
+        'aggression': p.userCard?.effectiveBatting ?? 50,
+        'technique': p.userCard?.effectiveBatting ?? 50,
+        'power': p.userCard?.effectiveBatting ?? 50,
+        'consistency': p.userCard?.effectiveBatting ?? 50,
+        'pace': p.userCard?.effectiveBowling ?? 50,
+        'swing': p.userCard?.effectiveBowling ?? 50,
+        'accuracy': p.userCard?.effectiveBowling ?? 50,
+        'variations': p.userCard?.effectiveBowling ?? 50,
+      }).toList();
+
+      final awayXIData = awayXI.map((p) => {
+        'userCardId': p.userCardId,
+        'name': p.userCard?.playerCard?.playerName ?? 'Unknown',
+        'role': p.userCard?.playerCard?.role ?? 'batsman',
+        'batting': p.userCard?.effectiveBatting ?? 50,
+        'bowling': p.userCard?.effectiveBowling ?? 50,
+        'fielding': p.userCard?.playerCard?.fielding ?? 50,
+        'aggression': p.userCard?.effectiveBatting ?? 50,
+        'technique': p.userCard?.effectiveBatting ?? 50,
+        'power': p.userCard?.effectiveBatting ?? 50,
+        'consistency': p.userCard?.effectiveBatting ?? 50,
+        'pace': p.userCard?.effectiveBowling ?? 50,
+        'swing': p.userCard?.effectiveBowling ?? 50,
+        'accuracy': p.userCard?.effectiveBowling ?? 50,
+        'variations': p.userCard?.effectiveBowling ?? 50,
+      }).toList();
+
+      print('👥 Home XI: ${homeXIData.length} players');
+      print('👥 Away XI: ${awayXIData.length} players');
+
+      final config = {
+        'homeXI': homeXIData,
+        'awayXI': awayXIData,
+        'homeChemistry': homeChemistry,
+        'awayChemistry': awayChemistry,
+        'maxOvers': overs,
+        'pitchCondition': pitchCondition,
+        'homeTeamName': homeTeamName,
+        'awayTeamName': awayTeamName,
+        'homeBatsFirst': homeBatsFirst,
+        'useAICommentary': true,
+      };
+
+      // Join match room for WebSocket updates
+      NodeBackendService.joinMatch(
+        _cloudflareMatchId!,
+        _onNodeBallUpdate,
+        _onNodeMatchComplete,
+      );
+
+      print('⚙️ Config prepared, calling Node.js backend...');
+      final started = await NodeBackendService.startMatch(
+        matchId: _cloudflareMatchId!,
+        config: config,
+      );
+
+      if (started) {
+        print('✅ Node.js backend match started successfully!');
+        return true;
+      }
+
+      print('❌ Node.js backend returned false');
+      NodeBackendService.leaveMatch(_cloudflareMatchId!);
+      return false;
+    } catch (e, stackTrace) {
+      print('❌ Node.js backend match start exception: $e');
+      print('Stack trace: $stackTrace');
+      return false;
+    }
+  }
+
+  void _onNodeBallUpdate(Map<String, dynamic> data) {
+    try {
+      print('⚡ Ball update received from Node.js');
+      final result = data['result'] as Map<String, dynamic>?;
+      final stateData = data['state'] as Map<String, dynamic>?;
+      final commentaryLog = data['commentaryLog'] as List?;
+
+      if (result == null || stateData == null) return;
+
+      // Build event from result
+      final event = MatchEvent(
+        id: 'node_${DateTime.now().millisecondsSinceEpoch}',
+        matchId: _cloudflareMatchId!,
+        innings: result['innings'] ?? 1,
+        overNumber: result['overNumber'] ?? 0,
+        ballNumber: result['ballNumber'] ?? 0,
+        battingTeamId: '',
+        bowlingTeamId: '',
+        batsmanCardId: '',
+        bowlerCardId: '',
+        eventType: result['eventType'] ?? 'dot_ball',
+        runs: result['runs'] ?? 0,
+        commentary: result['commentary'] ?? '',
+        scoreAfter: result['scoreAfter'] ?? 0,
+        wicketsAfter: result['wicketsAfter'] ?? 0,
+      );
+
+      final events = [...state.events, event];
+
+      // Update batsman stats from state
+      final batsmanStatsData = stateData['batsmanStats'] as Map<String, dynamic>? ?? {};
+      final batsmanStats = <String, BatsmanStats>{};
+      
+      batsmanStatsData.forEach((key, value) {
+        final stats = value as Map<String, dynamic>;
+        batsmanStats[key] = BatsmanStats(
+          name: stats['name'] ?? '',
+          innings: stats['innings'] ?? 1,
+          battingOrder: stats['battingOrder'] ?? 99,
+          runs: stats['runs'] ?? 0,
+          balls: stats['balls'] ?? 0,
+          fours: stats['fours'] ?? 0,
+          sixes: stats['sixes'] ?? 0,
+          isOut: stats['isOut'] ?? false,
+          dismissalType: stats['dismissalType'],
+        );
+      });
+
+      // Update bowler stats from state
+      final bowlerStatsData = stateData['bowlerStats'] as Map<String, dynamic>? ?? {};
+      final bowlerStats = <String, BowlerStats>{};
+      
+      bowlerStatsData.forEach((key, value) {
+        final stats = value as Map<String, dynamic>;
+        bowlerStats[key] = BowlerStats(
+          name: stats['name'] ?? '',
+          innings: stats['innings'] ?? 1,
+          balls: stats['balls'] ?? 0,
+          runs: stats['runs'] ?? 0,
+          wickets: stats['wickets'] ?? 0,
+          maidens: stats['maidens'] ?? 0,
+          dotBalls: stats['dotBalls'] ?? 0,
+        );
+      });
+
+      state = state.copyWith(
+        events: events,
+        currentCommentary: result['commentary'],
+        currentInnings: stateData['innings'] ?? 1,
+        batsmanStats: batsmanStats,
+        bowlerStats: bowlerStats,
+        target: stateData['target'] ?? 0,
+      );
+    } catch (e) {
+      print('❌ Error processing Node.js ball update: $e');
+    }
+  }
+
+  void _onNodeMatchComplete(Map<String, dynamic> data) {
+    try {
+      print('🏁 Match complete received from Node.js');
+      final matchResult = data['result'] as String?;
+      final stateData = data['state'] as Map<String, dynamic>?;
+
+      if (stateData != null) {
+        // Update final state
+        final batsmanStatsData = stateData['batsmanStats'] as Map<String, dynamic>? ?? {};
+        final batsmanStats = <String, BatsmanStats>{};
+        
+        batsmanStatsData.forEach((key, value) {
+          final stats = value as Map<String, dynamic>;
+          batsmanStats[key] = BatsmanStats(
+            name: stats['name'] ?? '',
+            innings: stats['innings'] ?? 1,
+            battingOrder: stats['battingOrder'] ?? 99,
+            runs: stats['runs'] ?? 0,
+            balls: stats['balls'] ?? 0,
+            fours: stats['fours'] ?? 0,
+            sixes: stats['sixes'] ?? 0,
+            isOut: stats['isOut'] ?? false,
+            dismissalType: stats['dismissalType'],
+          );
+        });
+
+        final bowlerStatsData = stateData['bowlerStats'] as Map<String, dynamic>? ?? {};
+        final bowlerStats = <String, BowlerStats>{};
+        
+        bowlerStatsData.forEach((key, value) {
+          final stats = value as Map<String, dynamic>;
+          bowlerStats[key] = BowlerStats(
+            name: stats['name'] ?? '',
+            innings: stats['innings'] ?? 1,
+            balls: stats['balls'] ?? 0,
+            runs: stats['runs'] ?? 0,
+            wickets: stats['wickets'] ?? 0,
+            maidens: stats['maidens'] ?? 0,
+            dotBalls: stats['dotBalls'] ?? 0,
+          );
+        });
+
+        state = state.copyWith(
+          batsmanStats: batsmanStats,
+          bowlerStats: bowlerStats,
+          currentCommentary: matchResult,
+          isSimulating: false,
+          isMatchComplete: true,
+        );
+      }
+
+      // Leave WebSocket room
+      NodeBackendService.leaveMatch(_cloudflareMatchId!);
+
+      // Trigger match completion logic
+      _onMatchComplete();
+    } catch (e) {
+      print('❌ Error processing Node.js match complete: $e');
     }
   }
 
@@ -1034,6 +1297,9 @@ class MatchNotifier extends StateNotifier<MatchState> {
   void reset() {
     _simulationTimer?.cancel();
     _pollingTimer?.cancel();
+    if (_cloudflareMatchId != null && _useNodeBackend) {
+      NodeBackendService.leaveMatch(_cloudflareMatchId!);
+    }
     _engine = null;
     _cloudflareMatchId = null;
     state = const MatchState();
@@ -1043,6 +1309,9 @@ class MatchNotifier extends StateNotifier<MatchState> {
   void dispose() {
     _simulationTimer?.cancel();
     _pollingTimer?.cancel();
+    if (_cloudflareMatchId != null && _useNodeBackend) {
+      NodeBackendService.leaveMatch(_cloudflareMatchId!);
+    }
     super.dispose();
   }
 }
