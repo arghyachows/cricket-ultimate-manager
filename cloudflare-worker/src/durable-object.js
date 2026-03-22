@@ -7,6 +7,7 @@ export class MatchSimulator {
     this.engine = null;
     this.matchId = null;
     this.isSimulating = false;
+    this.isQuickMatch = false;
     this.commentaryLog = [];
   }
 
@@ -16,6 +17,8 @@ export class MatchSimulator {
     switch (url.pathname) {
       case '/start':
         return this.handleStart(request);
+      case '/start-quick':
+        return this.handleStartQuick(request);
       case '/state':
         return this.handleGetState(request);
       case '/stop':
@@ -60,6 +63,8 @@ export class MatchSimulator {
       homeTeamName: matchData.home_team_name ?? 'Home',
       awayTeamName: matchData.away_team_name ?? 'Away',
       homeBatsFirst: matchData.home_bats_first ?? true,
+      env: this.env,
+      useAICommentary: true,
     });
 
     this.commentaryLog = [];
@@ -70,8 +75,54 @@ export class MatchSimulator {
     await this.state.storage.put('matchId', this.matchId);
     await this.state.storage.put('commentaryLog', this.commentaryLog);
 
-    // Start simulation in background
-    this.ctx.waitUntil(this.runSimulation());
+    // Start simulation in background (no await - fire and forget)
+    this.runSimulation();
+
+    return new Response(JSON.stringify({ success: true, matchId: this.matchId }), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+
+  async handleStartQuick(request) {
+    if (this.isSimulating) {
+      return new Response(JSON.stringify({ error: 'Match already simulating' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    const body = await request.json();
+    this.matchId = body.matchId;
+    const config = body.config;
+
+    // For quick matches, config contains all match data
+    // No need to load from Supabase
+    this.engine = new MatchEngine({
+      homeXI: config.homeXI,
+      awayXI: config.awayXI,
+      homeChemistry: config.homeChemistry ?? 50,
+      awayChemistry: config.awayChemistry ?? 50,
+      maxOvers: config.maxOvers ?? 20,
+      pitchCondition: config.pitchCondition ?? 'balanced',
+      homeTeamName: config.homeTeamName ?? 'Home',
+      awayTeamName: config.awayTeamName ?? 'Away',
+      homeBatsFirst: config.homeBatsFirst ?? true,
+      env: this.env,
+      useAICommentary: true,
+    });
+
+    this.commentaryLog = [];
+    this.isSimulating = true;
+    this.isQuickMatch = true;
+
+    // Persist initial state
+    await this.state.storage.put('engine', this.engine.serialize());
+    await this.state.storage.put('matchId', this.matchId);
+    await this.state.storage.put('commentaryLog', this.commentaryLog);
+    await this.state.storage.put('isQuickMatch', true);
+
+    // Start simulation in background (no await - fire and forget)
+    this.runSimulationQuick();
 
     return new Response(JSON.stringify({ success: true, matchId: this.matchId }), {
       headers: { 'Content-Type': 'application/json' }
@@ -125,7 +176,7 @@ export class MatchSimulator {
     let ballCount = 0;
 
     while (!this.engine.matchComplete && this.isSimulating) {
-      const result = this.engine.simulateNextBall();
+      const result = await this.engine.simulateNextBall();
       if (!result) break;
 
       ballCount++;
@@ -230,6 +281,44 @@ export class MatchSimulator {
     await this.awardRewards(winnerId);
 
     console.log(`Match ${this.matchId} completed: ${matchResult}`);
+  }
+
+  async runSimulationQuick() {
+    let ballCount = 0;
+
+    while (!this.engine.matchComplete && this.isSimulating) {
+      const result = await this.engine.simulateNextBall();
+      if (!result) break;
+
+      ballCount++;
+
+      // Add to commentary log
+      this.commentaryLog.push({
+        commentary: result.commentary,
+        eventType: result.eventType,
+        runs: result.runs,
+        innings: result.innings,
+        overNumber: result.overNumber,
+        ballNumber: result.ballNumber,
+      });
+
+      // Persist state to Durable Object storage
+      await this.state.storage.put('engine', this.engine.serialize());
+      await this.state.storage.put('commentaryLog', this.commentaryLog);
+
+      // Faster delay for quick matches (1000ms same as multiplayer)
+      await this.sleep(1000);
+
+      if (ballCount % 30 === 0) {
+        console.log(`Quick Match Ball ${ballCount}: ${this.engine.score1}/${this.engine.wickets1} vs ${this.engine.score2}/${this.engine.wickets2}`);
+      }
+    }
+
+    // Match complete
+    this.isSimulating = false;
+    const matchResult = this.engine.getMatchResult();
+
+    console.log(`Quick Match ${this.matchId} completed: ${matchResult}`);
   }
 
   async loadMatchFromSupabase(matchId) {

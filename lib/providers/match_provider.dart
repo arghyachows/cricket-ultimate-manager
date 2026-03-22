@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
 import '../core/supabase_service.dart';
 import '../core/constants.dart';
+import '../core/cloudflare_quick_match_service.dart';
 import '../models/models.dart';
 import '../engine/match_engine.dart';
 import '../core/notification_service.dart';
@@ -363,7 +365,10 @@ class MatchSummary {
 class MatchNotifier extends StateNotifier<MatchState> {
   final Ref ref;
   Timer? _simulationTimer;
+  Timer? _pollingTimer;
   MatchEngine? _engine;
+  String? _cloudflareMatchId;
+  bool _useCloudflare = true;
 
   MatchNotifier(this.ref) : super(const MatchState());
 
@@ -393,18 +398,13 @@ class MatchNotifier extends StateNotifier<MatchState> {
     String tossDecision = 'bat',
     bool homeBatsFirst = true,
   }) async {
-    _engine = MatchEngine(
-      homeXI: homeXI,
-      awayXI: awayXI,
-      homeChemistry: homeChemistry,
-      awayChemistry: awayChemistry,
-      overs: overs,
-      pitchCondition: pitchCondition,
-      homeTeamName: homeTeamName,
-      awayTeamName: awayTeamName,
-      homeBatsFirst: homeBatsFirst,
-    );
-
+    // Clean up any previous match
+    _simulationTimer?.cancel();
+    _pollingTimer?.cancel();
+    _engine = null;
+    _cloudflareMatchId = null;
+    
+    // Initialize fresh state
     state = MatchState(
       isSimulating: true,
       homeTeamName: homeTeamName,
@@ -417,12 +417,279 @@ class MatchNotifier extends StateNotifier<MatchState> {
       userWonToss: userWonToss,
       tossDecision: tossDecision,
       homeBatsFirst: homeBatsFirst,
-        xiOrder1: (homeBatsFirst ? homeXI : awayXI)
+      xiOrder1: (homeBatsFirst ? homeXI : awayXI)
           .map<String>((p) => p.userCard?.playerCard?.playerName ?? 'Unknown')
           .toList(),
-        xiOrder2: (homeBatsFirst ? awayXI : homeXI)
+      xiOrder2: (homeBatsFirst ? awayXI : homeXI)
           .map<String>((p) => p.userCard?.playerCard?.playerName ?? 'Unknown')
           .toList(),
+    );
+
+    // Try Cloudflare first
+    if (_useCloudflare) {
+      final success = await _startCloudflareMatch(
+        homeXI: homeXI,
+        awayXI: awayXI,
+        homeChemistry: homeChemistry,
+        awayChemistry: awayChemistry,
+        homeTeamName: homeTeamName,
+        awayTeamName: awayTeamName,
+        overs: overs,
+        pitchCondition: pitchCondition,
+        homeBatsFirst: homeBatsFirst,
+      );
+
+      if (success) {
+        print('Using Cloudflare Durable Objects for match simulation');
+        return;
+      }
+
+      // Fallback to local engine
+      print('Cloudflare failed, falling back to local engine');
+      _useCloudflare = false;
+    }
+
+    // Local engine fallback
+    _startLocalMatch(
+      homeXI: homeXI,
+      awayXI: awayXI,
+      homeChemistry: homeChemistry,
+      awayChemistry: awayChemistry,
+      homeTeamName: homeTeamName,
+      awayTeamName: awayTeamName,
+      overs: overs,
+      pitchCondition: pitchCondition,
+      homeBatsFirst: homeBatsFirst,
+    );
+  }
+
+  Future<bool> _startCloudflareMatch({
+    required List<LineupPlayer> homeXI,
+    required List<LineupPlayer> awayXI,
+    required int homeChemistry,
+    required int awayChemistry,
+    required String homeTeamName,
+    required String awayTeamName,
+    required int overs,
+    required String pitchCondition,
+    required bool homeBatsFirst,
+  }) async {
+    try {
+      print('🚀 Attempting Cloudflare match simulation...');
+      _cloudflareMatchId = const Uuid().v4();
+      print('📝 Match ID: $_cloudflareMatchId');
+
+      // Convert LineupPlayer to simple map format for Cloudflare
+      final homeXIData = homeXI.map((p) => {
+        'userCardId': p.userCardId,
+        'name': p.userCard?.playerCard?.playerName ?? 'Unknown',
+        'role': p.userCard?.playerCard?.role ?? 'batsman',
+        'batting': p.userCard?.effectiveBatting ?? 50,
+        'bowling': p.userCard?.effectiveBowling ?? 50,
+        'fielding': p.userCard?.playerCard?.fielding ?? 50,
+      }).toList();
+
+      final awayXIData = awayXI.map((p) => {
+        'userCardId': p.userCardId,
+        'name': p.userCard?.playerCard?.playerName ?? 'Unknown',
+        'role': p.userCard?.playerCard?.role ?? 'batsman',
+        'batting': p.userCard?.effectiveBatting ?? 50,
+        'bowling': p.userCard?.effectiveBowling ?? 50,
+        'fielding': p.userCard?.playerCard?.fielding ?? 50,
+      }).toList();
+
+      print('👥 Home XI: ${homeXIData.length} players');
+      print('👥 Away XI: ${awayXIData.length} players');
+
+      final config = {
+        'homeXI': homeXIData,
+        'awayXI': awayXIData,
+        'homeChemistry': homeChemistry,
+        'awayChemistry': awayChemistry,
+        'maxOvers': overs,
+        'pitchCondition': pitchCondition,
+        'homeTeamName': homeTeamName,
+        'awayTeamName': awayTeamName,
+        'homeBatsFirst': homeBatsFirst,
+      };
+
+      print('⚙️ Config prepared, calling Cloudflare service...');
+      final started = await CloudflareQuickMatchService.startQuickMatch(
+        matchId: _cloudflareMatchId!,
+        matchConfig: config,
+      );
+
+      if (started) {
+        print('✅ Cloudflare match started successfully!');
+        // Start polling for state updates
+        _startPolling();
+        return true;
+      }
+
+      print('❌ Cloudflare returned false');
+      return false;
+    } catch (e, stackTrace) {
+      print('❌ Cloudflare match start exception: $e');
+      print('Stack trace: $stackTrace');
+      return false;
+    }
+  }
+
+  void _startPolling() {
+    _pollingTimer?.cancel();
+    _pollingTimer = Timer.periodic(
+      const Duration(milliseconds: 1000),
+      (_) => _pollCloudflareState(),
+    );
+  }
+
+  Future<void> _pollCloudflareState() async {
+    if (_cloudflareMatchId == null) return;
+
+    try {
+      final stateData = await CloudflareQuickMatchService.getMatchState(_cloudflareMatchId!);
+      if (stateData == null) return;
+
+      _updateStateFromCloudflare(stateData);
+
+      // Stop polling if match is complete
+      final matchComplete = stateData['matchComplete'] == true;
+      print('📊 Polling: matchComplete=$matchComplete, isSimulating=${stateData['isSimulating']}');
+      
+      if (matchComplete) {
+        print('🏁 Match complete detected, stopping polling and calling _onMatchComplete');
+        _pollingTimer?.cancel();
+        
+        // Ensure isSimulating is set to false
+        state = state.copyWith(
+          isSimulating: false,
+          isMatchComplete: true,
+        );
+        
+        _onMatchComplete();
+      }
+    } catch (e) {
+      print('Polling error: $e');
+    }
+  }
+
+  void _updateStateFromCloudflare(Map<String, dynamic> data) {
+    // Build events from commentary log
+    final commentaryLog = data['commentaryLog'] as List? ?? [];
+    final events = <MatchEvent>[];
+    
+    // Track cumulative scores for each innings
+    int score1 = 0;
+    int wickets1 = 0;
+    int score2 = 0;
+    int wickets2 = 0;
+    
+    for (var i = 0; i < commentaryLog.length; i++) {
+      final entry = commentaryLog[i] as Map<String, dynamic>;
+      final innings = entry['innings'] as int? ?? 1;
+      final runs = (entry['runs'] as num? ?? 0).toInt();
+      final isWicket = entry['eventType'] == 'wicket';
+      
+      // Update cumulative scores
+      if (innings == 1) {
+        score1 += runs;
+        if (isWicket) wickets1++;
+      } else {
+        score2 += runs;
+        if (isWicket) wickets2++;
+      }
+      
+      events.add(MatchEvent(
+        id: 'cf_$i',
+        matchId: _cloudflareMatchId!,
+        innings: innings,
+        overNumber: (entry['overNumber'] as num? ?? 0).toInt(),
+        ballNumber: (entry['ballNumber'] as num? ?? 0).toInt(),
+        battingTeamId: '',
+        bowlingTeamId: '',
+        batsmanCardId: '',
+        bowlerCardId: '',
+        eventType: entry['eventType'] as String? ?? 'dot_ball',
+        runs: runs,
+        commentary: entry['commentary'] as String? ?? '',
+        scoreAfter: innings == 1 ? score1 : score2,
+        wicketsAfter: innings == 1 ? wickets1 : wickets2,
+      ));
+    }
+
+    // Build batsman stats from Cloudflare data
+    final batsmanStatsData = data['batsmanStats'] as Map<String, dynamic>? ?? {};
+    final batsmanStats = <String, BatsmanStats>{};
+    
+    batsmanStatsData.forEach((key, value) {
+      final stats = value as Map<String, dynamic>;
+      batsmanStats[key] = BatsmanStats(
+        name: stats['name'] ?? '',
+        innings: stats['innings'] ?? 1,
+        battingOrder: stats['battingOrder'] ?? 99,
+        runs: stats['runs'] ?? 0,
+        balls: stats['balls'] ?? 0,
+        fours: stats['fours'] ?? 0,
+        sixes: stats['sixes'] ?? 0,
+        isOut: stats['isOut'] ?? false,
+        dismissalType: stats['dismissalType'],
+      );
+    });
+
+    // Build bowler stats from Cloudflare data
+    final bowlerStatsData = data['bowlerStats'] as Map<String, dynamic>? ?? {};
+    final bowlerStats = <String, BowlerStats>{};
+    
+    bowlerStatsData.forEach((key, value) {
+      final stats = value as Map<String, dynamic>;
+      bowlerStats[key] = BowlerStats(
+        name: stats['name'] ?? '',
+        innings: stats['innings'] ?? 1,
+        balls: stats['balls'] ?? 0,
+        runs: stats['runs'] ?? 0,
+        wickets: stats['wickets'] ?? 0,
+        maidens: stats['maidens'] ?? 0,
+        dotBalls: stats['dotBalls'] ?? 0,
+      );
+    });
+
+    final currentCommentary = commentaryLog.isNotEmpty
+        ? (commentaryLog.last as Map<String, dynamic>)['commentary'] as String?
+        : null;
+
+    state = state.copyWith(
+      events: events,
+      currentCommentary: currentCommentary,
+      currentInnings: data['innings'] ?? 1,
+      batsmanStats: batsmanStats,
+      bowlerStats: bowlerStats,
+      target: data['target'] ?? 0,
+      isSimulating: data['isSimulating'] ?? false,
+      isMatchComplete: data['matchComplete'] ?? false,
+    );
+  }
+
+  void _startLocalMatch({
+    required List<LineupPlayer> homeXI,
+    required List<LineupPlayer> awayXI,
+    required int homeChemistry,
+    required int awayChemistry,
+    required String homeTeamName,
+    required String awayTeamName,
+    required int overs,
+    required String pitchCondition,
+    required bool homeBatsFirst,
+  }) {
+    _engine = MatchEngine(
+      homeXI: homeXI,
+      awayXI: awayXI,
+      homeChemistry: homeChemistry,
+      awayChemistry: awayChemistry,
+      overs: overs,
+      pitchCondition: pitchCondition,
+      homeTeamName: homeTeamName,
+      awayTeamName: awayTeamName,
+      homeBatsFirst: homeBatsFirst,
     );
 
     // Simulate ball by ball with delay for UX
@@ -554,16 +821,14 @@ class MatchNotifier extends StateNotifier<MatchState> {
   }
 
   void _onMatchComplete() {
-    if (_engine == null) return;
-
-    // Determine winner — score1 is batting-first team, score2 is batting-second
-    final score1 = _engine!.score1;
-    final score2 = _engine!.score2;
+    // For Cloudflare matches, we need to get scores from state, not engine
+    final score1 = state.homeBatsFirst ? state.homeScore : state.awayScore;
+    final score2 = state.homeBatsFirst ? state.awayScore : state.homeScore;
     final homeBatsFirst = state.homeBatsFirst;
 
     // Home score depends on batting order
-    final homeTotal = homeBatsFirst ? score1 : score2;
-    final awayTotal = homeBatsFirst ? score2 : score1;
+    final homeTotal = state.homeScore;
+    final awayTotal = state.awayScore;
 
     bool? homeWon;
     int coins;
@@ -768,13 +1033,16 @@ class MatchNotifier extends StateNotifier<MatchState> {
 
   void reset() {
     _simulationTimer?.cancel();
+    _pollingTimer?.cancel();
     _engine = null;
+    _cloudflareMatchId = null;
     state = const MatchState();
   }
 
   @override
   void dispose() {
     _simulationTimer?.cancel();
+    _pollingTimer?.cancel();
     super.dispose();
   }
 }

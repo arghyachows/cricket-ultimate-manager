@@ -1,5 +1,7 @@
 // ─── Match Simulation Engine ────────────────────────────────────────
 
+import { AICommentaryGenerator } from './ai-commentary.js';
+
 export class MatchEngine {
   constructor(config) {
     this.homeXI = config.homeXI;
@@ -11,6 +13,13 @@ export class MatchEngine {
     this.homeTeamName = config.homeTeamName;
     this.awayTeamName = config.awayTeamName;
     this.homeBatsFirst = config.homeBatsFirst;
+    this.env = config.env; // For AI commentary
+    this.useAICommentary = config.useAICommentary !== false; // Default true
+
+    // Initialize AI commentary generator
+    if (this.env && this.useAICommentary) {
+      this.aiCommentary = new AICommentaryGenerator(this.env);
+    }
 
     // Match state
     this.innings = 1;
@@ -82,7 +91,7 @@ export class MatchEngine {
     return 'Unknown';
   }
 
-  simulateNextBall() {
+  async simulateNextBall() {
     if (this.matchComplete) return null;
 
     this.ballNumber++;
@@ -140,65 +149,43 @@ export class MatchEngine {
     let commentary;
     let wicketType = null;
     let fielderCardId = null;
+    let fielderName = null;
     const isFreeHit = this.freeHitNext;
 
     switch (outcome) {
       case 'dot':
         runs = 0;
         eventType = 'dot_ball';
-        commentary = this.dotCommentary(batsmanName, bowlerName);
-        if (isFreeHit) commentary += ' (Free Hit)';
         break;
       case 'single':
         runs = 1;
         eventType = 'single';
-        commentary = pick([
-          `${batsmanName} pushes for a quick single.`,
-          `Good running! They scamper through for one.`,
-          `${batsmanName} taps it into the gap, easy single.`,
-        ]);
-        if (isFreeHit) commentary += ' (Free Hit)';
         this.swapStrike();
         break;
       case 'double':
         runs = 2;
         eventType = 'double';
-        commentary = pick([
-          `${batsmanName} drives through the gap for two.`,
-          `Well placed! They come back for the second.`,
-        ]);
-        if (isFreeHit) commentary += ' (Free Hit)';
         break;
       case 'triple':
         runs = 3;
         eventType = 'triple';
-        commentary = pick([
-          `${batsmanName} finds the gap, they run three!`,
-          `Excellent running! Three runs taken!`,
-        ]);
-        if (isFreeHit) commentary += ' (Free Hit)';
         this.swapStrike();
         break;
       case 'four':
         runs = 4;
         isBoundary = true;
         eventType = 'four';
-        commentary = this.fourCommentary(batsmanName, bowlerName);
-        if (isFreeHit) commentary += ' (Free Hit)';
         break;
       case 'six':
         runs = 6;
         isBoundary = true;
         eventType = 'six';
-        commentary = this.sixCommentary(batsmanName);
-        if (isFreeHit) commentary += ' (Free Hit)';
         break;
       case 'wicket':
         // No wicket on free hit
         if (isFreeHit) {
           runs = 0;
           eventType = 'dot_ball';
-          commentary = `${batsmanName} misses but it's a FREE HIT! No wicket!`;
           isWicket = false;
         } else {
           runs = 0;
@@ -207,34 +194,50 @@ export class MatchEngine {
           wicketType = this.randomWicketType();
           const fielder = this.pickFielder(wicketType, bowler);
           fielderCardId = fielder?.userCardId ?? null;
-          const fielderName = fielder?.name;
-          commentary = this.wicketCommentary(batsmanName, bowlerName, wicketType, fielderName);
+          fielderName = fielder?.name;
         }
         break;
       case 'wide':
         runs = 1;
         eventType = 'wide';
-        commentary = pick([
-          `Wide ball from ${bowlerName}. Extra run.`,
-          `WIDE! ${bowlerName} loses his line.`,
-        ]);
         this.ballNumber--;
         break;
       case 'no_ball':
         runs = 1;
         eventType = 'no_ball';
-        commentary = pick([
-          `No ball! Free hit coming up.`,
-          `NO BALL! ${bowlerName} oversteps! FREE HIT next!`,
-        ]);
         this.ballNumber--;
-        this.freeHitNext = true; // Set free hit for next ball
+        this.freeHitNext = true;
         break;
       default:
         runs = 0;
         eventType = 'dot_ball';
-        commentary = 'Dot ball.';
-        if (isFreeHit) commentary += ' (Free Hit)';
+    }
+
+    // Generate AI commentary if available
+    if (this.aiCommentary) {
+      try {
+        commentary = await this.aiCommentary.generateCommentary({
+          eventType,
+          runs,
+          batsmanName,
+          bowlerName,
+          innings: this.innings,
+          overNumber: this.overNumber,
+          ballNumber: this.ballNumber,
+          currentScore: this.isFirstInnings ? this.score1 : this.score2,
+          currentWickets: this.currentWickets,
+          target: this.target,
+          wicketType,
+          fielderName,
+          isFreeHit,
+          isSuperOver: this.isSuperOver,
+        });
+      } catch (error) {
+        console.error('AI commentary failed, using fallback:', error);
+        commentary = this.getFallbackCommentary(eventType, batsmanName, bowlerName, wicketType, fielderName, isFreeHit);
+      }
+    } else {
+      commentary = this.getFallbackCommentary(eventType, batsmanName, bowlerName, wicketType, fielderName, isFreeHit);
     }
 
     // Update score
@@ -630,6 +633,68 @@ export class MatchEngine {
     const candidates = allFielders.filter(p => p.userCardId !== bowler.userCardId);
     if (candidates.length === 0) return allFielders[Math.floor(Math.random() * allFielders.length)];
     return candidates[Math.floor(Math.random() * candidates.length)];
+  }
+
+  getFallbackCommentary(eventType, batsmanName, bowlerName, wicketType, fielderName, isFreeHit) {
+    let commentary;
+    
+    switch (eventType) {
+      case 'dot_ball':
+        commentary = this.dotCommentary(batsmanName, bowlerName);
+        break;
+      case 'single':
+        commentary = pick([
+          `${batsmanName} pushes for a quick single.`,
+          `Good running! They scamper through for one.`,
+          `${batsmanName} taps it into the gap, easy single.`,
+        ]);
+        break;
+      case 'double':
+        commentary = pick([
+          `${batsmanName} drives through the gap for two.`,
+          `Well placed! They come back for the second.`,
+        ]);
+        break;
+      case 'triple':
+        commentary = pick([
+          `${batsmanName} finds the gap, they run three!`,
+          `Excellent running! Three runs taken!`,
+        ]);
+        break;
+      case 'four':
+        commentary = this.fourCommentary(batsmanName, bowlerName);
+        break;
+      case 'six':
+        commentary = this.sixCommentary(batsmanName);
+        break;
+      case 'wicket':
+        if (isFreeHit) {
+          commentary = `${batsmanName} misses but it's a FREE HIT! No wicket!`;
+        } else {
+          commentary = this.wicketCommentary(batsmanName, bowlerName, wicketType, fielderName);
+        }
+        break;
+      case 'wide':
+        commentary = pick([
+          `Wide ball from ${bowlerName}. Extra run.`,
+          `WIDE! ${bowlerName} loses his line.`,
+        ]);
+        break;
+      case 'no_ball':
+        commentary = pick([
+          `No ball! Free hit coming up.`,
+          `NO BALL! ${bowlerName} oversteps! FREE HIT next!`,
+        ]);
+        break;
+      default:
+        commentary = 'Dot ball.';
+    }
+    
+    if (isFreeHit && eventType !== 'no_ball' && eventType !== 'wicket') {
+      commentary += ' (Free Hit)';
+    }
+    
+    return commentary;
   }
 
   dotCommentary(batsman, bowler) {

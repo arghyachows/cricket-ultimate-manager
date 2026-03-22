@@ -12,6 +12,10 @@ class_name = "MatchSimulator"
 tag = "v1"
 new_sqlite_classes = ["MatchSimulator"]
 
+# Workers AI binding
+[ai]
+binding = "AI"
+
 # Environment variables (set these via wrangler secret put)
 [vars]
 SUPABASE_URL = "https://kollxlzqqgznfiutpqjz.supabase.co"

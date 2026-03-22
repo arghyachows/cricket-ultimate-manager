@@ -103,6 +103,88 @@ export default {
         });
       }
 
+      // Route: POST /api/quick-match/start
+      if (url.pathname === '/api/quick-match/start' && request.method === 'POST') {
+        const body = await request.json();
+        const matchId = body.matchId;
+
+        if (!matchId) {
+          return new Response(JSON.stringify({ error: 'matchId required' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Use different namespace for quick matches
+        const id = env.MATCH_SIMULATOR.idFromName(`quick_${matchId}`);
+        const stub = env.MATCH_SIMULATOR.get(id);
+
+        const doResponse = await stub.fetch(new Request('http://do/start-quick', {
+          method: 'POST',
+          body: JSON.stringify(body),
+          headers: { 'Content-Type': 'application/json' },
+        }));
+
+        const result = await doResponse.json();
+
+        return new Response(JSON.stringify(result), {
+          status: doResponse.status,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Route: GET /api/quick-match/state/:matchId
+      if (url.pathname.startsWith('/api/quick-match/state/') && request.method === 'GET') {
+        const matchId = url.pathname.split('/').pop();
+
+        if (!matchId) {
+          return new Response(JSON.stringify({ error: 'matchId required' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        const id = env.MATCH_SIMULATOR.idFromName(`quick_${matchId}`);
+        const stub = env.MATCH_SIMULATOR.get(id);
+
+        const doResponse = await stub.fetch(new Request('http://do/state', {
+          method: 'GET',
+        }));
+
+        const result = await doResponse.json();
+
+        return new Response(JSON.stringify(result), {
+          status: doResponse.status,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Route: POST /api/quick-match/stop/:matchId
+      if (url.pathname.startsWith('/api/quick-match/stop/') && request.method === 'POST') {
+        const matchId = url.pathname.split('/').pop();
+
+        if (!matchId) {
+          return new Response(JSON.stringify({ error: 'matchId required' }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        const id = env.MATCH_SIMULATOR.idFromName(`quick_${matchId}`);
+        const stub = env.MATCH_SIMULATOR.get(id);
+
+        const doResponse = await stub.fetch(new Request('http://do/stop', {
+          method: 'POST',
+        }));
+
+        const result = await doResponse.json();
+
+        return new Response(JSON.stringify(result), {
+          status: doResponse.status,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
       // Health check
       if (url.pathname === '/health') {
         return new Response(JSON.stringify({ status: 'ok', service: 'cricket-match-simulator' }), {
