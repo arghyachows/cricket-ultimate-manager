@@ -14,6 +14,7 @@ import '../providers/auth_provider.dart';
 import '../providers/card_packs_provider.dart';
 import '../providers/career_stats_provider.dart';
 import '../core/notification_service.dart';
+import '../core/cloudflare_match_service.dart';
 
 // ─── Local state for multiplayer match ─────────────────────────────────────
 
@@ -690,21 +691,39 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
     }
   }
 
-  /// Invokes the Supabase Edge Function to run simulation server-side.
+  /// Invokes the Cloudflare Worker to run simulation on Durable Object.
   /// Both users see live updates via Realtime — no local engine needed.
   /// Fire-and-forget: don't await, as the simulation runs for minutes.
   void _invokeServerSimulation() {
-    SupabaseService.client.functions.invoke(
-      'simulate-multiplayer',
-      body: {'match_id': widget.matchId},
-    ).then((response) {
-      print('Edge function response status: ${response.status}');
-      print('Edge function response data: ${response.data}');
-      if (response.status >= 400) {
-        print('Edge function error: ${response.data}');
+    CloudflareMatchService.startMatchSimulation(widget.matchId).then((success) {
+      if (success) {
+        print('Cloudflare Worker: Match simulation started successfully');
+      } else {
+        print('Cloudflare Worker: Failed to start match simulation');
+        // Fallback to Supabase Edge Function if Cloudflare fails
+        print('Falling back to Supabase Edge Function...');
+        SupabaseService.client.functions.invoke(
+          'simulate-multiplayer',
+          body: {'match_id': widget.matchId},
+        ).then((response) {
+          print('Edge function response status: ${response.status}');
+          if (response.status >= 400) {
+            print('Edge function error: ${response.data}');
+          }
+        }).catchError((e) {
+          print('Edge function invocation error: $e');
+        });
       }
     }).catchError((e) {
-      print('Edge function invocation error: $e');
+      print('Cloudflare Worker error: $e');
+      // Fallback to Supabase Edge Function
+      print('Falling back to Supabase Edge Function...');
+      SupabaseService.client.functions.invoke(
+        'simulate-multiplayer',
+        body: {'match_id': widget.matchId},
+      ).catchError((fallbackError) {
+        print('Both Cloudflare and Supabase failed: $fallbackError');
+      });
     });
   }
 

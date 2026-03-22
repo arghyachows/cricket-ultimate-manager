@@ -1,0 +1,16 @@
+{
+  "name": "cricket-match-simulator",
+  "version": "1.0.0",
+  "description": "Cloudflare Durable Objects for multiplayer cricket match simulation",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "keywords": ["cloudflare", "durable-objects", "cricket", "match-simulation"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}

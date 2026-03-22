@@ -423,24 +423,45 @@ class MultiplayerNotifier extends StateNotifier<MultiplayerState> {
 
   void _handleMatchCreated(Map<String, dynamic> data, String userId) {
     try {
-      print('Match created event received: $data');
+      print('=== MATCH CREATED EVENT RECEIVED ===');
+      print('Match data: $data');
       final matchId = data['id'];
       final homeUserId = data['home_user_id'];
       final awayUserId = data['away_user_id'];
       
+      print('Match ID: $matchId');
+      print('Home User ID: $homeUserId');
+      print('Away User ID: $awayUserId');
+      print('Current User ID: $userId');
+      
       // Check if this user is part of the match
       if (homeUserId == userId || awayUserId == userId) {
-        print('User is part of match, triggering navigation');
+        print('=== USER IS PART OF MATCH, SETTING matchStartedId ===');
         // Trigger navigation by setting matchStartedId
         state = state.copyWith(matchStartedId: matchId);
+        print('State updated with matchStartedId: ${state.matchStartedId}');
+      } else {
+        print('User is NOT part of this match, ignoring');
       }
-    } catch (e) {
-      print('Error handling match created: $e');
+    } catch (e, stackTrace) {
+      print('=== ERROR HANDLING MATCH CREATED ===');
+      print('Error: $e');
+      print('Stack trace: $stackTrace');
     }
   }
 
   void clearMatchStarted() {
-    state = state.copyWith(matchStartedId: null);
+    print('=== CLEARING MATCH STARTED ID ===');
+    state = MultiplayerState(
+      rooms: state.rooms,
+      currentRoom: state.currentRoom,
+      usersInRoom: state.usersInRoom,
+      pendingChallenges: state.pendingChallenges,
+      isLoading: state.isLoading,
+      error: state.error,
+      isConnected: state.isConnected,
+      matchStartedId: null,
+    );
   }
 
   Future<void> _loadRoomUsers(String roomId) async {

@@ -13,6 +13,8 @@ class MultiplayerRoomScreen extends ConsumerStatefulWidget {
 }
 
 class _MultiplayerRoomScreenState extends ConsumerState<MultiplayerRoomScreen> {
+  bool _hasNavigated = false;
+
   @override
   void initState() {
     super.initState();
@@ -32,17 +34,31 @@ class _MultiplayerRoomScreenState extends ConsumerState<MultiplayerRoomScreen> {
     final hasActiveMatch = activeMatchData != null &&
         activeMatchData['status'] != 'completed';
 
-    // Listen for match start
+    // Listen for match start (only once per match)
     ref.listen<MultiplayerState>(multiplayerProvider, (previous, next) {
-      if (next.matchStartedId != null && previous?.matchStartedId != next.matchStartedId) {
+      print('=== MULTIPLAYER STATE CHANGED ===');
+      print('Previous matchStartedId: ${previous?.matchStartedId}');
+      print('Next matchStartedId: ${next.matchStartedId}');
+      print('Has navigated: $_hasNavigated');
+      
+      if (next.matchStartedId != null && 
+          previous?.matchStartedId != next.matchStartedId && 
+          !_hasNavigated) {
         // Match started, navigate to match screen
-        print('Navigating to match: ${next.matchStartedId}');
-        final matchId = next.matchStartedId;
+        print('=== NAVIGATING TO MATCH: ${next.matchStartedId} ===');
+        _hasNavigated = true;
+        final matchId = next.matchStartedId!;
+        
+        // Clear the match started ID immediately
         ref.read(multiplayerProvider.notifier).clearMatchStarted();
         
         // Navigate immediately — the match screen handles its own loading state
         context.push('/multiplayer/match/$matchId').then((_) {
-          if (mounted) ref.invalidate(activeMultiplayerMatchProvider);
+          print('=== NAVIGATION COMPLETED ===');
+          if (mounted) {
+            _hasNavigated = false; // Reset for next match
+            ref.invalidate(activeMultiplayerMatchProvider);
+          }
         });
       }
     });
@@ -448,11 +464,26 @@ class _MultiplayerRoomScreenState extends ConsumerState<MultiplayerRoomScreen> {
                             onPressed: hasActiveMatch || respondingId != null
                                 ? null
                                 : () async {
+                              print('=== ACCEPTING CHALLENGE: ${challenge.id} ===');
                               setDialogState(() => respondingId = challenge.id);
-                              Navigator.pop(context); // Close challenges dialog
                               
-                              // Accept challenge — navigation happens via ref.listen when matchStartedId is set
-                              await ref.read(multiplayerProvider.notifier).respondToChallenge(challenge.id, true);
+                              try {
+                                // Accept challenge — navigation happens via ref.listen when matchStartedId is set
+                                await ref.read(multiplayerProvider.notifier).respondToChallenge(challenge.id, true);
+                                print('=== CHALLENGE ACCEPTED SUCCESSFULLY ===');
+                                
+                                if (context.mounted) {
+                                  Navigator.pop(context); // Close challenges dialog
+                                }
+                              } catch (e) {
+                                print('=== ERROR ACCEPTING CHALLENGE: $e ===');
+                                if (context.mounted) {
+                                  Navigator.pop(context);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('Failed to accept challenge: $e')),
+                                  );
+                                }
+                              }
                             },
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppTheme.accent,

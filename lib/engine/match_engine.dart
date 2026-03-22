@@ -41,6 +41,8 @@ class MatchEngine {
   int _nextBatsmanIndex = 2; // Next batsman to come in (after opener 0 and 1)
   bool _matchComplete = false;
   int _target = 0;
+  bool _isSuperOver = false;
+  bool _freeHitNext = false;
 
   // Batting/Bowling order
   late List<LineupPlayer> _battingOrder1;
@@ -136,10 +138,17 @@ class MatchEngine {
     }
 
     // Check if innings/match is over
-    if (_overNumber >= maxOvers || _currentWickets >= 10) {
+    final maxOversForInnings = _isSuperOver ? 1 : maxOvers;
+    final maxWicketsForInnings = _isSuperOver ? 2 : 10;
+    
+    if (_overNumber >= maxOversForInnings || _currentWickets >= maxWicketsForInnings) {
       if (isFirstInnings) {
         return _endInnings();
       } else {
+        // Check for tie and trigger super over
+        if (_score1 == _score2 && !_isSuperOver) {
+          return _startSuperOver();
+        }
         return _endMatch();
       }
     }
@@ -176,12 +185,14 @@ class MatchEngine {
     String commentary;
     String? wicketTypeResult;
     String? fielderCardIdResult;
+    final isFreeHit = _freeHitNext;
 
     switch (outcome) {
       case BallOutcome.dot:
         runs = 0;
         eventType = 'dot_ball';
         commentary = _dotCommentary(batsmanName, bowlerName);
+        if (isFreeHit) commentary += ' (Free Hit)';
         break;
       case BallOutcome.single:
         runs = 1;
@@ -196,6 +207,7 @@ class MatchEngine {
           '$batsmanName works it into space for one run.',
         ];
         commentary = singleOptions[_rng.nextInt(singleOptions.length)];
+        if (isFreeHit) commentary += ' (Free Hit)';
         _swapStrike();
         break;
       case BallOutcome.double:
@@ -210,6 +222,7 @@ class MatchEngine {
           'Pushed into the deep, they run hard for two.',
         ];
         commentary = doubleOptions[_rng.nextInt(doubleOptions.length)];
+        if (isFreeHit) commentary += ' (Free Hit)';
         break;
       case BallOutcome.triple:
         runs = 3;
@@ -222,6 +235,7 @@ class MatchEngine {
           'Into the gap! They sprint back for the third!',
         ];
         commentary = tripleOptions[_rng.nextInt(tripleOptions.length)];
+        if (isFreeHit) commentary += ' (Free Hit)';
         _swapStrike();
         break;
       case BallOutcome.four:
@@ -229,22 +243,32 @@ class MatchEngine {
         isBoundary = true;
         eventType = 'four';
         commentary = _fourCommentary(batsmanName, bowlerName);
+        if (isFreeHit) commentary += ' (Free Hit)';
         break;
       case BallOutcome.six:
         runs = 6;
         isBoundary = true;
         eventType = 'six';
         commentary = _sixCommentary(batsmanName);
+        if (isFreeHit) commentary += ' (Free Hit)';
         break;
       case BallOutcome.wicket:
-        runs = 0;
-        isWicket = true;
-        eventType = 'wicket';
-        wicketTypeResult = _randomWicketType();
-        final fielder = _pickFielder(wicketTypeResult, bowler);
-        fielderCardIdResult = fielder?.userCardId;
-        final fielderName = fielder?.userCard?.playerCard?.playerName;
-        commentary = _wicketCommentary(batsmanName, bowlerName, wicketTypeResult, fielderName);
+        // No wicket on free hit
+        if (isFreeHit) {
+          runs = 0;
+          eventType = 'dot_ball';
+          commentary = '$batsmanName misses but it\'s a FREE HIT! No wicket!';
+          isWicket = false;
+        } else {
+          runs = 0;
+          isWicket = true;
+          eventType = 'wicket';
+          wicketTypeResult = _randomWicketType();
+          final fielder = _pickFielder(wicketTypeResult, bowler);
+          fielderCardIdResult = fielder?.userCardId;
+          final fielderName = fielder?.userCard?.playerCard?.playerName;
+          commentary = _wicketCommentary(batsmanName, bowlerName, wicketTypeResult, fielderName);
+        }
         break;
       case BallOutcome.wide:
         runs = 1;
@@ -265,7 +289,7 @@ class MatchEngine {
         eventType = 'no_ball';
         final noBallOptions = [
           'No ball! Free hit coming up.',
-          'NO BALL! $bowlerName oversteps!',
+          'NO BALL! $bowlerName oversteps! FREE HIT next!',
           'That\'s a no ball! Extra delivery.',
           'NO BALL called! $bowlerName has overstepped.',
           'Free hit next ball! $bowlerName oversteps the crease.',
@@ -273,6 +297,7 @@ class MatchEngine {
         ];
         commentary = noBallOptions[_rng.nextInt(noBallOptions.length)];
         _ballNumber--;
+        _freeHitNext = true; // Set free hit for next ball
         break;
     }
 
@@ -289,6 +314,11 @@ class MatchEngine {
         _wickets2++;
         _advanceBatsman();
       }
+    }
+
+    // Clear free hit flag after the ball (unless it was a wide/no-ball)
+    if (eventType != 'no_ball' && eventType != 'wide') {
+      _freeHitNext = false;
     }
 
     // Check second innings chase
@@ -347,6 +377,11 @@ class MatchEngine {
       _nonStrikerIndex = 1;
       _nextBatsmanIndex = 2;
       _currentBowlerIndex = 0;
+      _freeHitNext = false;
+
+      final commentary = _isSuperOver
+          ? 'End of Super Over first innings. Score: $_score1/$_wickets1. Target: ${_target + 1}'
+          : 'End of first innings. Score: $_score1/$_wickets1. Target: ${_target + 1}';
 
       return MatchEvent(
         id: 'innings_break',
@@ -360,14 +395,61 @@ class MatchEngine {
         bowlerCardId: lastBowlerId,
         eventType: 'innings_break',
         runs: 0,
-        commentary:
-            'End of first innings. Score: $_score1/$_wickets1. Target: ${_target + 1}',
+        commentary: commentary,
         scoreAfter: _score1,
         wicketsAfter: _wickets1,
       );
     } else {
       return _endMatch();
     }
+  }
+
+  MatchEvent? _startSuperOver() {
+    final lastBatsmanId = _currentBatting[_currentBatsmanIndex].userCardId;
+    final lastBowlerId = _currentBowling[_currentBowlerIndex % _currentBowling.length].userCardId;
+
+    // Store regular match scores
+    final regularScore1 = _score1;
+    final regularScore2 = _score2;
+    final regularWickets1 = _wickets1;
+    final regularWickets2 = _wickets2;
+
+    // Reset for super over
+    _isSuperOver = true;
+    _innings = 1;
+    _overNumber = 0;
+    _ballNumber = 0;
+    _score1 = 0;
+    _wickets1 = 0;
+    _score2 = 0;
+    _wickets2 = 0;
+    _target = 0;
+    _freeHitNext = false;
+
+    // Reset batting/bowling for super over (use same orders)
+    _currentBatting = _battingOrder1;
+    _currentBowling = _bowlingOrder2;
+    _currentBatsmanIndex = 0;
+    _nonStrikerIndex = 1;
+    _nextBatsmanIndex = 2;
+    _currentBowlerIndex = 0;
+
+    return MatchEvent(
+      id: 'super_over',
+      matchId: '',
+      innings: 2,
+      overNumber: 0,
+      ballNumber: 0,
+      battingTeamId: '',
+      bowlingTeamId: '',
+      batsmanCardId: lastBatsmanId,
+      bowlerCardId: lastBowlerId,
+      eventType: 'super_over',
+      runs: 0,
+      commentary: 'Match tied at $regularScore1/$regularWickets1! SUPER OVER to decide the winner!',
+      scoreAfter: regularScore2,
+      wicketsAfter: regularWickets2,
+    );
   }
 
   MatchEvent? _endMatch() {
@@ -378,6 +460,24 @@ class MatchEngine {
   String getMatchResult() {
     final battingFirstName = homeBatsFirst ? homeTeamName : awayTeamName;
     final battingSecondName = homeBatsFirst ? awayTeamName : homeTeamName;
+    
+    if (_isSuperOver) {
+      if (_score2 > _score1) {
+        final wicketsRemaining = 10 - _wickets2;
+        return '$battingSecondName wins the Super Over by $wicketsRemaining wickets!';
+      } else if (_score1 > _score2) {
+        final runDiff = _score1 - _score2;
+        return '$battingFirstName wins the Super Over by $runDiff runs!';
+      }
+      // If super over is also tied, team batting second wins (fewer wickets lost rule)
+      if (_wickets2 < _wickets1) {
+        return '$battingSecondName wins on fewer wickets lost!';
+      } else if (_wickets1 < _wickets2) {
+        return '$battingFirstName wins on fewer wickets lost!';
+      }
+      return '$battingSecondName wins the Super Over!';
+    }
+    
     if (_score2 > _score1) {
       final wicketsRemaining = 10 - _wickets2;
       return '$battingSecondName wins by $wicketsRemaining wickets!';
