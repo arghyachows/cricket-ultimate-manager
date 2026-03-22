@@ -213,8 +213,10 @@ export class MatchEngine {
         eventType = 'dot_ball';
     }
 
-    // Generate AI commentary if available
-    if (this.aiCommentary) {
+    // Generate AI commentary only for important events to reduce subrequests
+    const useAIForThisBall = this.aiCommentary && (['wicket', 'four', 'six', 'no_ball'].includes(eventType));
+    
+    if (useAIForThisBall) {
       try {
         commentary = await this.aiCommentary.generateCommentary({
           eventType,

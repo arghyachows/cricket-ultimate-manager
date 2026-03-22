@@ -24,9 +24,27 @@ export class AICommentaryGenerator {
       isSuperOver,
     } = context;
 
+    // Create cache key based on event type and situation
+    const cacheKey = this.buildCacheKey(eventType, innings, currentScore, currentWickets, target, wicketType, isSuperOver);
+    
+    // Check cache first
+    if (this.cache.has(cacheKey)) {
+      const cached = this.cache.get(cacheKey);
+      // Personalize cached commentary with player names
+      let commentary = cached
+        .replace(/BATSMAN/g, batsmanName)
+        .replace(/BOWLER/g, bowlerName)
+        .replace(/FIELDER/g, fielderName || 'fielder');
+      
+      if (isFreeHit && eventType !== 'no_ball') {
+        commentary += ' (Free Hit)';
+      }
+      return commentary;
+    }
+
     // Build context for AI
     const matchContext = this.buildMatchContext(context);
-    const prompt = this.buildPrompt(eventType, matchContext);
+    const prompt = this.buildPrompt(eventType, matchContext, context);
 
     try {
       // Use Cloudflare Workers AI with a faster model
@@ -34,7 +52,7 @@ export class AICommentaryGenerator {
         messages: [
           {
             role: 'system',
-            content: 'You are an energetic cricket commentator. Generate a single short commentary line (max 15 words) for the cricket ball described. Be exciting and natural. Do not use quotes or extra formatting.',
+            content: 'You are an energetic cricket commentator. Generate a single short commentary line (max 15 words) for the cricket ball described. Be exciting and natural. Do not use quotes or extra formatting. Use BATSMAN for batsman name, BOWLER for bowler name, FIELDER for fielder name.',
           },
           {
             role: 'user',
@@ -50,6 +68,21 @@ export class AICommentaryGenerator {
       // Clean up AI response
       commentary = commentary.replace(/^["']|["']$/g, '').trim();
       
+      // Cache the generic version (with placeholders)
+      this.cache.set(cacheKey, commentary);
+      
+      // Limit cache size to 50 entries
+      if (this.cache.size > 50) {
+        const firstKey = this.cache.keys().next().value;
+        this.cache.delete(firstKey);
+      }
+      
+      // Personalize with actual names
+      commentary = commentary
+        .replace(/BATSMAN/g, batsmanName)
+        .replace(/BOWLER/g, bowlerName)
+        .replace(/FIELDER/g, fielderName || 'fielder');
+      
       // Add free hit indicator
       if (isFreeHit && eventType !== 'no_ball') {
         commentary += ' (Free Hit)';
@@ -60,6 +93,30 @@ export class AICommentaryGenerator {
       console.error('AI commentary error:', error);
       return this.getFallbackCommentary(eventType, context);
     }
+  }
+
+  buildCacheKey(eventType, innings, currentScore, currentWickets, target, wicketType, isSuperOver) {
+    // Create a cache key based on situation, not specific players
+    let situation = '';
+    
+    if (isSuperOver) {
+      situation = 'SO';
+    } else if (innings === 1) {
+      situation = 'I1';
+    } else {
+      const runsNeeded = target + 1 - currentScore;
+      if (runsNeeded <= 10) {
+        situation = 'CLOSE';
+      } else if (runsNeeded <= 30) {
+        situation = 'CHASE';
+      } else {
+        situation = 'I2';
+      }
+    }
+    
+    const wicketSituation = currentWickets >= 7 ? 'TAIL' : currentWickets <= 2 ? 'TOP' : 'MID';
+    
+    return `${eventType}_${situation}_${wicketSituation}_${wicketType || 'none'}`;
   }
 
   buildMatchContext(context) {
@@ -93,40 +150,40 @@ export class AICommentaryGenerator {
     return `${situation}. Score: ${currentScore}/${currentWickets}. Over ${overNumber}.${ballNumber}`;
   }
 
-  buildPrompt(eventType, matchContext) {
-    const { batsmanName, bowlerName, runs, wicketType, fielderName } = arguments[1];
+  buildPrompt(eventType, matchContext, context) {
+    const { batsmanName, bowlerName, runs, wicketType, fielderName } = context;
 
     switch (eventType) {
       case 'dot_ball':
-        return `${matchContext}. ${bowlerName} bowls to ${batsmanName}. Dot ball, no run scored. Commentary:`;
+        return `${matchContext}. BOWLER bowls to BATSMAN. Dot ball, no run scored. Commentary:`;
       
       case 'single':
-        return `${matchContext}. ${batsmanName} takes a quick single off ${bowlerName}. Commentary:`;
+        return `${matchContext}. BATSMAN takes a quick single off BOWLER. Commentary:`;
       
       case 'double':
-        return `${matchContext}. ${batsmanName} pushes for two runs off ${bowlerName}. Commentary:`;
+        return `${matchContext}. BATSMAN pushes for two runs off BOWLER. Commentary:`;
       
       case 'triple':
-        return `${matchContext}. ${batsmanName} runs three off ${bowlerName}. Commentary:`;
+        return `${matchContext}. BATSMAN runs three off BOWLER. Commentary:`;
       
       case 'four':
-        return `${matchContext}. ${batsmanName} hits a FOUR off ${bowlerName}! Commentary:`;
+        return `${matchContext}. BATSMAN hits a FOUR off BOWLER! Commentary:`;
       
       case 'six':
-        return `${matchContext}. ${batsmanName} smashes a SIX off ${bowlerName}! Commentary:`;
+        return `${matchContext}. BATSMAN smashes a SIX off BOWLER! Commentary:`;
       
       case 'wicket':
-        const dismissal = this.formatWicketType(wicketType, fielderName);
-        return `${matchContext}. WICKET! ${batsmanName} is out ${dismissal} off ${bowlerName}. Commentary:`;
+        const dismissal = this.formatWicketType(wicketType, 'FIELDER');
+        return `${matchContext}. WICKET! BATSMAN is out ${dismissal} off BOWLER. Commentary:`;
       
       case 'wide':
-        return `${matchContext}. ${bowlerName} bowls a WIDE. Extra run. Commentary:`;
+        return `${matchContext}. BOWLER bowls a WIDE. Extra run. Commentary:`;
       
       case 'no_ball':
-        return `${matchContext}. NO BALL by ${bowlerName}! Free hit next. Commentary:`;
+        return `${matchContext}. NO BALL by BOWLER! Free hit next. Commentary:`;
       
       default:
-        return `${matchContext}. ${bowlerName} to ${batsmanName}. Commentary:`;
+        return `${matchContext}. BOWLER to BATSMAN. Commentary:`;
     }
   }
 
