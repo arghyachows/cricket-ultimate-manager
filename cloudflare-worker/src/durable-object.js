@@ -173,74 +173,93 @@ export class MatchSimulator {
   }
 
   async runSimulation() {
+    const BATCH_SIZE = 6;
     let ballCount = 0;
 
-    while (!this.engine.matchComplete && this.isSimulating) {
-      const result = await this.engine.simulateNextBall();
-      if (!result) break;
+    try {
+      while (!this.engine.matchComplete && this.isSimulating) {
+        const result = await this.engine.simulateNextBall();
+        if (!result) break;
 
-      ballCount++;
+        ballCount++;
 
-      // Calculate display values
-      const hScore = this.engine.homeBatsFirst ? this.engine.score1 : this.engine.score2;
-      const hWickets = this.engine.homeBatsFirst ? this.engine.wickets1 : this.engine.wickets2;
-      const aScore = this.engine.homeBatsFirst ? this.engine.score2 : this.engine.score1;
-      const aWickets = this.engine.homeBatsFirst ? this.engine.wickets2 : this.engine.wickets1;
+        // Calculate display values
+        const hScore = this.engine.homeBatsFirst ? this.engine.score1 : this.engine.score2;
+        const hWickets = this.engine.homeBatsFirst ? this.engine.wickets1 : this.engine.wickets2;
+        const aScore = this.engine.homeBatsFirst ? this.engine.score2 : this.engine.score1;
+        const aWickets = this.engine.homeBatsFirst ? this.engine.wickets2 : this.engine.wickets1;
 
-      const hOversDisplay = this.engine.homeBatsFirst
-        ? (result.innings === 1 ? `${result.overNumber}.${result.ballNumber}` : this.oversDisplay(this.engine.maxOvers * 6))
-        : (result.innings === 2 ? `${result.overNumber}.${result.ballNumber}` : '0.0');
-      
-      const aOversDisplay = !this.engine.homeBatsFirst
-        ? (result.innings === 1 ? `${result.overNumber}.${result.ballNumber}` : this.oversDisplay(this.engine.maxOvers * 6))
-        : (result.innings === 2 ? `${result.overNumber}.${result.ballNumber}` : '0.0');
+        const hOversDisplay = this.engine.homeBatsFirst
+          ? (result.innings === 1 ? `${result.overNumber}.${result.ballNumber}` : this.oversDisplay(this.engine.maxOvers * 6))
+          : (result.innings === 2 ? `${result.overNumber}.${result.ballNumber}` : '0.0');
+        
+        const aOversDisplay = !this.engine.homeBatsFirst
+          ? (result.innings === 1 ? `${result.overNumber}.${result.ballNumber}` : this.oversDisplay(this.engine.maxOvers * 6))
+          : (result.innings === 2 ? `${result.overNumber}.${result.ballNumber}` : '0.0');
 
-      const currentOvers = result.innings === 1
-        ? (this.engine.homeBatsFirst ? hOversDisplay : aOversDisplay)
-        : (this.engine.homeBatsFirst ? aOversDisplay : hOversDisplay);
+        const currentOvers = result.innings === 1
+          ? (this.engine.homeBatsFirst ? hOversDisplay : aOversDisplay)
+          : (this.engine.homeBatsFirst ? aOversDisplay : hOversDisplay);
 
-      // Add to commentary log
-      this.commentaryLog.push({
-        commentary: result.commentary,
-        eventType: result.eventType,
-        runs: result.runs,
-        innings: result.innings,
-        oversDisplay: currentOvers,
-      });
+        // Add to commentary log (keep last 20 balls only)
+        this.commentaryLog.push({
+          commentary: result.commentary,
+          eventType: result.eventType,
+          runs: result.runs,
+          innings: result.innings,
+          oversDisplay: currentOvers,
+        });
+        if (this.commentaryLog.length > 20) {
+          this.commentaryLog.shift();
+        }
 
-      // Update Supabase
-      await this.updateSupabase({
-        home_score: hScore,
-        home_wickets: hWickets,
-        away_score: aScore,
-        away_wickets: aWickets,
-        current_innings: result.innings,
-        current_commentary: result.commentary,
-        home_overs_display: hOversDisplay,
-        away_overs_display: aOversDisplay,
-        last_event_type: result.eventType,
-        last_runs: result.runs,
-        target: this.engine.target,
-        home_batsman: this.engine.currentBatsman.name,
-        away_batsman: this.engine.nonStriker.name,
-        current_bowler: this.engine.currentBowler.name,
-        scorecard_data: {
-          batsmen: this.engine.batsmanStats,
-          bowlers: this.engine.bowlerStats,
-        },
-        commentary_log: this.commentaryLog,
-      });
+        // Batch Supabase updates: every 6 balls OR on important events
+        const isImportantEvent = ['wicket', 'four', 'six', 'innings_break'].includes(result.eventType);
+        const shouldUpdate = ballCount % BATCH_SIZE === 0 || isImportantEvent || this.engine.matchComplete;
 
-      // Persist state to Durable Object storage
-      await this.state.storage.put('engine', this.engine.serialize());
-      await this.state.storage.put('commentaryLog', this.commentaryLog);
+        if (shouldUpdate) {
+          try {
+            await this.updateSupabase({
+              home_score: hScore,
+              home_wickets: hWickets,
+              away_score: aScore,
+              away_wickets: aWickets,
+              current_innings: result.innings,
+              current_commentary: result.commentary,
+              home_overs_display: hOversDisplay,
+              away_overs_display: aOversDisplay,
+              last_event_type: result.eventType,
+              last_runs: result.runs,
+              target: this.engine.target,
+              home_batsman: this.engine.currentBatsman.name,
+              away_batsman: this.engine.nonStriker.name,
+              current_bowler: this.engine.currentBowler.name,
+              scorecard_data: {
+                batsmen: this.engine.batsmanStats,
+                bowlers: this.engine.bowlerStats,
+              },
+              commentary_log: this.commentaryLog,
+            });
+          } catch (error) {
+            console.error('Supabase update error:', error);
+          }
+        }
 
-      // Delay between balls
-      await this.sleep(1000);
+        // Persist state to Durable Object storage
+        await this.state.storage.put('engine', this.engine.serialize());
+        await this.state.storage.put('commentaryLog', this.commentaryLog);
 
-      if (ballCount % 30 === 0) {
-        console.log(`Ball ${ballCount}: ${this.engine.score1}/${this.engine.wickets1} vs ${this.engine.score2}/${this.engine.wickets2}`);
+        // Delay between balls
+        await this.sleep(1000);
+
+        if (ballCount % 30 === 0) {
+          console.log(`Ball ${ballCount}: ${this.engine.score1}/${this.engine.wickets1} vs ${this.engine.score2}/${this.engine.wickets2}`);
+        }
       }
+    } catch (error) {
+      console.error('Simulation error:', error);
+      this.isSimulating = false;
+      throw error;
     }
 
     // Match complete

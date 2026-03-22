@@ -29,8 +29,8 @@ export class AICommentaryGenerator {
     const prompt = this.buildPrompt(eventType, matchContext);
 
     try {
-      // Use Cloudflare Workers AI
-      const response = await this.env.AI.run('@cf/meta/llama-3.1-8b-instruct', {
+      // Use Cloudflare Workers AI with a faster model
+      const response = await this.env.AI.run('@cf/meta/llama-3-8b-instruct', {
         messages: [
           {
             role: 'system',
