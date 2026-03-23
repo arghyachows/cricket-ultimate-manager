@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class LocalMultiplayerService {
-  static const String baseUrl = 'http://localhost:3000';
+  static const String baseUrl = 'https://cricket-ultimate-manager-production.up.railway.app';
   
   static Future<bool> startMultiplayerMatch({
     required String matchId,

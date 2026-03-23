@@ -7,7 +7,7 @@ class NodeBackendService {
   // Update this URL based on your deployment
   // For Docker: http://127.0.0.1:3000 (use IP, not localhost for web)
   // For production: https://your-domain.com
-  static const String baseUrl = 'http://127.0.0.1:3000';
+  static const String baseUrl = 'https://cricket-ultimate-manager-production.up.railway.app';
   
   static IO.Socket? _socket;
   static bool _isInitialized = false;
@@ -20,37 +20,65 @@ class NodeBackendService {
     }
 
     print('🔌 Initializing Socket.IO connection to $baseUrl');
+    print('🔍 Full Socket.IO URL: $baseUrl/socket.io/');
     
     _socket = IO.io(
       baseUrl,
       <String, dynamic>{
-        'transports': ['websocket', 'polling'],
+        'transports': ['polling', 'websocket'],  // Start with polling, then upgrade
         'autoConnect': false,
         'reconnection': true,
         'reconnectionDelay': 1000,
         'reconnectionAttempts': 5,
+        'upgrade': true,  // Allow upgrade from polling to websocket
+        'path': '/socket.io/',  // Explicit Socket.IO path
+        'forceNew': true,
+        'timeout': 20000,  // 20 second timeout
+        'withCredentials': true,  // Send credentials for CORS
+        'extraHeaders': {
+          'Accept': 'application/json',
+        },
       },
     );
 
-    _socket!.connect();
-
-    _socket!.on('connect', (_) {
+    _socket!.onConnect((_) {
       print('✅ Connected to Node.js backend');
+      print('🔌 Transport: ${_socket!.io.engine?.transport?.name}');
       _isInitialized = true;
     });
 
-    _socket!.on('disconnect', (_) {
+    _socket!.onDisconnect((_) {
       print('❌ Disconnected from Node.js backend');
       _isInitialized = false;
     });
 
-    _socket!.on('connect_error', (error) {
+    _socket!.onConnectError((error) {
       print('❌ Socket connection error: $error');
+      print('🔍 Error details: ${error.runtimeType}');
     });
 
-    _socket!.on('error', (error) {
+    _socket!.onError((error) {
       print('❌ Socket error: $error');
     });
+
+    _socket!.onConnectTimeout((_) {
+      print('⏱️ Socket connection timeout');
+    });
+
+    _socket!.onReconnect((attempt) {
+      print('🔄 Reconnecting... attempt $attempt');
+    });
+
+    _socket!.onReconnectError((error) {
+      print('❌ Reconnection error: $error');
+    });
+
+    _socket!.onReconnectFailed((_) {
+      print('❌ Reconnection failed after all attempts');
+    });
+
+    print('🚀 Attempting to connect...');
+    _socket!.connect();
   }
 
   /// Join a match room to receive real-time updates
@@ -207,11 +235,18 @@ class NodeBackendService {
   /// Check backend health
   static Future<bool> checkHealth() async {
     try {
+      print('🏋️ Checking backend health at $baseUrl/health');
       final response = await http.get(
         Uri.parse('$baseUrl/health'),
-      ).timeout(const Duration(seconds: 3));
+      ).timeout(const Duration(seconds: 5));
 
-      return response.statusCode == 200;
+      print('📊 Health check response: ${response.statusCode}');
+      if (response.statusCode == 200) {
+        print('✅ Backend is healthy: ${response.body}');
+        return true;
+      }
+      print('❌ Backend health check failed: ${response.statusCode}');
+      return false;
     } catch (e) {
       print('❌ Node.js health check error: $e');
       return false;

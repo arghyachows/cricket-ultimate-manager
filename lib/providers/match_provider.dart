@@ -369,8 +369,8 @@ class MatchNotifier extends StateNotifier<MatchState> {
   Timer? _pollingTimer;
   MatchEngine? _engine;
   String? _cloudflareMatchId;
-  bool _useCloudflare = false; // Changed to false to use Node.js by default
-  bool _useNodeBackend = true; // Use Node.js backend
+  bool _useCloudflare = false;  // Disable Cloudflare
+  bool _useNodeBackend = true; // Enable Node.js backend (Railway)
 
   MatchNotifier(this.ref) : super(const MatchState());
 
