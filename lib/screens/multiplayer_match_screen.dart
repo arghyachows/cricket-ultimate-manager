@@ -15,6 +15,7 @@ import '../providers/card_packs_provider.dart';
 import '../providers/career_stats_provider.dart';
 import '../core/notification_service.dart';
 import '../core/cloudflare_match_service.dart';
+import '../core/local_multiplayer_service.dart';
 
 // ─── Local state for multiplayer match ─────────────────────────────────────
 
@@ -691,40 +692,41 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
     }
   }
 
-  /// Invokes the Cloudflare Worker to run simulation on Durable Object.
-  /// Both users see live updates via Realtime — no local engine needed.
+  /// Invokes the local Node.js backend to run simulation.
+  /// Both users see live updates via Realtime.
   /// Fire-and-forget: don't await, as the simulation runs for minutes.
-  void _invokeServerSimulation() {
-    CloudflareMatchService.startMatchSimulation(widget.matchId).then((success) {
-      if (success) {
-        print('Cloudflare Worker: Match simulation started successfully');
-      } else {
-        print('Cloudflare Worker: Failed to start match simulation');
-        // Fallback to Supabase Edge Function if Cloudflare fails
-        print('Falling back to Supabase Edge Function...');
-        SupabaseService.client.functions.invoke(
-          'simulate-multiplayer',
-          body: {'match_id': widget.matchId},
-        ).then((response) {
-          print('Edge function response status: ${response.status}');
-          if (response.status >= 400) {
-            print('Edge function error: ${response.data}');
-          }
-        }).catchError((e) {
-          print('Edge function invocation error: $e');
-        });
-      }
-    }).catchError((e) {
-      print('Cloudflare Worker error: $e');
-      // Fallback to Supabase Edge Function
-      print('Falling back to Supabase Edge Function...');
-      SupabaseService.client.functions.invoke(
-        'simulate-multiplayer',
-        body: {'match_id': widget.matchId},
-      ).catchError((fallbackError) {
-        print('Both Cloudflare and Supabase failed: $fallbackError');
+  void _invokeServerSimulation() async {
+    final data = _matchData;
+    if (data == null) return;
+
+    final homeSquadId = data['home_team_id'];
+    final awaySquadId = data['away_team_id'];
+
+    // Let backend load squad data from database
+    final config = {
+      'homeSquadId': homeSquadId,
+      'awaySquadId': awaySquadId,
+      'homeChemistry': 80,
+      'awayChemistry': 80,
+      'maxOvers': _state.matchOvers,
+      'pitchCondition': 'balanced',
+      'homeTeamName': _state.homeTeamName,
+      'awayTeamName': _state.awayTeamName,
+      'homeBatsFirst': _state.homeBatsFirst,
+      'useAICommentary': false,
+    };
+
+    final success = await LocalMultiplayerService.startMultiplayerMatch(
+      matchId: widget.matchId,
+      config: config,
+    );
+
+    if (!success) {
+      print('❌ Local backend failed, trying Cloudflare fallback...');
+      CloudflareMatchService.startMatchSimulation(widget.matchId).catchError((e) {
+        print('❌ Cloudflare also failed: $e');
       });
-    });
+    }
   }
 
   static Map<String, BatsmanStats> _deserializeBatsmanStats(Map<String, dynamic> data) {

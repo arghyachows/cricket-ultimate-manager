@@ -6,6 +6,7 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const initSocket = require('./socket');
 const matchRoutes = require('./routes/match');
+const multiplayerRoutes = require('./routes/multiplayer');
 const { initScheduler } = require('./services/scheduler');
 const logger = require('./utils/logger');
 
@@ -27,10 +28,9 @@ app.use(cors({
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: false,
+  preflightContinue: false,
+  optionsSuccessStatus: 204
 }));
-
-// Handle preflight requests
-app.options('*', cors());
 
 // Rate limiting
 const limiter = rateLimit({
@@ -67,6 +67,7 @@ app.use((req, res, next) => {
 
 // Routes
 app.use('/api/match', matchRoutes);
+app.use('/api/multiplayer', multiplayerRoutes);
 
 // Error handling
 app.use((err, req, res, next) => {
