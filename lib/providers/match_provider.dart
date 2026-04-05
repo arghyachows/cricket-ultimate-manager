@@ -1461,7 +1461,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
   void reset() {
     _simulationTimer?.cancel();
     _pollingTimer?.cancel();
-    if (_cloudflareMatchId != null && _useNodeBackend) {
+    if (_cloudflareMatchId != null && _nodeBackendEnabled) {
       NodeBackendService.leaveMatch(_cloudflareMatchId!);
     }
     _engine = null;
@@ -1473,7 +1473,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
   void dispose() {
     _simulationTimer?.cancel();
     _pollingTimer?.cancel();
-    if (_cloudflareMatchId != null && _useNodeBackend) {
+    if (_cloudflareMatchId != null && _nodeBackendEnabled) {
       NodeBackendService.leaveMatch(_cloudflareMatchId!);
     }
     super.dispose();
