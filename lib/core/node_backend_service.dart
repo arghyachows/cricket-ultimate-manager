@@ -303,6 +303,77 @@ class NodeBackendService {
     }
   }
 
+  // ─── Multiplayer match methods (same backend, different route) ──────
+
+  /// Start a multiplayer match simulation
+  static Future<bool> startMultiplayerMatch({
+    required String matchId,
+    required Map<String, dynamic> config,
+  }) async {
+    try {
+      print('🚀 Node.js: Starting multiplayer match $matchId');
+      print('🌐 Backend URL: $baseUrl/api/multiplayer/start');
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/multiplayer/start'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'matchId': matchId,
+          'config': config,
+        }),
+      ).timeout(const Duration(seconds: 10));
+
+      print('📡 Node.js multiplayer response: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        print('✅ Node.js multiplayer success: $data');
+        return data['success'] == true;
+      }
+
+      print('❌ Node.js multiplayer start failed: ${response.statusCode} ${response.body}');
+      return false;
+    } catch (e, stackTrace) {
+      print('❌ Node.js multiplayer start error: $e');
+      print('Stack trace: $stackTrace');
+      return false;
+    }
+  }
+
+  /// Get multiplayer match state
+  static Future<Map<String, dynamic>?> getMultiplayerMatchState(String matchId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/multiplayer/$matchId'),
+      ).timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body) as Map<String, dynamic>;
+      }
+
+      return null;
+    } catch (e) {
+      print('❌ Node.js get multiplayer match state error: $e');
+      return null;
+    }
+  }
+
+  /// Stop a multiplayer match
+  static Future<bool> stopMultiplayerMatch(String matchId) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/multiplayer/stop'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'matchId': matchId}),
+      ).timeout(const Duration(seconds: 5));
+
+      return response.statusCode == 200;
+    } catch (e) {
+      print('❌ Node.js multiplayer stop error: $e');
+      return false;
+    }
+  }
+
   /// Dispose socket connection
   static void dispose() {
     if (_socket != null) {

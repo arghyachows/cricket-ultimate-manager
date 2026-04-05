@@ -72,6 +72,8 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen>
   }
 
   Widget _buildLiveTab(BuildContext context, WidgetRef ref, MatchState matchState) {
+    final showResult = !matchState.isSimulating && matchState.events.isNotEmpty;
+
     return Column(
       children: [
         const SizedBox(height: 4),
@@ -103,14 +105,14 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen>
         if (matchState.currentBowlers.isNotEmpty)
           _buildBowlerPanel(matchState),
 
-        // Ball timeline
+        // Ball timeline OR match result (scrollable)
         Expanded(
-          child: _buildTimeline(matchState),
+          child: showResult
+              ? SingleChildScrollView(
+                  child: _buildMatchResult(context, ref, matchState),
+                )
+              : _buildTimeline(matchState),
         ),
-
-        // Match result
-        if (!matchState.isSimulating && matchState.events.isNotEmpty)
-          _buildMatchResult(context, ref, matchState),
       ],
     );
   }

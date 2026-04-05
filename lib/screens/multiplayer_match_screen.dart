@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/theme.dart';
 import '../core/constants.dart';
 import '../core/supabase_service.dart';
+import '../core/node_backend_service.dart';
 import '../models/models.dart';
 import '../providers/match_provider.dart';
 import '../providers/multiplayer_provider.dart';
@@ -14,8 +15,6 @@ import '../providers/auth_provider.dart';
 import '../providers/card_packs_provider.dart';
 import '../providers/career_stats_provider.dart';
 import '../core/notification_service.dart';
-import '../core/cloudflare_match_service.dart';
-import '../core/local_multiplayer_service.dart';
 
 // ─── Local state for multiplayer match ─────────────────────────────────────
 
@@ -275,6 +274,10 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
   Map<String, dynamic>? _matchData;
   Timer? _tossDecisionFallbackTimer;
 
+  // Socket.IO state for real-time ball updates (same approach as quick match)
+  bool _socketIOActive = false;
+  Timer? _pollingTimer;
+
   String _normalizeTossWinner(dynamic rawWinner, Map<String, dynamic> data) {
     final value = (rawWinner ?? '').toString();
     if (value == 'home' || value == 'away') return value;
@@ -333,8 +336,14 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
   @override
   void dispose() {
     _cancelTossDecisionFallback();
+    _pollingTimer?.cancel();
     _tabController.dispose();
     _realtimeSub?.cancel();
+    // Leave Socket.IO room if active
+    if (_socketIOActive) {
+      NodeBackendService.leaveMatch(widget.matchId);
+      _socketIOActive = false;
+    }
     // Unsubscribe from realtime channel
     SupabaseService.client.channel('mp_match_${widget.matchId}').unsubscribe();
     super.dispose();
@@ -692,9 +701,9 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
     }
   }
 
-  /// Invokes the local Node.js backend to run simulation.
-  /// Both users see live updates via Realtime.
-  /// Fire-and-forget: don't await, as the simulation runs for minutes.
+  /// Invokes the Node.js backend to run simulation.
+  /// Uses Socket.IO for real-time ball updates (same as quick match).
+  /// Supabase Realtime handles toss coordination and match completion.
   void _invokeServerSimulation() async {
     final data = _matchData;
     if (data == null) return;
@@ -716,16 +725,333 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
       'useAICommentary': false,
     };
 
-    final success = await LocalMultiplayerService.startMultiplayerMatch(
+    // Step 1: Connect Socket.IO and join match room (same as quick match)
+    print('🔌 Multiplayer: Connecting Socket.IO...');
+    NodeBackendService.initSocket();
+    final connected = await NodeBackendService.waitForConnection(
+      timeout: const Duration(seconds: 10),
+    );
+
+    if (connected) {
+      print('👤 Multiplayer: Joining match room ${widget.matchId}...');
+      final joined = await NodeBackendService.joinMatch(
+        widget.matchId,
+        _onSocketBallUpdate,
+        _onSocketMatchComplete,
+      );
+
+      if (joined) {
+        _socketIOActive = true;
+        // Small delay to ensure room join propagates
+        await Future.delayed(const Duration(milliseconds: 500));
+      } else {
+        print('⚠️ Multiplayer: Failed to join Socket.IO room, falling back to Supabase Realtime');
+      }
+    } else {
+      print('⚠️ Multiplayer: Socket.IO connection failed, falling back to Supabase Realtime');
+    }
+
+    // Step 2: Start the match via Node.js backend
+    final success = await NodeBackendService.startMultiplayerMatch(
       matchId: widget.matchId,
       config: config,
     );
 
-    if (!success) {
-      print('❌ Local backend failed, trying Cloudflare fallback...');
-      CloudflareMatchService.startMatchSimulation(widget.matchId).catchError((e) {
-        print('❌ Cloudflare also failed: $e');
+    if (success) {
+      print('✅ Multiplayer match started via Node.js backend');
+      // Start polling fallback in case Socket.IO events are missed
+      if (_socketIOActive) {
+        _startMultiplayerPollingFallback();
+      }
+    } else {
+      print('❌ Node.js backend failed to start multiplayer match');
+    }
+  }
+
+  // ─── Socket.IO event handlers (same pattern as quick match) ────────
+
+  void _onSocketBallUpdate(Map<String, dynamic> data) {
+    if (!mounted) return;
+    try {
+      final result = data['result'] as Map<String, dynamic>?;
+      final stateData = data['state'] as Map<String, dynamic>?;
+      if (result == null || stateData == null) return;
+
+      final innings = result['innings'] as int? ?? 1;
+      final commentary = result['commentary'] as String? ?? '';
+      final eventType = result['eventType'] as String? ?? '';
+      final runs = result['runs'] as int? ?? 0;
+      final overNumber = result['overNumber'] as int? ?? 0;
+      final ballNumber = result['ballNumber'] as int? ?? 0;
+
+      // Map scores based on homeBatsFirst
+      final score1 = stateData['score1'] as int? ?? 0;
+      final score2 = stateData['score2'] as int? ?? 0;
+      final wickets1 = stateData['wickets1'] as int? ?? 0;
+      final wickets2 = stateData['wickets2'] as int? ?? 0;
+      final target = stateData['target'] as int? ?? 0;
+      final currentBatsmanName = stateData['currentBatsman'] as String? ?? '';
+      final currentBowlerName = stateData['currentBowler'] as String? ?? '';
+
+      final hbf = _state.homeBatsFirst;
+      final homeScore = hbf ? score1 : score2;
+      final homeWickets = hbf ? wickets1 : wickets2;
+      final awayScore = hbf ? score2 : score1;
+      final awayWickets = hbf ? wickets2 : wickets1;
+
+      // Compute overs display
+      final oversStr = '$overNumber.$ballNumber';
+      String homeOvers = _state.homeOvers;
+      String awayOvers = _state.awayOvers;
+      if (innings == 1) {
+        if (hbf) {
+          homeOvers = oversStr;
+        } else {
+          awayOvers = oversStr;
+        }
+      } else {
+        if (hbf) {
+          awayOvers = oversStr;
+        } else {
+          homeOvers = oversStr;
+        }
+      }
+
+      // Determine batting team's names for display
+      final homeBatsman = (innings == 1 && hbf) || (innings == 2 && !hbf)
+          ? currentBatsmanName
+          : _state.homeBatsman;
+      final awayBatsman = (innings == 1 && !hbf) || (innings == 2 && hbf)
+          ? currentBatsmanName
+          : _state.awayBatsman;
+
+      // Deserialize scorecard
+      final batsmanStatsData = stateData['batsmanStats'] as Map<String, dynamic>? ?? {};
+      final batsmanStats = <String, BatsmanStats>{};
+      batsmanStatsData.forEach((key, value) {
+        final stats = value as Map<String, dynamic>;
+        batsmanStats[key] = BatsmanStats(
+          name: stats['name'] ?? '',
+          innings: stats['innings'] ?? 1,
+          battingOrder: stats['battingOrder'] ?? 99,
+          runs: stats['runs'] ?? 0,
+          balls: stats['balls'] ?? 0,
+          fours: stats['fours'] ?? 0,
+          sixes: stats['sixes'] ?? 0,
+          isOut: stats['isOut'] ?? false,
+          dismissalType: stats['dismissalType'],
+        );
       });
+
+      final bowlerStatsData = stateData['bowlerStats'] as Map<String, dynamic>? ?? {};
+      final bowlerStats = <String, BowlerStats>{};
+      bowlerStatsData.forEach((key, value) {
+        final stats = value as Map<String, dynamic>;
+        bowlerStats[key] = BowlerStats(
+          name: stats['name'] ?? '',
+          innings: stats['innings'] ?? 1,
+          balls: stats['balls'] ?? 0,
+          runs: stats['runs'] ?? 0,
+          wickets: stats['wickets'] ?? 0,
+          maidens: stats['maidens'] ?? 0,
+          dotBalls: stats['dotBalls'] ?? 0,
+        );
+      });
+
+      // Build commentary log entry
+      final updatedLog = [..._state.commentaryLog];
+      if (commentary.isNotEmpty) {
+        final String currentOvers;
+        if (innings == 1) {
+          currentOvers = hbf ? homeOvers : awayOvers;
+        } else {
+          currentOvers = hbf ? awayOvers : homeOvers;
+        }
+        updatedLog.add(_CommentaryEntry(
+          commentary: commentary,
+          eventType: eventType,
+          runs: runs,
+          innings: innings,
+          oversDisplay: currentOvers,
+        ));
+      }
+
+      _setState((s) => s.copyWith(
+            tossComplete: true,
+            isSimulating: true,
+            homeScore: homeScore,
+            homeWickets: homeWickets,
+            awayScore: awayScore,
+            awayWickets: awayWickets,
+            homeOvers: homeOvers,
+            awayOvers: awayOvers,
+            currentInnings: innings,
+            currentCommentary: commentary,
+            target: target,
+            lastEventType: eventType,
+            lastRuns: runs,
+            homeBatsman: homeBatsman,
+            awayBatsman: awayBatsman,
+            currentBowler: currentBowlerName,
+            batsmanStats: batsmanStats,
+            bowlerStats: bowlerStats,
+            commentaryLog: updatedLog,
+          ));
+    } catch (e) {
+      print('❌ Error processing Socket.IO ball update: $e');
+    }
+  }
+
+  void _onSocketMatchComplete(Map<String, dynamic> data) {
+    if (!mounted) return;
+    try {
+      print('🏁 Multiplayer match complete via Socket.IO');
+      _pollingTimer?.cancel();
+      // Socket.IO delivers quick notification; Supabase Realtime will follow
+      // with the authoritative final state (winner_user_id, rewards, etc.)
+      // So we just mark simulation as done here.
+      final matchResult = data['result'] as String? ?? 'Match Complete';
+      final stateData = data['state'] as Map<String, dynamic>?;
+
+      if (stateData != null) {
+        final score1 = stateData['score1'] as int? ?? 0;
+        final score2 = stateData['score2'] as int? ?? 0;
+        final wickets1 = stateData['wickets1'] as int? ?? 0;
+        final wickets2 = stateData['wickets2'] as int? ?? 0;
+
+        final hbf = _state.homeBatsFirst;
+        _setState((s) => s.copyWith(
+              isSimulating: false,
+              homeScore: hbf ? score1 : score2,
+              homeWickets: hbf ? wickets1 : wickets2,
+              awayScore: hbf ? score2 : score1,
+              awayWickets: hbf ? wickets2 : wickets1,
+              currentCommentary: matchResult,
+            ));
+      }
+
+      // Clean up Socket.IO
+      NodeBackendService.leaveMatch(widget.matchId);
+      _socketIOActive = false;
+      // Note: Full completion with rewards is handled by _onRealtimeUpdate
+      // when the backend writes status='completed' to Supabase
+    } catch (e) {
+      print('❌ Error processing Socket.IO match complete: $e');
+    }
+  }
+
+  /// Polling fallback for multiplayer matches (same as quick match).
+  void _startMultiplayerPollingFallback() {
+    _pollingTimer?.cancel();
+    _pollingTimer = Timer.periodic(
+      const Duration(seconds: 3),
+      (_) => _pollMultiplayerMatchState(),
+    );
+  }
+
+  Future<void> _pollMultiplayerMatchState() async {
+    if (!mounted) return;
+    try {
+      final stateData = await NodeBackendService.getMultiplayerMatchState(widget.matchId);
+      if (stateData == null) return;
+
+      final matchState = stateData['state'] as Map<String, dynamic>?;
+      if (matchState == null) return;
+
+      final matchComplete = matchState['matchComplete'] as bool? ?? false;
+
+      // Compare polled state with local state to catch missed events
+      final polledScore1 = matchState['score1'] as int? ?? 0;
+      final polledScore2 = matchState['score2'] as int? ?? 0;
+      final polledInnings = matchState['innings'] as int? ?? 1;
+      final hbf = _state.homeBatsFirst;
+
+      final polledHomeScore = hbf ? polledScore1 : polledScore2;
+      final polledAwayScore = hbf ? polledScore2 : polledScore1;
+
+      final localActiveScore = polledInnings == 1
+          ? (hbf ? _state.homeScore : _state.awayScore)
+          : (hbf ? _state.awayScore : _state.homeScore);
+      final polledActiveScore = polledInnings == 1 ? polledScore1 : polledScore2;
+
+      if (polledInnings > _state.currentInnings ||
+          (polledInnings == _state.currentInnings && polledActiveScore > localActiveScore)) {
+        print('📡 Multiplayer polling caught up: polled=$polledActiveScore local=$localActiveScore');
+
+        final overNumber = matchState['overNumber'] as int? ?? 0;
+        final ballNumber = matchState['ballNumber'] as int? ?? 0;
+        final wickets1 = matchState['wickets1'] as int? ?? 0;
+        final wickets2 = matchState['wickets2'] as int? ?? 0;
+        final target = matchState['target'] as int? ?? 0;
+
+        final oversStr = '$overNumber.$ballNumber';
+        String homeOvers = _state.homeOvers;
+        String awayOvers = _state.awayOvers;
+        if (polledInnings == 1) {
+          if (hbf) homeOvers = oversStr; else awayOvers = oversStr;
+        } else {
+          if (hbf) awayOvers = oversStr; else homeOvers = oversStr;
+        }
+
+        // Deserialize scorecard
+        final batsmanStatsData = matchState['batsmanStats'] as Map<String, dynamic>? ?? {};
+        final batsmanStats = <String, BatsmanStats>{};
+        batsmanStatsData.forEach((key, value) {
+          final stats = value as Map<String, dynamic>;
+          batsmanStats[key] = BatsmanStats(
+            name: stats['name'] ?? '',
+            innings: stats['innings'] ?? 1,
+            battingOrder: stats['battingOrder'] ?? 99,
+            runs: stats['runs'] ?? 0,
+            balls: stats['balls'] ?? 0,
+            fours: stats['fours'] ?? 0,
+            sixes: stats['sixes'] ?? 0,
+            isOut: stats['isOut'] ?? false,
+            dismissalType: stats['dismissalType'],
+          );
+        });
+
+        final bowlerStatsData = matchState['bowlerStats'] as Map<String, dynamic>? ?? {};
+        final bowlerStats = <String, BowlerStats>{};
+        bowlerStatsData.forEach((key, value) {
+          final stats = value as Map<String, dynamic>;
+          bowlerStats[key] = BowlerStats(
+            name: stats['name'] ?? '',
+            innings: stats['innings'] ?? 1,
+            balls: stats['balls'] ?? 0,
+            runs: stats['runs'] ?? 0,
+            wickets: stats['wickets'] ?? 0,
+            maidens: stats['maidens'] ?? 0,
+            dotBalls: stats['dotBalls'] ?? 0,
+          );
+        });
+
+        _setState((s) => s.copyWith(
+              homeScore: polledHomeScore,
+              homeWickets: hbf ? wickets1 : wickets2,
+              awayScore: polledAwayScore,
+              awayWickets: hbf ? wickets2 : wickets1,
+              homeOvers: homeOvers,
+              awayOvers: awayOvers,
+              currentInnings: polledInnings,
+              target: target,
+              batsmanStats: batsmanStats,
+              bowlerStats: bowlerStats,
+              homeBatsman: matchState['currentBatsman'] as String? ?? _state.homeBatsman,
+              currentBowler: matchState['currentBowler'] as String? ?? _state.currentBowler,
+            ));
+      }
+
+      // Handle match complete from polling
+      if (matchComplete && _state.isSimulating) {
+        print('🏁 Multiplayer match complete detected via polling');
+        _pollingTimer?.cancel();
+        _setState((s) => s.copyWith(isSimulating: false));
+        NodeBackendService.leaveMatch(widget.matchId);
+        _socketIOActive = false;
+      }
+    } catch (e) {
+      print('📡 Multiplayer polling error (non-fatal): $e');
     }
   }
 
@@ -842,6 +1168,12 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
 
     if (status == 'completed') {
       _cancelTossDecisionFallback();
+      _pollingTimer?.cancel();
+      // Clean up Socket.IO on match completion
+      if (_socketIOActive) {
+        NodeBackendService.leaveMatch(widget.matchId);
+        _socketIOActive = false;
+      }
       final winnerId = data['winner_user_id'];
       final userId = SupabaseService.currentUserId;
       bool? homeWon;
@@ -956,7 +1288,20 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
 
     _cancelTossDecisionFallback();
 
-    // In progress update
+    // When Socket.IO is active, it handles in-progress ball updates directly.
+    // Only use Supabase Realtime as fallback when Socket.IO is not connected.
+    if (_socketIOActive) {
+      _setState((s) => s.copyWith(
+            tossComplete: true,
+            isSimulating: true,
+            tossWinner: tossWinner.isEmpty ? s.tossWinner : tossWinner,
+            tossDecision: tossDecision.isEmpty ? s.tossDecision : tossDecision,
+            homeBatsFirst: homeBatsFirst ?? s.homeBatsFirst,
+          ));
+      return;
+    }
+
+    // Fallback: Supabase Realtime handles in-progress updates when Socket.IO is not active
     _setState((s) => s.copyWith(
           tossComplete: true,
           isSimulating: true,
