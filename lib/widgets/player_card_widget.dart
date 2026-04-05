@@ -48,8 +48,15 @@ String _imageRolePrefix(String role) {
 const _storageBucket =
     'https://kollxlzqqgznfiutpqjz.supabase.co/storage/v1/object/public/images';
 
-/// Builds the Supabase storage URL for a player card background image.
+/// Builds the image URL for a player card.
+/// Prioritizes the imageUrl from database, falls back to generic images.
 String playerCardImageUrl(PlayerCard card) {
+  // Use database imageUrl if available
+  if (card.imageUrl != null && card.imageUrl!.isNotEmpty) {
+    return card.imageUrl!;
+  }
+  
+  // Fallback to generic images based on role and country
   final prefix = _imageRolePrefix(card.role);
   final tone = _ethnicityForCountry(card.country);
   return '$_storageBucket/$prefix-$tone.jpg';

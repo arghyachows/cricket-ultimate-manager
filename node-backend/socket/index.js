@@ -9,11 +9,12 @@ function initSocket(server) {
       credentials: true,
       allowedHeaders: ['Content-Type', 'Authorization'],
     },
-    transports: ['polling', 'websocket'],  // Polling first for Railway
+    transports: ['websocket', 'polling'],  // WebSocket first, polling fallback
     allowEIO3: true,  // Allow Engine.IO v3 clients
     pingTimeout: 60000,
     pingInterval: 25000,
     cookie: false,  // Disable cookies for cross-origin
+    allowUpgrades: true,
   });
 
   io.on('connection', (socket) => {

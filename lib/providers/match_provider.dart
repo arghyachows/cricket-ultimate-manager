@@ -370,7 +370,8 @@ class MatchNotifier extends StateNotifier<MatchState> {
   MatchEngine? _engine;
   String? _cloudflareMatchId;
   bool _useCloudflare = false;  // Disable Cloudflare
-  bool _useNodeBackend = true; // Enable Node.js backend (Railway)
+  // Always try Node.js backend first for each match
+  static const bool _nodeBackendEnabled = true;
 
   MatchNotifier(this.ref) : super(const MatchState());
 
@@ -427,9 +428,9 @@ class MatchNotifier extends StateNotifier<MatchState> {
           .toList(),
     );
 
-    // Try Node.js backend first
-    if (_useNodeBackend) {
-      print('🎯 PRIMARY: Trying Node.js backend first...');
+    // Try Node.js backend first (retry each match)
+    if (_nodeBackendEnabled) {
+      print('🎯 PRIMARY: Trying Node.js backend...');
       final success = await _startNodeBackendMatch(
         homeXI: homeXI,
         awayXI: awayXI,
@@ -447,8 +448,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
         return;
       }
 
-      print('⚠️ FALLBACK: Node.js backend failed, trying Cloudflare...');
-      _useNodeBackend = false;
+      print('⚠️ FALLBACK: Node.js backend failed, trying alternatives...');
     }
 
     // Try Cloudflare as fallback
@@ -577,9 +577,6 @@ class MatchNotifier extends StateNotifier<MatchState> {
       _cloudflareMatchId = const Uuid().v4();
       print('📝 Match ID: $_cloudflareMatchId');
 
-      // Initialize Socket.IO
-      NodeBackendService.initSocket();
-
       // Convert LineupPlayer to simple map format
       final homeXIData = homeXI.map((p) => {
         'userCardId': p.userCardId,
@@ -628,16 +625,38 @@ class MatchNotifier extends StateNotifier<MatchState> {
         'homeTeamName': homeTeamName,
         'awayTeamName': awayTeamName,
         'homeBatsFirst': homeBatsFirst,
-        'useAICommentary': true,
+        'useAICommentary': false,
       };
 
-      // Join match room for WebSocket updates
-      NodeBackendService.joinMatch(
+      // Step 1: Connect Socket.IO FIRST and wait for connection
+      print('🔌 Connecting Socket.IO before starting match...');
+      NodeBackendService.initSocket();
+      final connected = await NodeBackendService.waitForConnection(
+        timeout: const Duration(seconds: 10),
+      );
+
+      if (!connected) {
+        print('❌ Socket.IO failed to connect — cannot use Node backend');
+        return false;
+      }
+
+      // Step 2: Join match room and wait for confirmation
+      print('👤 Joining match room...');
+      final joined = await NodeBackendService.joinMatch(
         _cloudflareMatchId!,
         _onNodeBallUpdate,
         _onNodeMatchComplete,
       );
 
+      if (!joined) {
+        print('❌ Failed to join match room');
+        return false;
+      }
+
+      // Small delay to ensure room join propagates on server
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      // Step 3: NOW start the match (backend starts emitting events)
       print('⚙️ Config prepared, calling Node.js backend...');
       final started = await NodeBackendService.startMatch(
         matchId: _cloudflareMatchId!,
@@ -646,6 +665,8 @@ class MatchNotifier extends StateNotifier<MatchState> {
 
       if (started) {
         print('✅ Node.js backend match started successfully!');
+        // Start polling fallback in case Socket.IO events are missed
+        _startNodePollingFallback();
         return true;
       }
 
@@ -659,6 +680,138 @@ class MatchNotifier extends StateNotifier<MatchState> {
     }
   }
 
+  /// Polling fallback for Node.js backend matches.
+  /// Periodically checks match state via REST API in case Socket.IO events are missed.
+  void _startNodePollingFallback() {
+    _pollingTimer?.cancel();
+    _pollingTimer = Timer.periodic(
+      const Duration(seconds: 3),
+      (_) => _pollNodeMatchState(),
+    );
+  }
+
+  Future<void> _pollNodeMatchState() async {
+    if (_cloudflareMatchId == null) return;
+
+    try {
+      final stateData = await NodeBackendService.getMatchState(_cloudflareMatchId!);
+      if (stateData == null) return;
+
+      final matchState = stateData['state'] as Map<String, dynamic>?;
+      if (matchState == null) return;
+
+      final isSimulating = stateData['isSimulating'] as bool? ?? false;
+      final matchComplete = matchState['matchComplete'] as bool? ?? false;
+
+      // Only use polling data if Socket.IO seems stale (no events for a while)
+      // Check by comparing scores — if polling shows higher score, we missed events
+      final polledScore1 = matchState['score1'] as int? ?? 0;
+      final polledScore2 = matchState['score2'] as int? ?? 0;
+      final polledInnings = matchState['innings'] as int? ?? 1;
+
+      // Derive our current score from events
+      final currentEvents = state.events;
+      final localScore = currentEvents.isNotEmpty ? currentEvents.last.scoreAfter : 0;
+      final localInnings = state.currentInnings;
+
+      // If polled state is ahead of our local state, update from polling
+      final polledActiveScore = polledInnings == 1 ? polledScore1 : polledScore2;
+      if (polledInnings > localInnings || 
+          (polledInnings == localInnings && polledActiveScore > localScore)) {
+        print('📡 Polling caught up: polled=$polledActiveScore local=$localScore inn=$polledInnings');
+        
+        // Build a synthetic event from the polled state
+        final overNumber = matchState['overNumber'] as int? ?? 0;
+        final ballNumber = matchState['ballNumber'] as int? ?? 0;
+        final wickets = polledInnings == 1 
+            ? (matchState['wickets1'] as int? ?? 0) 
+            : (matchState['wickets2'] as int? ?? 0);
+
+        final event = MatchEvent(
+          id: 'poll_${DateTime.now().millisecondsSinceEpoch}',
+          matchId: _cloudflareMatchId!,
+          innings: polledInnings,
+          overNumber: overNumber,
+          ballNumber: ballNumber,
+          battingTeamId: '',
+          bowlingTeamId: '',
+          batsmanCardId: '',
+          bowlerCardId: '',
+          eventType: 'dot_ball',
+          runs: 0,
+          commentary: matchState['currentBatsman'] != null 
+              ? '${matchState['currentBatsman']} on strike'
+              : '',
+          scoreAfter: polledActiveScore,
+          wicketsAfter: wickets,
+        );
+
+        final events = [...state.events, event];
+
+        // Update batsman/bowler stats from polled state
+        final batsmanStatsData = matchState['batsmanStats'] as Map<String, dynamic>? ?? {};
+        final batsmanStats = <String, BatsmanStats>{};
+        batsmanStatsData.forEach((key, value) {
+          final stats = value as Map<String, dynamic>;
+          batsmanStats[key] = BatsmanStats(
+            name: stats['name'] ?? '',
+            innings: stats['innings'] ?? 1,
+            battingOrder: stats['battingOrder'] ?? 99,
+            runs: stats['runs'] ?? 0,
+            balls: stats['balls'] ?? 0,
+            fours: stats['fours'] ?? 0,
+            sixes: stats['sixes'] ?? 0,
+            isOut: stats['isOut'] ?? false,
+            dismissalType: stats['dismissalType'],
+          );
+        });
+
+        final bowlerStatsData = matchState['bowlerStats'] as Map<String, dynamic>? ?? {};
+        final bowlerStats = <String, BowlerStats>{};
+        bowlerStatsData.forEach((key, value) {
+          final stats = value as Map<String, dynamic>;
+          bowlerStats[key] = BowlerStats(
+            name: stats['name'] ?? '',
+            innings: stats['innings'] ?? 1,
+            balls: stats['balls'] ?? 0,
+            runs: stats['runs'] ?? 0,
+            wickets: stats['wickets'] ?? 0,
+            maidens: stats['maidens'] ?? 0,
+            dotBalls: stats['dotBalls'] ?? 0,
+          );
+        });
+
+        state = state.copyWith(
+          events: events,
+          currentInnings: polledInnings,
+          batsmanStats: batsmanStats,
+          bowlerStats: bowlerStats,
+          target: matchState['target'] ?? 0,
+        );
+      }
+
+      // Handle match complete from polling
+      if (matchComplete && state.isSimulating) {
+        print('🏁 Match complete detected via polling');
+        _pollingTimer?.cancel();
+        final matchResult = matchState['matchResult'] as String? ?? 
+            'Match completed';
+        
+        state = state.copyWith(
+          isSimulating: false,
+          isMatchComplete: true,
+          currentCommentary: matchResult,
+        );
+        
+        NodeBackendService.leaveMatch(_cloudflareMatchId!);
+        _onMatchComplete();
+      }
+    } catch (e) {
+      // Polling errors are non-fatal
+      print('📡 Polling fallback error (non-fatal): $e');
+    }
+  }
+
   void _onNodeBallUpdate(Map<String, dynamic> data) {
     try {
       print('⚡ Ball update received from Node.js');
@@ -666,7 +819,13 @@ class MatchNotifier extends StateNotifier<MatchState> {
       final stateData = data['state'] as Map<String, dynamic>?;
       final commentaryLog = data['commentaryLog'] as List?;
 
-      if (result == null || stateData == null) return;
+      if (result == null || stateData == null) {
+        print('❌ Missing result or state data');
+        return;
+      }
+
+      print('📝 Commentary: ${result['commentary']}');
+      print('📊 Score: ${result['scoreAfter']}/${result['wicketsAfter']}');
 
       // Build event from result
       final event = MatchEvent(
@@ -687,6 +846,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
       );
 
       final events = [...state.events, event];
+      print('📋 Total events: ${events.length}');
 
       // Update batsman stats from state
       final batsmanStatsData = stateData['batsmanStats'] as Map<String, dynamic>? ?? {};
@@ -724,6 +884,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
         );
       });
 
+      print('✅ Updating state with new event');
       state = state.copyWith(
         events: events,
         currentCommentary: result['commentary'],
@@ -732,14 +893,17 @@ class MatchNotifier extends StateNotifier<MatchState> {
         bowlerStats: bowlerStats,
         target: stateData['target'] ?? 0,
       );
-    } catch (e) {
+      print('✅ State updated successfully');
+    } catch (e, stack) {
       print('❌ Error processing Node.js ball update: $e');
+      print('Stack trace: $stack');
     }
   }
 
   void _onNodeMatchComplete(Map<String, dynamic> data) {
     try {
       print('🏁 Match complete received from Node.js');
+      _pollingTimer?.cancel();
       final matchResult = data['result'] as String?;
       final stateData = data['state'] as Map<String, dynamic>?;
 

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:socket_io_client/socket_io_client.dart' as IO;
@@ -12,38 +13,43 @@ class NodeBackendService {
   static IO.Socket? _socket;
   static bool _isInitialized = false;
 
+  /// Whether the socket is currently connected
+  static bool get isConnected => _socket != null && _socket!.connected;
+
   /// Initialize Socket.IO connection
   static void initSocket() {
-    if (_isInitialized) {
-      print('🔌 Socket already initialized');
+    // If already connected, skip
+    if (_socket != null && _socket!.connected) {
+      print('🔌 Socket already connected');
       return;
     }
 
+    // Dispose old socket if it exists but isn't connected
+    if (_socket != null) {
+      print('🔌 Disposing stale socket before reconnecting');
+      _socket!.disconnect();
+      _socket!.dispose();
+      _socket = null;
+      _isInitialized = false;
+    }
+
     print('🔌 Initializing Socket.IO connection to $baseUrl');
-    print('🔍 Full Socket.IO URL: $baseUrl/socket.io/');
     
     _socket = IO.io(
       baseUrl,
-      <String, dynamic>{
-        'transports': ['polling', 'websocket'],  // Start with polling, then upgrade
-        'autoConnect': false,
-        'reconnection': true,
-        'reconnectionDelay': 1000,
-        'reconnectionAttempts': 5,
-        'upgrade': true,  // Allow upgrade from polling to websocket
-        'path': '/socket.io/',  // Explicit Socket.IO path
-        'forceNew': true,
-        'timeout': 20000,  // 20 second timeout
-        'withCredentials': true,  // Send credentials for CORS
-        'extraHeaders': {
-          'Accept': 'application/json',
-        },
-      },
+      IO.OptionBuilder()
+        .setTransports(['websocket', 'polling'])
+        .disableAutoConnect()
+        .enableReconnection()
+        .setReconnectionDelay(1000)
+        .setReconnectionAttempts(10)
+        .setPath('/socket.io/')
+        .setTimeout(20000)
+        .build(),
     );
 
     _socket!.onConnect((_) {
       print('✅ Connected to Node.js backend');
-      print('🔌 Transport: ${_socket!.io.engine?.transport?.name}');
       _isInitialized = true;
     });
 
@@ -54,19 +60,15 @@ class NodeBackendService {
 
     _socket!.onConnectError((error) {
       print('❌ Socket connection error: $error');
-      print('🔍 Error details: ${error.runtimeType}');
     });
 
     _socket!.onError((error) {
       print('❌ Socket error: $error');
     });
 
-    _socket!.onConnectTimeout((_) {
-      print('⏱️ Socket connection timeout');
-    });
-
     _socket!.onReconnect((attempt) {
-      print('🔄 Reconnecting... attempt $attempt');
+      print('🔄 Reconnected after $attempt attempts');
+      _isInitialized = true;
     });
 
     _socket!.onReconnectError((error) {
@@ -75,36 +77,82 @@ class NodeBackendService {
 
     _socket!.onReconnectFailed((_) {
       print('❌ Reconnection failed after all attempts');
+      _isInitialized = false;
     });
 
     print('🚀 Attempting to connect...');
     _socket!.connect();
   }
 
-  /// Join a match room to receive real-time updates
-  static void joinMatch(
+  /// Wait for socket to be connected. Returns true if connected within timeout.
+  static Future<bool> waitForConnection({Duration timeout = const Duration(seconds: 10)}) async {
+    if (_socket != null && _socket!.connected) return true;
+
+    final completer = Completer<bool>();
+    Timer? timer;
+
+    void onConnect(_) {
+      if (!completer.isCompleted) {
+        timer?.cancel();
+        completer.complete(true);
+      }
+    }
+
+    void onError(_) {
+      // Don't complete on error — let timeout handle it
+      print('⚠️ Socket error while waiting for connection');
+    }
+
+    _socket?.once('connect', onConnect);
+    _socket?.once('connect_error', onError);
+
+    timer = Timer(timeout, () {
+      if (!completer.isCompleted) {
+        _socket?.off('connect', onConnect);
+        _socket?.off('connect_error', onError);
+        completer.complete(false);
+      }
+    });
+
+    return completer.future;
+  }
+
+  /// Join a match room and listen for updates.
+  /// Returns a Future that completes when the room is joined (or fails).
+  static Future<bool> joinMatch(
+    String matchId,
+    Function(Map<String, dynamic>) onBallUpdate,
+    Function(Map<String, dynamic>) onMatchComplete,
+  ) async {
+    // Ensure socket is initialized and connected
+    if (_socket == null || !_socket!.connected) {
+      print('⚠️ Socket not connected, initializing...');
+      initSocket();
+      final connected = await waitForConnection();
+      if (!connected) {
+        print('❌ Socket failed to connect within timeout');
+        return false;
+      }
+    }
+
+    return _joinMatchRoom(matchId, onBallUpdate, onMatchComplete);
+  }
+
+  static bool _joinMatchRoom(
     String matchId,
     Function(Map<String, dynamic>) onBallUpdate,
     Function(Map<String, dynamic>) onMatchComplete,
   ) {
     if (_socket == null || !_socket!.connected) {
-      print('⚠️ Socket not connected, initializing...');
-      initSocket();
-      
-      // Wait for connection
-      _socket!.once('connect', (_) {
-        _joinMatchRoom(matchId, onBallUpdate, onMatchComplete);
-      });
-    } else {
-      _joinMatchRoom(matchId, onBallUpdate, onMatchComplete);
+      print('❌ Cannot join room: socket not connected');
+      return false;
     }
-  }
 
-  static void _joinMatchRoom(
-    String matchId,
-    Function(Map<String, dynamic>) onBallUpdate,
-    Function(Map<String, dynamic>) onMatchComplete,
-  ) {
+    // Clear any previous listeners
+    _socket!.off('ballUpdate');
+    _socket!.off('matchComplete');
+    _socket!.off('joined');
+
     print('👤 Joining match room: $matchId');
     _socket!.emit('joinMatch', matchId);
 
@@ -129,6 +177,8 @@ class NodeBackendService {
         print('❌ Error processing match complete: $e');
       }
     });
+
+    return true;
   }
 
   /// Leave a match room
@@ -136,10 +186,10 @@ class NodeBackendService {
     if (_socket != null && _socket!.connected) {
       print('👋 Leaving match room: $matchId');
       _socket!.emit('leaveMatch', matchId);
-      _socket!.off('ballUpdate');
-      _socket!.off('matchComplete');
-      _socket!.off('joined');
     }
+    _socket?.off('ballUpdate');
+    _socket?.off('matchComplete');
+    _socket?.off('joined');
   }
 
   /// Start a match simulation
