@@ -5,7 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../core/theme.dart';
 import '../core/node_backend_service.dart';
 import '../core/supabase_service.dart';
-import '../models/models.dart';
+import '../providers/match_provider.dart';
 
 /// Commentary entry for the live timeline
 class _TCommentaryEntry {
