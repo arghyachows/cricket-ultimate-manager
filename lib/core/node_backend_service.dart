@@ -374,6 +374,156 @@ class NodeBackendService {
     }
   }
 
+  // ─── Tournament API ───────────────────────────────────────────
+
+  /// Get all active tournaments
+  static Future<List<Map<String, dynamic>>> getTournaments() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/tournament'),
+      );
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return List<Map<String, dynamic>>.from(data['tournaments'] ?? []);
+      }
+      return [];
+    } catch (e) {
+      print('❌ Get tournaments error: $e');
+      return [];
+    }
+  }
+
+  /// Get tournament details with participants and matches
+  static Future<Map<String, dynamic>?> getTournamentDetails(String tournamentId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/tournament/$tournamentId'),
+      );
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+      return null;
+    } catch (e) {
+      print('❌ Get tournament details error: $e');
+      return null;
+    }
+  }
+
+  /// Get tournament standings
+  static Future<List<Map<String, dynamic>>> getTournamentStandings(String tournamentId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/tournament/$tournamentId/standings'),
+      );
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return List<Map<String, dynamic>>.from(data['standings'] ?? []);
+      }
+      return [];
+    } catch (e) {
+      print('❌ Get standings error: $e');
+      return [];
+    }
+  }
+
+  /// Create a tournament
+  static Future<Map<String, dynamic>> createTournament({
+    required String name,
+    String? description,
+    String format = 't20',
+    int maxParticipants = 8,
+    int entryFeeCoins = 0,
+    int prizeCoins = 0,
+    required String startsAt,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/tournament/create'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'name': name,
+          'description': description,
+          'format': format,
+          'maxParticipants': maxParticipants,
+          'entryFeeCoins': entryFeeCoins,
+          'prizeCoins': prizeCoins,
+          'startsAt': startsAt,
+        }),
+      );
+      final data = json.decode(response.body);
+      return {
+        'success': response.statusCode == 200,
+        'tournament': data['tournament'],
+        'message': data['error'] ?? 'Tournament created',
+      };
+    } catch (e) {
+      print('❌ Create tournament error: $e');
+      return {'success': false, 'message': 'Network error: $e'};
+    }
+  }
+
+  /// Join a tournament
+  static Future<Map<String, dynamic>> joinTournament({
+    required String tournamentId,
+    required String userId,
+    required String teamId,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/tournament/$tournamentId/join'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'userId': userId,
+          'teamId': teamId,
+        }),
+      );
+      final data = json.decode(response.body);
+      return {
+        'success': response.statusCode == 200,
+        'message': data['message'] ?? data['error'] ?? 'Unknown error',
+      };
+    } catch (e) {
+      print('❌ Join tournament error: $e');
+      return {'success': false, 'message': 'Network error: $e'};
+    }
+  }
+
+  /// Check and start a tournament if its start time has passed
+  static Future<Map<String, dynamic>> checkStartTournament(String tournamentId) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/tournament/$tournamentId/check-start'),
+        headers: {'Content-Type': 'application/json'},
+      );
+      final data = json.decode(response.body);
+      return {
+        'success': response.statusCode == 200,
+        'status': data['status'] ?? 'unknown',
+        'message': data['message'] ?? data['error'] ?? '',
+        'matchCount': data['matchCount'] ?? 0,
+      };
+    } catch (e) {
+      print('❌ Check-start tournament error: $e');
+      return {'success': false, 'status': 'error', 'message': 'Network error: $e'};
+    }
+  }
+
+  /// Get the active tournament match for a user (current live or next scheduled)
+  static Future<Map<String, dynamic>?> getTournamentActiveMatch(String userId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/tournament/user/$userId/active-match'),
+      );
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      }
+      return null;
+    } catch (e) {
+      print('❌ Get tournament active match error: $e');
+      return null;
+    }
+  }
+
   /// Dispose socket connection
   static void dispose() {
     if (_socket != null) {

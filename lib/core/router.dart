@@ -15,6 +15,7 @@ import '../screens/match_history_screen.dart';
 import '../screens/market_screen.dart';
 import '../screens/leaderboard_screen.dart';
 import '../screens/tournament_screen.dart';
+import '../screens/tournament_match_screen.dart';
 import '../screens/card_detail_screen.dart';
 import '../screens/profile_screen.dart';
 import '../screens/shell_screen.dart';
@@ -104,6 +105,20 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: AppConstants.tournamentsRoute,
             builder: (context, state) => const TournamentScreen(),
+          ),
+          GoRoute(
+            path: '/tournaments/match/:matchId',
+            builder: (context, state) {
+              final matchId = state.pathParameters['matchId']!;
+              final extra = state.extra as Map<String, dynamic>?;
+              return TournamentMatchScreen(
+                matchId: matchId,
+                homeTeamName: extra?['homeTeamName'],
+                awayTeamName: extra?['awayTeamName'],
+                matchNumber: extra?['matchNumber'],
+                tournamentName: extra?['tournamentName'],
+              );
+            },
           ),
           GoRoute(
             path: '/card/:cardId',

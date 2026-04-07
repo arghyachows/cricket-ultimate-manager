@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/theme.dart';
 import '../core/constants.dart';
 import '../core/supabase_service.dart';
+import '../core/node_backend_service.dart';
 import '../providers/providers.dart';
 import '../widgets/coin_display.dart';
 import '../widgets/daily_objectives_card.dart';
@@ -49,6 +50,10 @@ class DashboardScreen extends ConsumerWidget {
                 // Live multiplayer match banner
                 SliverToBoxAdapter(
                   child: _MultiplayerMatchBanner(),
+                ),
+                // Live tournament match banner
+                SliverToBoxAdapter(
+                  child: _TournamentMatchBanner(),
                 ),
                 // Quick actions
                 SliverPadding(
@@ -881,5 +886,223 @@ class _MultiplayerMatchBannerState extends ConsumerState<_MultiplayerMatchBanner
         );
       },
     );
+  }
+}
+
+// ─── Tournament Match Banner ─────────────────────────────────────
+
+class _TournamentMatchBanner extends ConsumerStatefulWidget {
+  @override
+  ConsumerState<_TournamentMatchBanner> createState() => _TournamentMatchBannerState();
+}
+
+class _TournamentMatchBannerState extends ConsumerState<_TournamentMatchBanner> {
+  Map<String, dynamic>? _data;
+  bool _loading = true;
+  Timer? _refreshTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchActiveMatch();
+    // Refresh every 30 seconds to catch new matches
+    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) => _fetchActiveMatch());
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _fetchActiveMatch() async {
+    final userId = SupabaseService.currentUserId;
+    if (userId == null) {
+      if (mounted) setState(() => _loading = false);
+      return;
+    }
+    final result = await NodeBackendService.getTournamentActiveMatch(userId);
+    if (!mounted) return;
+    setState(() {
+      _data = result;
+      _loading = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading || _data == null) return const SizedBox.shrink();
+
+    final activeTournament = _data!['activeTournament'] as Map<String, dynamic>?;
+    if (activeTournament == null) return const SizedBox.shrink();
+
+    final currentMatch = _data!['currentMatch'] as Map<String, dynamic>?;
+    final nextMatch = _data!['nextMatch'] as Map<String, dynamic>?;
+
+    // Show banner for live match or next scheduled match
+    final match = currentMatch ?? nextMatch;
+    if (match == null) return const SizedBox.shrink();
+
+    final isLive = match['status'] == 'in_progress';
+    final isPending = match['status'] == 'pending';
+    final matchId = match['id'] as String;
+    final homeTeam = match['home_team_name'] ?? 'Home';
+    final awayTeam = match['away_team_name'] ?? 'Away';
+    final matchNumber = match['match_number'] ?? 0;
+    final scheduledAt = match['scheduled_at'] != null ? DateTime.tryParse(match['scheduled_at']) : null;
+    final tournamentName = activeTournament['name'] ?? 'Tournament';
+
+    final hScore = match['home_score'] ?? 0;
+    final hWickets = match['home_wickets'] ?? 0;
+    final aScore = match['away_score'] ?? 0;
+    final aWickets = match['away_wickets'] ?? 0;
+
+    final Color badgeColor;
+    final String badgeText;
+    if (isLive) {
+      badgeColor = Colors.deepOrange;
+      badgeText = 'LIVE';
+    } else {
+      badgeColor = AppTheme.primary;
+      badgeText = 'NEXT';
+    }
+
+    return GestureDetector(
+      onTap: isLive
+          ? () => context.push('/tournaments/match/$matchId', extra: {
+                'homeTeamName': homeTeam,
+                'awayTeamName': awayTeam,
+                'matchNumber': matchNumber,
+                'tournamentName': tournamentName,
+              })
+          : null,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: isLive
+                ? [Colors.deepOrange.withValues(alpha: 0.3), AppTheme.surface]
+                : [AppTheme.cardElite.withValues(alpha: 0.2), AppTheme.surface],
+          ),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isLive
+                ? Colors.deepOrange.withValues(alpha: 0.5)
+                : AppTheme.cardElite.withValues(alpha: 0.3),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: badgeColor,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (isLive) ...[
+                        Container(
+                          width: 6, height: 6,
+                          decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                        ),
+                        const SizedBox(width: 4),
+                      ],
+                      Text(badgeText,
+                          style: const TextStyle(
+                            color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10, letterSpacing: 1,
+                          )),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '$tournamentName · Match $matchNumber',
+                    style: const TextStyle(color: Colors.white54, fontSize: 11),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (isLive)
+                  const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.white38),
+              ],
+            ),
+            const SizedBox(height: 12),
+            // Teams & Scores
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(homeTeam,
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                          overflow: TextOverflow.ellipsis),
+                      const SizedBox(height: 2),
+                      if (isLive)
+                        Text('$hScore/$hWickets',
+                            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.accent))
+                      else
+                        const Text('--', style: TextStyle(fontSize: 18, color: Colors.white38)),
+                    ],
+                  ),
+                ),
+                const Text('vs', style: TextStyle(color: Colors.white38, fontSize: 14)),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(awayTeam,
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                          overflow: TextOverflow.ellipsis, textAlign: TextAlign.end),
+                      const SizedBox(height: 2),
+                      if (isLive)
+                        Text('$aScore/$aWickets',
+                            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white))
+                      else
+                        const Text('--', style: TextStyle(fontSize: 18, color: Colors.white38)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            // Schedule info for pending matches
+            if (isPending && scheduledAt != null) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Icon(Icons.schedule, size: 14, color: Colors.white38),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Starts ${_formatScheduledTime(scheduledAt)}',
+                    style: const TextStyle(color: Colors.white54, fontSize: 12),
+                  ),
+                ],
+              ),
+            ],
+            if (isLive) ...[
+              const SizedBox(height: 8),
+              const Text('Tap to watch live',
+                  style: TextStyle(color: Colors.deepOrange, fontSize: 12, fontWeight: FontWeight.w500)),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _formatScheduledTime(DateTime dt) {
+    final now = DateTime.now();
+    final diff = dt.difference(now);
+    if (diff.isNegative) return 'Starting soon...';
+    if (diff.inMinutes < 1) return 'Starting in < 1 min';
+    if (diff.inMinutes < 60) return 'in ${diff.inMinutes} min';
+    return 'in ${diff.inHours}h ${diff.inMinutes % 60}m';
   }
 }

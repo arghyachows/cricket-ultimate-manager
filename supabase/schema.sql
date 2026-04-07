@@ -14,7 +14,7 @@ CREATE TYPE player_role AS ENUM ('batsman', 'bowler', 'all_rounder', 'wicket_kee
 CREATE TYPE card_rarity AS ENUM ('bronze', 'silver', 'gold', 'elite', 'legend');
 CREATE TYPE card_type AS ENUM ('standard', 'team_of_the_week', 'event', 'icon', 'flashback');
 CREATE TYPE match_status AS ENUM ('pending', 'in_progress', 'completed', 'abandoned');
-CREATE TYPE match_format AS ENUM ('t20', 'odi', 'test');
+CREATE TYPE match_format AS ENUM ('t10', 't20', 'odi', 'test');
 CREATE TYPE listing_status AS ENUM ('active', 'sold', 'expired', 'cancelled');
 CREATE TYPE transaction_type AS ENUM ('pack_purchase', 'market_buy', 'market_sell', 'match_reward', 'tournament_reward', 'daily_reward', 'card_upgrade');
 CREATE TYPE pitch_type AS ENUM ('batting_friendly', 'bowling_friendly', 'balanced', 'spin_friendly', 'seam_friendly');
@@ -279,7 +279,7 @@ CREATE TABLE tournaments (
     entry_fee_premium INTEGER NOT NULL DEFAULT 0,
     prize_coins INTEGER NOT NULL DEFAULT 0,
     prize_packs UUID[],
-    status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'in_progress', 'completed')),
+    status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'in_progress', 'completed', 'cancelled')),
     starts_at TIMESTAMPTZ NOT NULL,
     ends_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

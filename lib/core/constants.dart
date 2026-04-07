@@ -113,6 +113,7 @@ class AppConstants {
   static const String marketRoute = '/market';
   static const String leaderboardRoute = '/leaderboard';
   static const String tournamentsRoute = '/tournaments';
+  static const String tournamentMatchRoute = '/tournaments/match';
   static const String profileRoute = '/profile';
   static const String settingsRoute = '/settings';
   static const String matchHistoryRoute = '/match/history';
