@@ -602,7 +602,7 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen>
         List<Map<String, dynamic>>.from(details['participants'] ?? []);
     final matches =
         List<Map<String, dynamic>>.from(details['matches'] ?? []);
-    final isCompleted = (details['tournament']?['status'] ?? tournament['status']) == 'completed';
+    final isTournamentCompleted = (details['tournament']?['status'] ?? tournament['status']) == 'completed';
 
     showModalBottomSheet(
       context: context,
@@ -648,7 +648,7 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen>
                   SizedBox(width: 32, child: Text('W', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white54, fontSize: 12))),
                   SizedBox(width: 40, child: Text('PTS', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white54, fontSize: 12))),
                   SizedBox(width: 50, child: Text('NRR', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white54, fontSize: 12))),
-                  if (isCompleted) SizedBox(width: 60, child: Text('COINS', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.amber, fontSize: 12))),
+                  if (isTournamentCompleted) SizedBox(width: 60, child: Text('COINS', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.amber, fontSize: 12))),
                 ],
               ),
             ),
@@ -743,7 +743,7 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen>
                               ),
                             ),
                           ),
-                          if (isCompleted)
+                          if (isTournamentCompleted)
                             SizedBox(
                               width: 60,
                               child: (p['coins_won'] ?? 0) > 0
