@@ -22,7 +22,7 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _loadTournaments();
   }
 
@@ -93,6 +93,8 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen>
         _tournaments.where((t) => t['status'] == 'open').toList();
     final activeTournaments =
         _tournaments.where((t) => t['status'] == 'in_progress').toList();
+    final completedTournaments =
+        _tournaments.where((t) => t['status'] == 'completed').toList();
     final cancelledTournaments =
         _tournaments.where((t) => t['status'] == 'cancelled').toList();
 
@@ -105,6 +107,7 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen>
           tabs: [
             Tab(text: 'OPEN (${openTournaments.length})'),
             Tab(text: 'LIVE (${activeTournaments.length})'),
+            Tab(text: 'DONE (${completedTournaments.length})'),
             Tab(text: 'CANCELLED (${cancelledTournaments.length})'),
           ],
           indicatorColor: AppTheme.accent,
@@ -149,6 +152,7 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen>
                   children: [
                     _buildTournamentList(openTournaments, isOpen: true),
                     _buildTournamentList(activeTournaments, isOpen: false),
+                    _buildTournamentList(completedTournaments, isOpen: false),
                     _buildTournamentList(cancelledTournaments, isOpen: false),
                   ],
                 ),
