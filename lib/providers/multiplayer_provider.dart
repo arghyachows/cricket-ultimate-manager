@@ -30,7 +30,8 @@ final activeMultiplayerMatchProvider = FutureProvider.autoDispose<Map<String, dy
 
   if (active.isNotEmpty) {
     final match = active.first;
-    // Auto-abandon stuck matches: in_progress but started > 5 minutes ago
+    // Auto-abandon stuck matches: in_progress but started > 15 minutes ago
+    // (a T20 at 800ms/ball takes ~7 minutes, so 15min is a safe upper bound)
     if (match['status'] == 'in_progress' && match['started_at'] != null) {
       final startedStr = match['started_at'].toString();
       final started = DateTime.tryParse(startedStr);
@@ -38,7 +39,7 @@ final activeMultiplayerMatchProvider = FutureProvider.autoDispose<Map<String, dy
         final now = DateTime.now().toUtc();
         final startedUtc = started.toUtc();
         final diff = now.difference(startedUtc);
-        if (diff.inMinutes > 5) {
+        if (diff.inMinutes > 15) {
           await SupabaseService.client
               .from('multiplayer_matches')
               .update({
