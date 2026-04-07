@@ -207,7 +207,6 @@ class _TournamentMatchScreenState
       print('⚠️ Failed to load commentary: $e');
     }
   }
-  }
 
   void _onBallUpdate(Map<String, dynamic> data) {
     if (!mounted) return;
