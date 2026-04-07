@@ -602,6 +602,7 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen>
         List<Map<String, dynamic>>.from(details['participants'] ?? []);
     final matches =
         List<Map<String, dynamic>>.from(details['matches'] ?? []);
+    final isCompleted = (details['tournament']?['status'] ?? tournament['status']) == 'completed';
 
     showModalBottomSheet(
       context: context,
@@ -639,7 +640,7 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen>
               padding:
                   const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               color: Colors.white.withValues(alpha: 0.05),
-              child: const Row(
+              child: Row(
                 children: [
                   SizedBox(width: 32, child: Text('#', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white54, fontSize: 12))),
                   Expanded(child: Text('TEAM', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white54, fontSize: 12))),
@@ -647,6 +648,7 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen>
                   SizedBox(width: 32, child: Text('W', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white54, fontSize: 12))),
                   SizedBox(width: 40, child: Text('PTS', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white54, fontSize: 12))),
                   SizedBox(width: 50, child: Text('NRR', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white54, fontSize: 12))),
+                  if (isCompleted) SizedBox(width: 60, child: Text('COINS', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.amber, fontSize: 12))),
                 ],
               ),
             ),
@@ -741,6 +743,32 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen>
                               ),
                             ),
                           ),
+                          if (isCompleted)
+                            SizedBox(
+                              width: 60,
+                              child: (p['coins_won'] ?? 0) > 0
+                                  ? Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(Icons.monetization_on, size: 14, color: Colors.amber),
+                                        const SizedBox(width: 2),
+                                        Text(
+                                          '${p['coins_won']}',
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.amber,
+                                          ),
+                                        ),
+                                      ],
+                                    )
+                                  : const Text(
+                                      '-',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(color: Colors.white24),
+                                    ),
+                            ),
                         ],
                       ),
                     );
