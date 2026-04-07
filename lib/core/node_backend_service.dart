@@ -513,6 +513,23 @@ class NodeBackendService {
     }
   }
 
+  /// Get match commentary log (from Redis for live, DB for completed)
+  static Future<List<Map<String, dynamic>>> getMatchCommentary(String matchId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/tournament/match/$matchId/commentary'),
+      );
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return List<Map<String, dynamic>>.from(data['commentaryLog'] ?? []);
+      }
+      return [];
+    } catch (e) {
+      print('❌ Get commentary error: $e');
+      return [];
+    }
+  }
+
   /// Create a tournament
   static Future<Map<String, dynamic>> createTournament({
     required String name,

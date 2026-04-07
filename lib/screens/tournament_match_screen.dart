@@ -139,6 +139,8 @@ class _TournamentMatchScreenState
             _matchResult = 'Match Tied';
           }
         });
+        // Fetch commentary for completed match
+        _loadCommentary();
         return;
       }
 
@@ -180,7 +182,31 @@ class _TournamentMatchScreenState
 
     if (joined && mounted) {
       setState(() => _socketConnected = true);
+      // Load existing commentary for this match (catch-up on missed balls)
+      _loadCommentary();
     }
+  }
+
+  Future<void> _loadCommentary() async {
+    try {
+      final entries = await NodeBackendService.getMatchCommentary(widget.matchId);
+      if (!mounted || entries.isEmpty) return;
+      setState(() {
+        _commentaryLog.clear();
+        for (final e in entries) {
+          _commentaryLog.add(_TCommentaryEntry(
+            commentary: e['commentary'] ?? '',
+            eventType: e['eventType'] ?? '',
+            runs: e['runs'] ?? 0,
+            innings: e['innings'] ?? 1,
+            oversDisplay: '${e['overNumber'] ?? 0}.${e['ballNumber'] ?? 0}',
+          ));
+        }
+      });
+    } catch (e) {
+      print('⚠️ Failed to load commentary: $e');
+    }
+  }
   }
 
   void _onBallUpdate(Map<String, dynamic> data) {
