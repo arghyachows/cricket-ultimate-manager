@@ -900,13 +900,20 @@ class _TournamentMatchBannerState extends ConsumerState<_TournamentMatchBanner> 
   Map<String, dynamic>? _data;
   bool _loading = true;
   Timer? _refreshTimer;
+  bool _hasLiveMatch = false;
 
   @override
   void initState() {
     super.initState();
     _fetchActiveMatch();
-    // Refresh every 30 seconds to catch new matches
-    _refreshTimer = Timer.periodic(const Duration(seconds: 30), (_) => _fetchActiveMatch());
+    _startPolling();
+  }
+
+  void _startPolling() {
+    _refreshTimer?.cancel();
+    // Poll every 5s when live, 30s otherwise
+    final interval = _hasLiveMatch ? const Duration(seconds: 5) : const Duration(seconds: 30);
+    _refreshTimer = Timer.periodic(interval, (_) => _fetchActiveMatch());
   }
 
   @override
@@ -923,10 +930,16 @@ class _TournamentMatchBannerState extends ConsumerState<_TournamentMatchBanner> 
     }
     final result = await NodeBackendService.getTournamentActiveMatch(userId);
     if (!mounted) return;
+    final wasLive = _hasLiveMatch;
+    final currentMatch = result?['currentMatch'] as Map<String, dynamic>?;
+    final isLiveNow = currentMatch != null && currentMatch['status'] == 'in_progress';
     setState(() {
       _data = result;
       _loading = false;
+      _hasLiveMatch = isLiveNow;
     });
+    // Switch polling interval if live status changed
+    if (wasLive != isLiveNow) _startPolling();
   }
 
   @override
@@ -956,6 +969,8 @@ class _TournamentMatchBannerState extends ConsumerState<_TournamentMatchBanner> 
     final hWickets = match['home_wickets'] ?? 0;
     final aScore = match['away_score'] ?? 0;
     final aWickets = match['away_wickets'] ?? 0;
+    final hOvers = match['home_overs']?.toString() ?? '';
+    final aOvers = match['away_overs']?.toString() ?? '';
 
     final Color badgeColor;
     final String badgeText;
@@ -1046,7 +1061,7 @@ class _TournamentMatchBannerState extends ConsumerState<_TournamentMatchBanner> 
                           overflow: TextOverflow.ellipsis),
                       const SizedBox(height: 2),
                       if (isLive)
-                        Text('$hScore/$hWickets',
+                        Text('$hScore/$hWickets${hOvers.isNotEmpty ? ' ($hOvers)' : ''}',
                             style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.accent))
                       else
                         const Text('--', style: TextStyle(fontSize: 18, color: Colors.white38)),
@@ -1063,7 +1078,7 @@ class _TournamentMatchBannerState extends ConsumerState<_TournamentMatchBanner> 
                           overflow: TextOverflow.ellipsis, textAlign: TextAlign.end),
                       const SizedBox(height: 2),
                       if (isLive)
-                        Text('$aScore/$aWickets',
+                        Text('$aScore/$aWickets${aOvers.isNotEmpty ? ' ($aOvers)' : ''}',
                             style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white))
                       else
                         const Text('--', style: TextStyle(fontSize: 18, color: Colors.white38)),

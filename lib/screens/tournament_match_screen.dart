@@ -205,6 +205,11 @@ class _TournamentMatchScreenState
       final currentBatsmanName = stateData['currentBatsman'] as String? ?? '';
       final currentBowlerName = stateData['currentBowler'] as String? ?? '';
 
+      // Pick up homeBatsFirst from state if available
+      if (stateData.containsKey('homeBatsFirst')) {
+        _homeBatsFirst = stateData['homeBatsFirst'] as bool? ?? _homeBatsFirst;
+      }
+
       final hbf = _homeBatsFirst;
       final homeScore = hbf ? score1 : score2;
       final homeWickets = hbf ? wickets1 : wickets2;
@@ -743,130 +748,317 @@ class _TournamentMatchScreenState
     final inn1Bowlers = _bowlerStats.values.where((b) => b.innings == 1).toList();
     final inn2Bowlers = _bowlerStats.values.where((b) => b.innings == 2).toList();
 
-    final battingFirst = _homeBatsFirst ? _homeTeamName : _awayTeamName;
-    final battingSecond = _homeBatsFirst ? _awayTeamName : _homeTeamName;
+    final battingFirstName = _homeBatsFirst ? _homeTeamName : _awayTeamName;
+    final battingSecondName = _homeBatsFirst ? _awayTeamName : _homeTeamName;
+    final inn1Score = _homeBatsFirst ? _homeScore : _awayScore;
+    final inn1Wickets = _homeBatsFirst ? _homeWickets : _awayWickets;
+    final inn1Overs = _homeBatsFirst ? _homeOvers : _awayOvers;
+    final inn2Score = _homeBatsFirst ? _awayScore : _homeScore;
+    final inn2Wickets = _homeBatsFirst ? _awayWickets : _homeWickets;
+    final inn2Overs = _homeBatsFirst ? _awayOvers : _homeOvers;
+
+    if (inn1Batsmen.isEmpty && inn2Batsmen.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.scoreboard, color: AppTheme.accent, size: 48),
+              const SizedBox(height: 16),
+              Text(
+                _isMatchComplete ? 'Final Score' : 'Scorecard loading...',
+                style: const TextStyle(color: Colors.white54, fontSize: 14),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       children: [
         if (inn1Batsmen.isNotEmpty) ...[
-          Text('$battingFirst - Batting', style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.accent, fontSize: 14)),
-          const SizedBox(height: 8),
-          _buildBatsmanTable(inn1Batsmen),
-          const SizedBox(height: 12),
+          _inningsHeader('$battingFirstName Batting', inn1Score, inn1Wickets, inn1Overs),
+          _battingCard(inn1Batsmen),
+          const SizedBox(height: 4),
+          _bowlingCard(inn1Bowlers),
         ],
-        if (inn1Bowlers.isNotEmpty) ...[
-          Text('$battingSecond - Bowling', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white54, fontSize: 13)),
-          const SizedBox(height: 8),
-          _buildBowlerTable(inn1Bowlers),
-          const SizedBox(height: 20),
-        ],
+        const SizedBox(height: 16),
         if (inn2Batsmen.isNotEmpty) ...[
-          Text('$battingSecond - Batting', style: const TextStyle(fontWeight: FontWeight.bold, color: AppTheme.accent, fontSize: 14)),
-          const SizedBox(height: 8),
-          _buildBatsmanTable(inn2Batsmen),
-          const SizedBox(height: 12),
+          _inningsHeader('$battingSecondName Batting', inn2Score, inn2Wickets, inn2Overs),
+          _battingCard(inn2Batsmen),
+          const SizedBox(height: 4),
+          _bowlingCard(inn2Bowlers),
         ],
-        if (inn2Bowlers.isNotEmpty) ...[
-          Text('$battingFirst - Bowling', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white54, fontSize: 13)),
-          const SizedBox(height: 8),
-          _buildBowlerTable(inn2Bowlers),
+        const SizedBox(height: 80),
+      ],
+    );
+  }
+
+  Widget _inningsHeader(String title, int score, int wickets, String overs) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      margin: const EdgeInsets.only(bottom: 2),
+      decoration: BoxDecoration(
+        color: AppTheme.primary.withValues(alpha: 0.4),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(title,
+                style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    color: AppTheme.accent)),
+          ),
+          Text('$score/$wickets ($overs ov)',
+              style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  color: Colors.white)),
         ],
-        if (inn1Batsmen.isEmpty && inn2Batsmen.isEmpty)
-          const Center(
-            child: Padding(
-              padding: EdgeInsets.all(32),
-              child: Text('Scorecard will appear once the match starts', style: TextStyle(color: Colors.white38)),
+      ),
+    );
+  }
+
+  Widget _battingCard(List<BatsmanStats> batsmen) {
+    return Container(
+      color: AppTheme.surface,
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            color: AppTheme.surfaceLight,
+            child: const Row(
+              children: [
+                Expanded(
+                    flex: 4,
+                    child: Text('Batter',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.white38,
+                            fontWeight: FontWeight.bold))),
+                Expanded(
+                    child: Text('R',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.white38,
+                            fontWeight: FontWeight.bold),
+                        textAlign: TextAlign.center)),
+                Expanded(
+                    child: Text('B',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.white38,
+                            fontWeight: FontWeight.bold),
+                        textAlign: TextAlign.center)),
+                Expanded(
+                    child: Text('4s',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.white38,
+                            fontWeight: FontWeight.bold),
+                        textAlign: TextAlign.center)),
+                Expanded(
+                    child: Text('6s',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.white38,
+                            fontWeight: FontWeight.bold),
+                        textAlign: TextAlign.center)),
+                Expanded(
+                    child: Text('SR',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.white38,
+                            fontWeight: FontWeight.bold),
+                        textAlign: TextAlign.center)),
+              ],
             ),
           ),
-      ],
+          ...batsmen.map((b) => Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: const BoxDecoration(
+                  border:
+                      Border(bottom: BorderSide(color: Colors.white10)),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 4,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(b.name,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                                color:
+                                    b.isOut ? Colors.white54 : Colors.white,
+                              ),
+                              overflow: TextOverflow.ellipsis),
+                          if (b.isOut && b.dismissalType != null)
+                            Text(b.dismissalType!,
+                                style: const TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.redAccent))
+                          else if (!b.isOut)
+                            const Text('not out',
+                                style: TextStyle(
+                                    fontSize: 10, color: AppTheme.accent)),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                        child: Text('${b.runs}',
+                            style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: b.runs >= 50
+                                    ? AppTheme.accent
+                                    : Colors.white),
+                            textAlign: TextAlign.center)),
+                    Expanded(
+                        child: Text('${b.balls}',
+                            style: const TextStyle(
+                                fontSize: 13, color: Colors.white70),
+                            textAlign: TextAlign.center)),
+                    Expanded(
+                        child: Text('${b.fours}',
+                            style: const TextStyle(
+                                fontSize: 13, color: Colors.white70),
+                            textAlign: TextAlign.center)),
+                    Expanded(
+                        child: Text('${b.sixes}',
+                            style: const TextStyle(
+                                fontSize: 13, color: Colors.white70),
+                            textAlign: TextAlign.center)),
+                    Expanded(
+                        child: Text(b.strikeRate.toStringAsFixed(1),
+                            style: const TextStyle(
+                                fontSize: 12, color: Colors.white54),
+                            textAlign: TextAlign.center)),
+                  ],
+                ),
+              )),
+        ],
+      ),
     );
   }
 
-  Widget _buildBatsmanTable(List<BatsmanStats> batsmen) {
-    return Table(
-      columnWidths: const {
-        0: FlexColumnWidth(3),
-        1: FixedColumnWidth(35),
-        2: FixedColumnWidth(35),
-        3: FixedColumnWidth(25),
-        4: FixedColumnWidth(25),
-        5: FixedColumnWidth(50),
-      },
-      children: [
-        const TableRow(children: [
-          Text('Batsman', style: TextStyle(fontSize: 10, color: Colors.white38)),
-          Text('R', style: TextStyle(fontSize: 10, color: Colors.white38), textAlign: TextAlign.center),
-          Text('B', style: TextStyle(fontSize: 10, color: Colors.white38), textAlign: TextAlign.center),
-          Text('4s', style: TextStyle(fontSize: 10, color: Colors.white38), textAlign: TextAlign.center),
-          Text('6s', style: TextStyle(fontSize: 10, color: Colors.white38), textAlign: TextAlign.center),
-          Text('SR', style: TextStyle(fontSize: 10, color: Colors.white38), textAlign: TextAlign.center),
-        ]),
-        ...batsmen.map((b) {
-          final sr = b.balls > 0 ? (b.runs / b.balls * 100).toStringAsFixed(1) : '0.0';
-          return TableRow(children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Text(
-                '${b.name}${b.isOut ? '' : ' *'}',
-                style: TextStyle(fontSize: 12, color: b.isOut ? Colors.white54 : Colors.white),
-                overflow: TextOverflow.ellipsis,
-              ),
+  Widget _bowlingCard(List<BowlerStats> bowlers) {
+    if (bowlers.isEmpty) return const SizedBox();
+
+    return Container(
+      color: AppTheme.surface,
+      margin: const EdgeInsets.only(bottom: 4),
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            color: AppTheme.surfaceLight,
+            child: const Row(
+              children: [
+                Expanded(
+                    flex: 4,
+                    child: Text('Bowler',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.white38,
+                            fontWeight: FontWeight.bold))),
+                Expanded(
+                    child: Text('O',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.white38,
+                            fontWeight: FontWeight.bold),
+                        textAlign: TextAlign.center)),
+                Expanded(
+                    child: Text('M',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.white38,
+                            fontWeight: FontWeight.bold),
+                        textAlign: TextAlign.center)),
+                Expanded(
+                    child: Text('R',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.white38,
+                            fontWeight: FontWeight.bold),
+                        textAlign: TextAlign.center)),
+                Expanded(
+                    child: Text('W',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.white38,
+                            fontWeight: FontWeight.bold),
+                        textAlign: TextAlign.center)),
+                Expanded(
+                    child: Text('ECO',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.white38,
+                            fontWeight: FontWeight.bold),
+                        textAlign: TextAlign.center)),
+              ],
             ),
-            Padding(padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Text('${b.runs}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
-            Padding(padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Text('${b.balls}', style: const TextStyle(fontSize: 12, color: Colors.white54), textAlign: TextAlign.center)),
-            Padding(padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Text('${b.fours}', style: const TextStyle(fontSize: 12, color: Colors.white54), textAlign: TextAlign.center)),
-            Padding(padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Text('${b.sixes}', style: const TextStyle(fontSize: 12, color: Colors.white54), textAlign: TextAlign.center)),
-            Padding(padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Text(sr, style: const TextStyle(fontSize: 12, color: Colors.white54), textAlign: TextAlign.center)),
-          ]);
-        }),
-      ],
-    );
-  }
-
-  Widget _buildBowlerTable(List<BowlerStats> bowlers) {
-    return Table(
-      columnWidths: const {
-        0: FlexColumnWidth(3),
-        1: FixedColumnWidth(40),
-        2: FixedColumnWidth(35),
-        3: FixedColumnWidth(25),
-        4: FixedColumnWidth(35),
-        5: FixedColumnWidth(50),
-      },
-      children: [
-        const TableRow(children: [
-          Text('Bowler', style: TextStyle(fontSize: 10, color: Colors.white38)),
-          Text('O', style: TextStyle(fontSize: 10, color: Colors.white38), textAlign: TextAlign.center),
-          Text('R', style: TextStyle(fontSize: 10, color: Colors.white38), textAlign: TextAlign.center),
-          Text('W', style: TextStyle(fontSize: 10, color: Colors.white38), textAlign: TextAlign.center),
-          Text('M', style: TextStyle(fontSize: 10, color: Colors.white38), textAlign: TextAlign.center),
-          Text('Econ', style: TextStyle(fontSize: 10, color: Colors.white38), textAlign: TextAlign.center),
-        ]),
-        ...bowlers.map((b) {
-          final overs = b.oversDisplay;
-          final econ = b.balls > 0 ? (b.runs / (b.balls / 6)).toStringAsFixed(1) : '0.0';
-          return TableRow(children: [
-            Padding(padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Text(b.name, style: const TextStyle(fontSize: 12, color: Colors.white), overflow: TextOverflow.ellipsis)),
-            Padding(padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Text(overs, style: const TextStyle(fontSize: 12, color: Colors.white54), textAlign: TextAlign.center)),
-            Padding(padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Text('${b.runs}', style: const TextStyle(fontSize: 12, color: Colors.white54), textAlign: TextAlign.center)),
-            Padding(padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Text('${b.wickets}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold), textAlign: TextAlign.center)),
-            Padding(padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Text('${b.maidens}', style: const TextStyle(fontSize: 12, color: Colors.white54), textAlign: TextAlign.center)),
-            Padding(padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Text(econ, style: const TextStyle(fontSize: 12, color: Colors.white54), textAlign: TextAlign.center)),
-          ]);
-        }),
-      ],
+          ),
+          ...bowlers.map((b) => Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: const BoxDecoration(
+                  border:
+                      Border(bottom: BorderSide(color: Colors.white10)),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 4,
+                      child: Text(b.name,
+                          style: const TextStyle(
+                              fontSize: 13, fontWeight: FontWeight.w500),
+                          overflow: TextOverflow.ellipsis),
+                    ),
+                    Expanded(
+                        child: Text(b.oversDisplay,
+                            style: const TextStyle(
+                                fontSize: 13, color: Colors.white70),
+                            textAlign: TextAlign.center)),
+                    Expanded(
+                        child: Text('${b.maidens}',
+                            style: const TextStyle(
+                                fontSize: 13, color: Colors.white70),
+                            textAlign: TextAlign.center)),
+                    Expanded(
+                        child: Text('${b.runs}',
+                            style: const TextStyle(
+                                fontSize: 13, color: Colors.white70),
+                            textAlign: TextAlign.center)),
+                    Expanded(
+                        child: Text('${b.wickets}',
+                            style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: b.wickets >= 3
+                                    ? AppTheme.accent
+                                    : Colors.white),
+                            textAlign: TextAlign.center)),
+                    Expanded(
+                        child: Text(b.economy.toStringAsFixed(1),
+                            style: const TextStyle(
+                                fontSize: 12, color: Colors.white54),
+                            textAlign: TextAlign.center)),
+                  ],
+                ),
+              )),
+        ],
+      ),
     );
   }
 }
