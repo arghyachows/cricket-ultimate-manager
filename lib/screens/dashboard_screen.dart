@@ -904,6 +904,7 @@ class _TournamentMatchBannerState extends ConsumerState<_TournamentMatchBanner> 
   String? _subscribedMatchId;
   StreamSubscription<Map<String, dynamic>>? _ballSub;
   StreamSubscription<Map<String, dynamic>>? _completeSub;
+  String? _lastCommentary;
 
   @override
   void initState() {
@@ -969,10 +970,17 @@ class _TournamentMatchBannerState extends ConsumerState<_TournamentMatchBanner> 
     final innings = state['innings'] as int? ?? 1;
     final overNumber = state['overNumber'] as int? ?? 0;
     final ballNumber = state['ballNumber'] as int? ?? 0;
+    final target = state['target'] as int? ?? 0;
+    final matchOvers = state['matchOvers'] as int? ?? 20;
+
+    // Extract commentary from result
+    final result = data['result'] as Map<String, dynamic>?;
+    final commentary = result?['commentary'] as String? ?? '';
 
     final oversStr = '$overNumber.$ballNumber';
 
     setState(() {
+      if (commentary.isNotEmpty) _lastCommentary = commentary;
       _data!['currentMatch'] = {
         ...currentMatch,
         'home_score': hbf ? score1 : score2,
@@ -985,6 +993,10 @@ class _TournamentMatchBannerState extends ConsumerState<_TournamentMatchBanner> 
         'away_overs': innings == 1
             ? (!hbf ? oversStr : currentMatch['away_overs'])
             : (hbf ? oversStr : currentMatch['away_overs']),
+        'live_innings': innings,
+        'target': target,
+        'match_overs': matchOvers,
+        'home_bats_first': hbf,
       };
     });
   }
@@ -1136,7 +1148,7 @@ class _TournamentMatchBannerState extends ConsumerState<_TournamentMatchBanner> 
                           overflow: TextOverflow.ellipsis),
                       const SizedBox(height: 2),
                       if (isLive)
-                        Text('$hScore/$hWickets${hOvers.isNotEmpty ? ' ($hOvers)' : ''}',
+                        Text('$hScore/$hWickets${hOvers.isNotEmpty ? ' ($hOvers ov)' : ''}',
                             style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppTheme.accent))
                       else
                         const Text('--', style: TextStyle(fontSize: 18, color: Colors.white38)),
@@ -1153,7 +1165,7 @@ class _TournamentMatchBannerState extends ConsumerState<_TournamentMatchBanner> 
                           overflow: TextOverflow.ellipsis, textAlign: TextAlign.end),
                       const SizedBox(height: 2),
                       if (isLive)
-                        Text('$aScore/$aWickets${aOvers.isNotEmpty ? ' ($aOvers)' : ''}',
+                        Text('$aScore/$aWickets${aOvers.isNotEmpty ? ' ($aOvers ov)' : ''}',
                             style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white))
                       else
                         const Text('--', style: TextStyle(fontSize: 18, color: Colors.white38)),
@@ -1162,6 +1174,56 @@ class _TournamentMatchBannerState extends ConsumerState<_TournamentMatchBanner> 
                 ),
               ],
             ),
+            // Chase info
+            if (isLive) ...[
+              () {
+                final liveInnings = match['live_innings'] as int? ?? 1;
+                final target = match['target'] as int? ?? 0;
+                final matchOvers = match['match_overs'] as int? ?? 20;
+                if (liveInnings >= 2 && target > 0) {
+                  final hbf = match['home_bats_first'] as bool? ?? true;
+                  final chasingTeam = hbf ? awayTeam : homeTeam;
+                  final chasingScore = hbf ? aScore : hScore;
+                  final chasingOvers = hbf ? aOvers : hOvers;
+                  final runsNeeded = target - chasingScore;
+                  // Parse overs to compute balls remaining
+                  final overParts = chasingOvers.split('.');
+                  final completedOvers = int.tryParse(overParts[0]) ?? 0;
+                  final ballsInOver = overParts.length > 1 ? (int.tryParse(overParts[1]) ?? 0) : 0;
+                  final totalBallsBowled = completedOvers * 6 + ballsInOver;
+                  final totalBalls = matchOvers * 6;
+                  final ballsRemaining = totalBalls - totalBallsBowled;
+                  if (runsNeeded > 0) {
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                        '$chasingTeam need $runsNeeded from $ballsRemaining balls',
+                        style: TextStyle(
+                          color: Colors.amber.shade300,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    );
+                  }
+                }
+                return const SizedBox.shrink();
+              }(),
+            ],
+            // Commentary
+            if (isLive && _lastCommentary != null && _lastCommentary!.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text(
+                _lastCommentary!,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.7),
+                  fontSize: 11,
+                  fontStyle: FontStyle.italic,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
             // Schedule info for pending matches
             if (isPending && scheduledAt != null) ...[
               const SizedBox(height: 8),
