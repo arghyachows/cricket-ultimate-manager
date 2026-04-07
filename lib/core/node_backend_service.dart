@@ -13,6 +13,19 @@ class NodeBackendService {
   static IO.Socket? _socket;
   static bool _isInitialized = false;
 
+  // Broadcast streams for passive subscribers (dashboard banners, etc.)
+  static final _ballUpdateController = StreamController<Map<String, dynamic>>.broadcast();
+  static final _matchCompleteController = StreamController<Map<String, dynamic>>.broadcast();
+  static Stream<Map<String, dynamic>> get ballUpdates => _ballUpdateController.stream;
+  static Stream<Map<String, dynamic>> get matchCompleteEvents => _matchCompleteController.stream;
+
+  // Handler references for selective event removal
+  static Function(dynamic)? _cbBallHandler;
+  static Function(dynamic)? _cbCompleteHandler;
+  static Function(dynamic)? _cbJoinedHandler;
+  static Function(dynamic)? _streamBallHandler;
+  static Function(dynamic)? _streamCompleteHandler;
+
   /// Whether the socket is currently connected
   static bool get isConnected => _socket != null && _socket!.connected;
 
@@ -148,35 +161,45 @@ class NodeBackendService {
       return false;
     }
 
-    // Clear any previous listeners
-    _socket!.off('ballUpdate');
-    _socket!.off('matchComplete');
-    _socket!.off('joined');
+    // Remove only previous callback-based handlers (preserve stream handlers)
+    if (_cbBallHandler != null) _socket!.off('ballUpdate', _cbBallHandler!);
+    if (_cbCompleteHandler != null) _socket!.off('matchComplete', _cbCompleteHandler!);
+    if (_cbJoinedHandler != null) _socket!.off('joined', _cbJoinedHandler!);
 
     print('👤 Joining match room: $matchId');
     _socket!.emit('joinMatch', matchId);
 
-    _socket!.on('joined', (data) {
+    _cbJoinedHandler = (data) {
       print('✅ Joined match room: ${data['matchId']}');
-    });
+    };
+    _socket!.on('joined', _cbJoinedHandler!);
 
-    _socket!.on('ballUpdate', (data) {
+    _cbBallHandler = (data) {
       try {
         final updateData = data as Map<String, dynamic>;
         onBallUpdate(updateData);
+        // Feed broadcast stream only if no dedicated stream handler is active
+        if (_streamBallHandler == null && !_ballUpdateController.isClosed) {
+          _ballUpdateController.add(updateData);
+        }
       } catch (e) {
         print('❌ Error processing ball update: $e');
       }
-    });
+    };
+    _socket!.on('ballUpdate', _cbBallHandler!);
 
-    _socket!.on('matchComplete', (data) {
+    _cbCompleteHandler = (data) {
       try {
         final completeData = data as Map<String, dynamic>;
         onMatchComplete(completeData);
+        if (_streamCompleteHandler == null && !_matchCompleteController.isClosed) {
+          _matchCompleteController.add(completeData);
+        }
       } catch (e) {
         print('❌ Error processing match complete: $e');
       }
-    });
+    };
+    _socket!.on('matchComplete', _cbCompleteHandler!);
 
     return true;
   }
@@ -187,9 +210,73 @@ class NodeBackendService {
       print('👋 Leaving match room: $matchId');
       _socket!.emit('leaveMatch', matchId);
     }
-    _socket?.off('ballUpdate');
-    _socket?.off('matchComplete');
-    _socket?.off('joined');
+    // Remove only callback-based handlers (preserve stream handlers)
+    if (_cbBallHandler != null) {
+      _socket?.off('ballUpdate', _cbBallHandler!);
+      _cbBallHandler = null;
+    }
+    if (_cbCompleteHandler != null) {
+      _socket?.off('matchComplete', _cbCompleteHandler!);
+      _cbCompleteHandler = null;
+    }
+    if (_cbJoinedHandler != null) {
+      _socket?.off('joined', _cbJoinedHandler!);
+      _cbJoinedHandler = null;
+    }
+  }
+
+  /// Subscribe to ball updates for a match room (for dashboard banners).
+  /// Uses broadcast streams. Re-joins the room if needed.
+  static Future<bool> subscribeToMatchUpdates(String matchId) async {
+    if (_socket == null || !_socket!.connected) {
+      initSocket();
+      final connected = await waitForConnection();
+      if (!connected) return false;
+    }
+
+    // Join room (server-side join is idempotent if already in room)
+    _socket!.emit('joinMatch', matchId);
+
+    // Set up stream-feeding handlers if not already active
+    if (_streamBallHandler == null) {
+      _streamBallHandler = (data) {
+        try {
+          if (!_ballUpdateController.isClosed) {
+            _ballUpdateController.add(data as Map<String, dynamic>);
+          }
+        } catch (e) {
+          print('❌ Error in stream ball handler: $e');
+        }
+      };
+      _socket!.on('ballUpdate', _streamBallHandler!);
+    }
+
+    if (_streamCompleteHandler == null) {
+      _streamCompleteHandler = (data) {
+        try {
+          if (!_matchCompleteController.isClosed) {
+            _matchCompleteController.add(data as Map<String, dynamic>);
+          }
+        } catch (e) {
+          print('❌ Error in stream match complete handler: $e');
+        }
+      };
+      _socket!.on('matchComplete', _streamCompleteHandler!);
+    }
+
+    return true;
+  }
+
+  /// Unsubscribe stream-based match update handlers.
+  static void unsubscribeFromMatchUpdates() {
+    if (_streamBallHandler != null) {
+      _socket?.off('ballUpdate', _streamBallHandler!);
+      _streamBallHandler = null;
+    }
+    if (_streamCompleteHandler != null) {
+      _socket?.off('matchComplete', _streamCompleteHandler!);
+      _streamCompleteHandler = null;
+    }
   }
 
   /// Start a match simulation

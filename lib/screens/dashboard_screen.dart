@@ -901,6 +901,9 @@ class _TournamentMatchBannerState extends ConsumerState<_TournamentMatchBanner> 
   bool _loading = true;
   Timer? _refreshTimer;
   bool _hasLiveMatch = false;
+  String? _subscribedMatchId;
+  StreamSubscription<Map<String, dynamic>>? _ballSub;
+  StreamSubscription<Map<String, dynamic>>? _completeSub;
 
   @override
   void initState() {
@@ -911,7 +914,7 @@ class _TournamentMatchBannerState extends ConsumerState<_TournamentMatchBanner> 
 
   void _startPolling() {
     _refreshTimer?.cancel();
-    // Poll every 5s when live, 30s otherwise
+    // Poll as fallback: 5s when live (for reconnection recovery), 30s otherwise
     final interval = _hasLiveMatch ? const Duration(seconds: 5) : const Duration(seconds: 30);
     _refreshTimer = Timer.periodic(interval, (_) => _fetchActiveMatch());
   }
@@ -919,7 +922,71 @@ class _TournamentMatchBannerState extends ConsumerState<_TournamentMatchBanner> 
   @override
   void dispose() {
     _refreshTimer?.cancel();
+    _unsubscribeSocket();
     super.dispose();
+  }
+
+  void _subscribeSocket(String matchId) {
+    if (_subscribedMatchId == matchId && _ballSub != null) return;
+    _unsubscribeSocket();
+    _subscribedMatchId = matchId;
+
+    NodeBackendService.subscribeToMatchUpdates(matchId);
+    _ballSub = NodeBackendService.ballUpdates.listen((data) {
+      if (!mounted) return;
+      _handleBallUpdate(data);
+    });
+    _completeSub = NodeBackendService.matchCompleteEvents.listen((data) {
+      if (!mounted) return;
+      // Match ended — refresh via HTTP to get final state
+      _fetchActiveMatch();
+    });
+  }
+
+  void _unsubscribeSocket() {
+    _ballSub?.cancel();
+    _ballSub = null;
+    _completeSub?.cancel();
+    _completeSub = null;
+    if (_subscribedMatchId != null) {
+      NodeBackendService.unsubscribeFromMatchUpdates();
+      _subscribedMatchId = null;
+    }
+  }
+
+  void _handleBallUpdate(Map<String, dynamic> data) {
+    final state = data['state'] as Map<String, dynamic>?;
+    if (state == null || _data == null) return;
+
+    final currentMatch = _data!['currentMatch'] as Map<String, dynamic>?;
+    if (currentMatch == null) return;
+
+    final hbf = state['homeBatsFirst'] as bool? ?? true;
+    final score1 = state['score1'] as int? ?? 0;
+    final score2 = state['score2'] as int? ?? 0;
+    final wickets1 = state['wickets1'] as int? ?? 0;
+    final wickets2 = state['wickets2'] as int? ?? 0;
+    final innings = state['innings'] as int? ?? 1;
+    final overNumber = state['overNumber'] as int? ?? 0;
+    final ballNumber = state['ballNumber'] as int? ?? 0;
+
+    final oversStr = '$overNumber.$ballNumber';
+
+    setState(() {
+      _data!['currentMatch'] = {
+        ...currentMatch,
+        'home_score': hbf ? score1 : score2,
+        'away_score': hbf ? score2 : score1,
+        'home_wickets': hbf ? wickets1 : wickets2,
+        'away_wickets': hbf ? wickets2 : wickets1,
+        'home_overs': innings == 1
+            ? (hbf ? oversStr : currentMatch['home_overs'])
+            : (!hbf ? oversStr : currentMatch['home_overs']),
+        'away_overs': innings == 1
+            ? (!hbf ? oversStr : currentMatch['away_overs'])
+            : (hbf ? oversStr : currentMatch['away_overs']),
+      };
+    });
   }
 
   Future<void> _fetchActiveMatch() async {
@@ -940,6 +1007,14 @@ class _TournamentMatchBannerState extends ConsumerState<_TournamentMatchBanner> 
     });
     // Switch polling interval if live status changed
     if (wasLive != isLiveNow) _startPolling();
+
+    // Subscribe/unsubscribe Socket.IO based on live status
+    if (isLiveNow) {
+      final matchId = currentMatch!['id'] as String;
+      _subscribeSocket(matchId);
+    } else {
+      _unsubscribeSocket();
+    }
   }
 
   @override
