@@ -38,7 +38,7 @@ jobs:
 
       - name: Authenticate with IBM Cloud
         run: |
-          ibmcloud login --apikey "${{ secrets.IBM_CLOUD_API_KEY }}" -r "$IBM_CLOUD_REGION"
+          ibmcloud login --apikey "${{ secrets.IBM_CLOUD_API_KEY }}" -r "$IBM_CLOUD_REGION" -g Default
           ibmcloud ce project select --name "$CE_PROJECT"
 
       - name: Deploy to Code Engine
