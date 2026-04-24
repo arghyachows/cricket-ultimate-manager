@@ -8,7 +8,7 @@ class NodeBackendService {
   // Update this URL based on your deployment
   // For Docker: http://127.0.0.1:3000 (use IP, not localhost for web)
   // For production: https://your-domain.com
-  static const String baseUrl = 'https://cricket-ultimate-manager-production.up.railway.app';
+  static const String baseUrl = 'https://cricket-backend.292zqcyh1dxi.us-south.codeengine.appdomain.cloud';
   
   static IO.Socket? _socket;
   static bool _isInitialized = false;

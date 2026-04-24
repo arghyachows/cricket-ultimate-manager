@@ -722,7 +722,7 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
       'homeTeamName': _state.homeTeamName,
       'awayTeamName': _state.awayTeamName,
       'homeBatsFirst': _state.homeBatsFirst,
-      'useAICommentary': false,
+      'useAICommentary': true,
     };
 
     // Step 1: Connect Socket.IO and join match room (same as quick match)
