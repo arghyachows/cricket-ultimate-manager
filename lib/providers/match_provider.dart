@@ -583,13 +583,42 @@ class MatchNotifier extends StateNotifier<MatchState> {
   }
 
   /// Polling fallback for Node.js backend matches.
-  /// Periodically checks match state via REST API in case Socket.IO events are missed.
+  /// DISABLED: Polling was creating synthetic events that corrupted AI commentary.
+  /// Socket.IO delivers the real Watson-generated commentary reliably.
   void _startNodePollingFallback() {
+    // Polling disabled — Socket.IO handles all real-time updates.
+    // Only poll for match completion detection (every 10s as safety net).
     _pollingTimer?.cancel();
     _pollingTimer = Timer.periodic(
-      const Duration(seconds: 3),
-      (_) => _pollNodeMatchState(),
+      const Duration(seconds: 10),
+      (_) => _pollNodeMatchCompletion(),
     );
+  }
+
+  /// Lightweight poll — only checks if match completed (no event/commentary updates).
+  Future<void> _pollNodeMatchCompletion() async {
+    if (_cloudflareMatchId == null) return;
+    try {
+      final stateData = await NodeBackendService.getMatchState(_cloudflareMatchId!);
+      if (stateData == null) return;
+      final matchState = stateData['state'] as Map<String, dynamic>?;
+      if (matchState == null) return;
+      final matchComplete = matchState['matchComplete'] as bool? ?? false;
+      if (matchComplete && state.isSimulating) {
+        print('🏁 Match complete detected via completion poll');
+        _pollingTimer?.cancel();
+        final matchResult = matchState['matchResult'] as String? ?? 'Match completed';
+        state = state.copyWith(
+          isSimulating: false,
+          isMatchComplete: true,
+          currentCommentary: matchResult,
+        );
+        NodeBackendService.leaveMatch(_cloudflareMatchId!);
+        _onMatchComplete();
+      }
+    } catch (e) {
+      // Non-fatal
+    }
   }
 
   Future<void> _pollNodeMatchState() async {
@@ -622,33 +651,38 @@ class MatchNotifier extends StateNotifier<MatchState> {
           (polledInnings == localInnings && polledActiveScore > localScore)) {
         print('📡 Polling caught up: polled=$polledActiveScore local=$localScore inn=$polledInnings');
         
-        // Build a synthetic event from the polled state
-        final overNumber = matchState['overNumber'] as int? ?? 0;
-        final ballNumber = matchState['ballNumber'] as int? ?? 0;
-        final wickets = polledInnings == 1 
-            ? (matchState['wickets1'] as int? ?? 0) 
-            : (matchState['wickets2'] as int? ?? 0);
+        // Reconstruct events from server's commentaryLog instead of synthetic events
+        final commentaryLog = matchState['commentaryLog'] as List? ?? [];
+        final existingCount = state.events.length;
+        final newEvents = <MatchEvent>[];
+        
+        for (var i = existingCount; i < commentaryLog.length; i++) {
+          final entry = commentaryLog[i] as Map<String, dynamic>;
+          newEvents.add(MatchEvent(
+            id: 'poll_${i}_${DateTime.now().millisecondsSinceEpoch}',
+            matchId: _cloudflareMatchId!,
+            innings: entry['innings'] ?? polledInnings,
+            overNumber: entry['overNumber'] ?? 0,
+            ballNumber: entry['ballNumber'] ?? 0,
+            battingTeamId: '',
+            bowlingTeamId: '',
+            batsmanCardId: '',
+            bowlerCardId: '',
+            eventType: entry['eventType'] ?? 'dot_ball',
+            runs: entry['runs'] ?? 0,
+            commentary: entry['commentary'] ?? '',
+            scoreAfter: polledActiveScore,
+            wicketsAfter: polledInnings == 1 
+                ? (matchState['wickets1'] as int? ?? 0) 
+                : (matchState['wickets2'] as int? ?? 0),
+          ));
+        }
 
-        final event = MatchEvent(
-          id: 'poll_${DateTime.now().millisecondsSinceEpoch}',
-          matchId: _cloudflareMatchId!,
-          innings: polledInnings,
-          overNumber: overNumber,
-          ballNumber: ballNumber,
-          battingTeamId: '',
-          bowlingTeamId: '',
-          batsmanCardId: '',
-          bowlerCardId: '',
-          eventType: 'dot_ball',
-          runs: 0,
-          commentary: matchState['currentBatsman'] != null 
-              ? '${matchState['currentBatsman']} on strike'
-              : '',
-          scoreAfter: polledActiveScore,
-          wicketsAfter: wickets,
-        );
-
-        final events = [...state.events, event];
+        final events = [...state.events, ...newEvents];
+        
+        // Get latest commentary text
+        final latestCommentary = matchState['currentCommentary'] as String? ??
+            (newEvents.isNotEmpty ? newEvents.last.commentary : null);
 
         // Update batsman/bowler stats from polled state
         final batsmanStatsData = matchState['batsmanStats'] as Map<String, dynamic>? ?? {};
@@ -686,6 +720,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
         state = state.copyWith(
           events: events,
           currentInnings: polledInnings,
+          currentCommentary: latestCommentary,
           batsmanStats: batsmanStats,
           bowlerStats: bowlerStats,
           target: matchState['target'] ?? 0,
