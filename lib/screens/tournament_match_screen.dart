@@ -241,7 +241,13 @@ class _TournamentMatchScreenState
       final awayScore = hbf ? score2 : score1;
       final awayWickets = hbf ? wickets2 : wickets1;
 
-      final oversStr = '$overNumber.$ballNumber';
+      String oversStr;
+      if (ballNumber == 6) {
+        oversStr = '${overNumber + 1}.0';
+      } else {
+        oversStr = '$overNumber.$ballNumber';
+      }
+
       String homeOvers = _homeOvers;
       String awayOvers = _awayOvers;
       if (innings == 1) {

@@ -800,7 +800,13 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
       final awayWickets = hbf ? wickets2 : wickets1;
 
       // Compute overs display
-      final oversStr = '$overNumber.$ballNumber';
+      String oversStr;
+      if (ballNumber == 6) {
+        oversStr = '${overNumber + 1}.0';
+      } else {
+        oversStr = '$overNumber.$ballNumber';
+      }
+
       String homeOvers = _state.homeOvers;
       String awayOvers = _state.awayOvers;
       if (innings == 1) {
