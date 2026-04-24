@@ -98,10 +98,13 @@ class MatchState {
   }
 
   String _inningsOvers(int inn) {
-    final inns = events.where((e) => e.innings == inn);
+    final inns = events.where((e) => e.innings == inn && e.eventType != 'innings_break');
     if (inns.isEmpty) return '0.0';
-    final last = inns.last;
-    return '${last.overNumber}.${last.ballNumber}';
+    // Count legal deliveries (exclude wides and no-balls)
+    final legalBalls = inns.where((e) => e.eventType != 'wide' && e.eventType != 'no_ball').length;
+    final overs = legalBalls ~/ 6;
+    final balls = legalBalls % 6;
+    return '$overs.$balls';
   }
 
   /// Home team's score (accounts for batting order)
@@ -115,9 +118,7 @@ class MatchState {
   String get awayOvers => homeBatsFirst ? _inningsOvers(2) : _inningsOvers(1);
 
   String get currentOvers {
-    if (events.isEmpty) return '0.0';
-    final last = events.last;
-    return '${last.overNumber}.${last.ballNumber}';
+    return _inningsOvers(currentInnings);
   }
 
   List<BatsmanStats> _orderedBatsmenForInnings(int innings, List<String> xiOrder) {
