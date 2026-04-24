@@ -1,0 +1,17 @@
+.git/
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+android/
+ios/
+linux/
+macos/
+windows/
+test/
+lib/
+assets/
+node_modules/
+# Keep build/web but ignore other build artifacts if any
+build/*
+!build/web/

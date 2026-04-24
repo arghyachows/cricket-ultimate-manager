@@ -1,0 +1,47 @@
+name: Deploy Flutter Web to IBM Cloud
+
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+
+env:
+  IBM_CLOUD_REGION: us-south
+  CE_PROJECT: cricket-serverless
+  CE_APP: cricket-frontend
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          flutter-version: '3.29.0' # Adjust if needed
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Web
+        run: flutter build web --release
+
+      - name: Install IBM Cloud CLI
+        run: |
+          curl -fsSL https://clis.cloud.ibm.com/install/linux | sh
+          ibmcloud config --check-version=false
+          ibmcloud plugin install code-engine
+          ibmcloud plugin install container-registry
+
+      - name: Authenticate with IBM Cloud
+        run: |
+          ibmcloud login --apikey "${{ secrets.IBM_CLOUD_API_KEY }}" -r "$IBM_CLOUD_REGION"
+          ibmcloud ce project select --name "$CE_PROJECT"
+
+      - name: Deploy to Code Engine
+        run: |
+          # Use --build-source . to upload the build/web folder and build the container
+          ibmcloud ce app update --name "$CE_APP" --build-source .
