@@ -100,6 +100,7 @@ class MultiplayerState {
     this.error,
     this.isConnected = false,
     this.matchStartedId,
+    this.chatMessages = const [],
   });
 
   MultiplayerState copyWith({
@@ -111,6 +112,7 @@ class MultiplayerState {
     String? error,
     bool? isConnected,
     String? matchStartedId,
+    List<LobbyChatMessage>? chatMessages,
   }) {
     return MultiplayerState(
       rooms: rooms ?? this.rooms,
@@ -121,6 +123,7 @@ class MultiplayerState {
       error: error,
       isConnected: isConnected ?? this.isConnected,
       matchStartedId: matchStartedId,
+      chatMessages: chatMessages ?? this.chatMessages,
     );
   }
 }
@@ -165,6 +168,21 @@ class MultiplayerNotifier extends StateNotifier<MultiplayerState> {
       
       final rooms = (data as List).map((json) => MultiplayerRoom.fromJson(json)).toList();
       state = state.copyWith(rooms: rooms, isLoading: false);
+    } catch (e) {
+      state = state.copyWith(error: e.toString(), isLoading: false);
+    }
+  }
+
+  Future<void> refreshRoom() async {
+    if (state.currentRoom == null) return;
+    state = state.copyWith(isLoading: true, error: null);
+    try {
+      await Future.wait([
+        _loadRoomUsers(state.currentRoom!.id),
+        _loadPendingChallenges(),
+        _loadChatHistory(state.currentRoom!.id),
+      ]);
+      state = state.copyWith(isLoading: false);
     } catch (e) {
       state = state.copyWith(error: e.toString(), isLoading: false);
     }
@@ -248,6 +266,10 @@ class MultiplayerNotifier extends StateNotifier<MultiplayerState> {
       await _loadPendingChallenges();
       print('Loaded ${state.pendingChallenges.length} challenges');
 
+      print('Loading chat history...');
+      await _loadChatHistory(roomId);
+      print('Loaded ${state.chatMessages.length} messages');
+
       // Setup WebSocket channel for real-time updates
       print('Setting up realtime channel...');
       await _setupRealtimeChannel(roomId, userId);
@@ -313,6 +335,19 @@ class MultiplayerNotifier extends StateNotifier<MultiplayerState> {
           ),
           callback: (payload) {
             _handleUserLeft(payload.oldRecord);
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'multiplayer_chats',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'room_id',
+            value: roomId,
+          ),
+          callback: (payload) {
+            _handleNewChatMessage(payload.newRecord);
           },
         );
 
@@ -441,13 +476,62 @@ class MultiplayerNotifier extends StateNotifier<MultiplayerState> {
         // Trigger navigation by setting matchStartedId
         state = state.copyWith(matchStartedId: matchId);
         print('State updated with matchStartedId: ${state.matchStartedId}');
-      } else {
-        print('User is NOT part of this match, ignoring');
       }
     } catch (e, stackTrace) {
       print('=== ERROR HANDLING MATCH CREATED ===');
       print('Error: $e');
       print('Stack trace: $stackTrace');
+    }
+  }
+
+  void _handleNewChatMessage(Map<String, dynamic> data) {
+    try {
+      final message = LobbyChatMessage.fromJson(data);
+      // Avoid duplicate messages if already loaded via fetch
+      if (!state.chatMessages.any((m) => m.id == message.id)) {
+        state = state.copyWith(chatMessages: [...state.chatMessages, message]);
+      }
+    } catch (e) {
+      print('Error handling chat message: $e');
+    }
+  }
+
+  Future<void> _loadChatHistory(String roomId) async {
+    try {
+      final data = await SupabaseService.client
+          .from('multiplayer_chats')
+          .select()
+          .eq('room_id', roomId)
+          .order('created_at', ascending: true)
+          .limit(50);
+      
+      final messages = (data as List).map((json) => LobbyChatMessage.fromJson(json)).toList();
+      state = state.copyWith(chatMessages: messages);
+    } catch (e) {
+      print('Error loading chat history: $e');
+    }
+  }
+
+  Future<void> sendChatMessage(String message) async {
+    if (message.trim().isEmpty || state.currentRoom == null) return;
+    
+    try {
+      final userId = SupabaseService.currentUserId;
+      final team = ref.read(teamProvider).valueOrNull;
+      
+      if (userId == null || team == null) return;
+
+      await SupabaseService.client.from('multiplayer_chats').insert({
+        'room_id': state.currentRoom!.id,
+        'user_id': userId,
+        'team_name': team.teamName,
+        'message': message.trim(),
+      });
+    } catch (e) {
+      print('Error sending chat message: $e');
+      state = state.copyWith(error: 'Failed to send message: $e');
+    }
+  }
     }
   }
 
