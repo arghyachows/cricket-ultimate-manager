@@ -2,7 +2,6 @@ services:
   - type: web
     name: cricket-ultimate-frontend
     runtime: static
-    plan: free
     branch: gh-pages
     buildCommand: "true"
     staticPublishPath: .
