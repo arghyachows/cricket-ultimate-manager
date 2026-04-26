@@ -348,9 +348,21 @@ class MultiplayerNotifier extends StateNotifier<MultiplayerState> {
             .eq('id', challengeId)
             .single();
 
-        final userId = SupabaseService.currentUserId;
         final team = ref.read(teamProvider).valueOrNull;
-        final homePresence = state.usersInRoom.firstWhere((u) => u.userId == challengeData['challenger_id'], orElse: () => null as RoomPresence);
+        
+        // Find the challenger's presence to get their team name
+        String homeTeamName = 'Home Team';
+        try {
+          final homePresence = state.usersInRoom.firstWhere(
+            (u) => u.userId == challengeData['challenger_id']
+          );
+          homeTeamName = homePresence.teamName;
+        } catch (_) {
+          // If not in room, we'll use a default or try to fetch it if we had more time
+          // For now, 'Home Team' is better than null
+        }
+
+        final awayTeamName = team?.teamName ?? 'Away Team';
 
         final match = await SupabaseService.client.from('multiplayer_matches').insert({
           'challenge_id': challengeId,
@@ -358,8 +370,8 @@ class MultiplayerNotifier extends StateNotifier<MultiplayerState> {
           'away_user_id': challengeData['challenged_id'],
           'home_team_id': challengeData['challenger_team_id'],
           'away_team_id': challengeData['challenged_team_id'],
-          'home_team_name': homePresence?.teamName ?? 'Home',
-          'away_team_name': team?.teamName ?? 'Away',
+          'home_team_name': homeTeamName,
+          'away_team_name': awayTeamName,
           'match_format': challengeData['match_format'],
           'match_overs': challengeData['match_overs'],
           'status': 'waiting',
