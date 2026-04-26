@@ -623,10 +623,10 @@ class MatchNotifier extends StateNotifier<MatchState> {
   }
 
   Future<void> _pollNodeMatchState() async {
-    if (_cloudflareMatchId == null) return;
+    if (_remoteMatchId == null) return;
 
     try {
-      final stateData = await NodeBackendService.getMatchState(_cloudflareMatchId!);
+      final stateData = await NodeBackendService.getMatchState(_remoteMatchId!);
       if (stateData == null) return;
 
       final matchState = stateData['state'] as Map<String, dynamic>?;
