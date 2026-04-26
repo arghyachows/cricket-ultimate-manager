@@ -368,7 +368,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
   Timer? _simulationTimer;
   Timer? _pollingTimer;
   MatchEngine? _engine;
-  String? _cloudflareMatchId;
+  String? _remoteMatchId;
   // Always use Node.js backend
   static const bool _nodeBackendEnabled = true;
 
@@ -404,7 +404,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
     _simulationTimer?.cancel();
     _pollingTimer?.cancel();
     _engine = null;
-    _cloudflareMatchId = null;
+    _remoteMatchId = null;
     
     // Initialize fresh state
     state = MatchState(
@@ -477,8 +477,8 @@ class MatchNotifier extends StateNotifier<MatchState> {
   }) async {
     try {
       print('🚀 Attempting Node.js backend match simulation...');
-      _cloudflareMatchId = const Uuid().v4();
-      print('📝 Match ID: $_cloudflareMatchId');
+      _remoteMatchId = const Uuid().v4();
+      print('📝 Match ID: $_remoteMatchId');
 
       // Convert LineupPlayer to simple map format
       final homeXIData = homeXI.map((p) => {
@@ -546,7 +546,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
       // Step 2: Join match room and wait for confirmation
       print('👤 Joining match room...');
       final joined = await NodeBackendService.joinMatch(
-        _cloudflareMatchId!,
+        _remoteMatchId!,
         _onNodeBallUpdate,
         _onNodeMatchComplete,
       );
@@ -562,7 +562,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
       // Step 3: NOW start the match (backend starts emitting events)
       print('⚙️ Config prepared, calling Node.js backend...');
       final started = await NodeBackendService.startMatch(
-        matchId: _cloudflareMatchId!,
+        matchId: _remoteMatchId!,
         config: config,
       );
 
@@ -574,7 +574,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
       }
 
       print('❌ Node.js backend returned false');
-      NodeBackendService.leaveMatch(_cloudflareMatchId!);
+      NodeBackendService.leaveMatch(_remoteMatchId!);
       return false;
     } catch (e, stackTrace) {
       print('❌ Node.js backend match start exception: $e');
@@ -598,9 +598,9 @@ class MatchNotifier extends StateNotifier<MatchState> {
 
   /// Lightweight poll — only checks if match completed (no event/commentary updates).
   Future<void> _pollNodeMatchCompletion() async {
-    if (_cloudflareMatchId == null) return;
+    if (_remoteMatchId == null) return;
     try {
-      final stateData = await NodeBackendService.getMatchState(_cloudflareMatchId!);
+      final stateData = await NodeBackendService.getMatchState(_remoteMatchId!);
       if (stateData == null) return;
       final matchState = stateData['state'] as Map<String, dynamic>?;
       if (matchState == null) return;
@@ -614,7 +614,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
           isMatchComplete: true,
           currentCommentary: matchResult,
         );
-        NodeBackendService.leaveMatch(_cloudflareMatchId!);
+        NodeBackendService.leaveMatch(_remoteMatchId!);
         _onMatchComplete();
       }
     } catch (e) {
@@ -661,7 +661,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
           final entry = commentaryLog[i] as Map<String, dynamic>;
           newEvents.add(MatchEvent(
             id: 'poll_${i}_${DateTime.now().millisecondsSinceEpoch}',
-            matchId: _cloudflareMatchId!,
+            matchId: _remoteMatchId!,
             innings: entry['innings'] ?? polledInnings,
             overNumber: entry['overNumber'] ?? 0,
             ballNumber: entry['ballNumber'] ?? 0,
@@ -741,7 +741,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
           currentCommentary: matchResult,
         );
         
-        NodeBackendService.leaveMatch(_cloudflareMatchId!);
+        NodeBackendService.leaveMatch(_remoteMatchId!);
         _onMatchComplete();
       }
     } catch (e) {
@@ -768,7 +768,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
       // Build event from result
       final event = MatchEvent(
         id: 'node_${DateTime.now().millisecondsSinceEpoch}',
-        matchId: _cloudflareMatchId!,
+        matchId: _remoteMatchId!,
         innings: result['innings'] ?? 1,
         overNumber: result['overNumber'] ?? 0,
         ballNumber: result['ballNumber'] ?? 0,
@@ -891,7 +891,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
       }
 
       // Leave WebSocket room
-      NodeBackendService.leaveMatch(_cloudflareMatchId!);
+      NodeBackendService.leaveMatch(_remoteMatchId!);
 
       // Trigger match completion logic
       _onMatchComplete();
@@ -1052,7 +1052,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
   }
 
   void _onMatchComplete() {
-    // For Cloudflare matches, we need to get scores from state, not engine
+    // For remote matches, we need to get scores from state, not engine
     final score1 = state.homeBatsFirst ? state.homeScore : state.awayScore;
     final score2 = state.homeBatsFirst ? state.awayScore : state.homeScore;
     final homeBatsFirst = state.homeBatsFirst;
@@ -1265,11 +1265,10 @@ class MatchNotifier extends StateNotifier<MatchState> {
   void reset() {
     _simulationTimer?.cancel();
     _pollingTimer?.cancel();
-    if (_cloudflareMatchId != null && _nodeBackendEnabled) {
-      NodeBackendService.leaveMatch(_cloudflareMatchId!);
+    if (_remoteMatchId != null && _nodeBackendEnabled) {
+      NodeBackendService.leaveMatch(_remoteMatchId!);
     }
-    _engine = null;
-    _cloudflareMatchId = null;
+    _remoteMatchId = null;
     state = const MatchState();
   }
 
@@ -1277,8 +1276,8 @@ class MatchNotifier extends StateNotifier<MatchState> {
   void dispose() {
     _simulationTimer?.cancel();
     _pollingTimer?.cancel();
-    if (_cloudflareMatchId != null && _nodeBackendEnabled) {
-      NodeBackendService.leaveMatch(_cloudflareMatchId!);
+    if (_remoteMatchId != null && _nodeBackendEnabled) {
+      NodeBackendService.leaveMatch(_remoteMatchId!);
     }
     super.dispose();
   }
