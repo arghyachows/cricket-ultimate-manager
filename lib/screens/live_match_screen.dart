@@ -14,19 +14,29 @@ class LiveMatchScreen extends ConsumerStatefulWidget {
 }
 
 class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late TabController _tabController;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _tabController = TabController(length: 2, vsync: this);
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _tabController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Refresh match state when returning to app
+      ref.read(matchProvider.notifier).refreshState();
+    }
   }
 
   @override

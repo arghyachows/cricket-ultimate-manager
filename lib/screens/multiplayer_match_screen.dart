@@ -261,7 +261,7 @@ class MultiplayerMatchScreen extends ConsumerStatefulWidget {
 }
 
 class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   static const Duration _tossDecisionFallbackDelay = Duration(seconds: 12);
 
   late TabController _tabController;
@@ -329,12 +329,14 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _tabController = TabController(length: 2, vsync: this);
     _loadMatch();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _cancelTossDecisionFallback();
     _pollingTimer?.cancel();
     _tabController.dispose();
@@ -347,6 +349,18 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
     // Unsubscribe from realtime channel
     SupabaseService.client.channel('mp_match_${widget.matchId}').unsubscribe();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Refresh match state when returning to app
+      _loadMatch();
+      // Also ensure socket is joined
+      if (_state.isSimulating) {
+        NodeBackendService.joinMatch(widget.matchId);
+      }
+    }
   }
 
   void _setState(_MultiplayerMatchState Function(_MultiplayerMatchState s) fn) {
