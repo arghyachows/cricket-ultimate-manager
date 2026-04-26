@@ -452,29 +452,32 @@ final multiplayerMatchHistoryProvider =
         bowlerStats[e.key] = BowlerStats(
           name: b['name'] as String? ?? '',
           innings: b['innings'] as int? ?? 1,
-          overs: (b['overs'] as num? ?? 0).toDouble(),
-          maidens: b['maidens'] as int? ?? 0,
-          runs: b['runs'] as int? ?? 0,
-          wickets: b['wickets'] as int? ?? 0,
+          overs: (b['overs'] as num? ?? 0).toInt(),
+          balls: (b['balls'] as num? ?? 0).toInt(),
+          runs: (b['runs'] as num? ?? 0).toInt(),
+          wickets: (b['wickets'] as num? ?? 0).toInt(),
         );
       }
     }
 
     return MatchSummary(
-      id: m['id'],
-      matchDate: DateTime.parse(m['created_at']),
-      opponentName: isHome ? m['away_team_name'] : m['home_team_name'],
-      format: m['match_format'],
-      userScore: isHome ? m['home_score'] : m['away_score'],
-      userWickets: isHome ? m['home_wickets'] : m['away_wickets'],
-      userOvers: (isHome ? m['home_overs'] : m['away_overs'] as num? ?? 0).toDouble(),
-      opponentScore: isHome ? m['away_score'] : m['home_score'],
-      opponentWickets: isHome ? m['away_wickets'] : m['home_wickets'],
-      opponentOvers: (isHome ? m['away_overs'] : m['home_overs'] as num? ?? 0).toDouble(),
-      result: m['match_result'] ?? 'Completed',
-      isWin: userWon,
+      homeTeamName: m['home_team_name'] ?? 'Home',
+      awayTeamName: m['away_team_name'] ?? 'Away',
+      format: m['match_format'] ?? 't20',
+      homeScore: m['home_score'] ?? 0,
+      homeWickets: m['home_wickets'] ?? 0,
+      homeOvers: m['home_overs']?.toString() ?? '0.0',
+      awayScore: m['away_score'] ?? 0,
+      awayWickets: m['away_wickets'] ?? 0,
+      awayOvers: m['away_overs']?.toString() ?? '0.0',
+      homeWon: homeWon,
+      coinsAwarded: 0,
+      xpAwarded: 0,
+      playedAt: DateTime.parse(m['created_at']),
       batsmanStats: batsmanStats,
       bowlerStats: bowlerStats,
+      events: const [],
+      homeBatsFirst: true,
     );
   }).toList();
 });
