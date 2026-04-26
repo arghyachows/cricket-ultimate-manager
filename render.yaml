@@ -1,5 +1,5 @@
 services:
-  - type: static
+  - type: static_site
     name: cricket-ultimate-frontend
     region: singapore
     plan: free
