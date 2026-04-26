@@ -358,7 +358,11 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
       _loadMatch();
       // Also ensure socket is joined
       if (_state.isSimulating) {
-        NodeBackendService.joinMatch(widget.matchId);
+        NodeBackendService.joinMatch(
+          widget.matchId,
+          _onSocketBallUpdate,
+          _onSocketMatchComplete,
+        );
       }
     }
   }
