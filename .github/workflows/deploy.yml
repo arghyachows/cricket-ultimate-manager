@@ -1,23 +1,36 @@
-name: Deploy to Render
+name: Build and Deploy to Render Static Site
 
 on:
   push:
-    branches: [main, master]
+    branches: [master]
   workflow_dispatch:
 
 jobs:
-  deploy:
-    name: 🚀 Deploy to Render
+  build-and-deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger Render Deploy Hook
-        run: |
-          echo "🚀 Triggering Render deployment for Frontend..."
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
-            -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}")
-          echo "Response code: $RESPONSE"
-          if [[ "$RESPONSE" != 2* ]]; then
-            echo "❌ Render deploy hook failed with status $RESPONSE"
-            exit 1
-          fi
-          echo "✅ Render deploy triggered successfully"
+      - name: ⬇️ Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🛠️ Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.29.0'
+          channel: 'stable'
+          cache: true
+
+      - name: 📦 Get dependencies
+        run: flutter pub get
+
+      - name: 🏗️ Build Web
+        run: flutter build web --release --base-href "/"
+
+      - name: 🚀 Deploy to Branch
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: build/web
+          branch: gh-pages
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: ✅ Done
+        run: echo "Build complete and pushed to gh-pages branch."
