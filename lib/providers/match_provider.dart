@@ -528,7 +528,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
         'homeTeamName': homeTeamName,
         'awayTeamName': awayTeamName,
         'homeBatsFirst': homeBatsFirst,
-        'useAICommentary': true,
+        'useAICommentary': false,
       };
 
       // Step 1: Connect Socket.IO FIRST and wait for connection

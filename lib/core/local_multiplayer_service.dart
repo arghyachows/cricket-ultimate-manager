@@ -1,8 +1,9 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'app_config.dart';
 
 class LocalMultiplayerService {
-  static const String baseUrl = 'https://cricket-ultimate-manager-production.up.railway.app';
+  static String get baseUrl => AppConfig.backendUrl;
   
   static Future<bool> startMultiplayerMatch({
     required String matchId,

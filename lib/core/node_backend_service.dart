@@ -2,13 +2,11 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:socket_io_client/socket_io_client.dart' as IO;
+import 'app_config.dart';
 
 /// Service to interact with Node.js backend for match simulation
 class NodeBackendService {
-  // Update this URL based on your deployment
-  // For Docker: http://127.0.0.1:3000 (use IP, not localhost for web)
-  // For production: https://your-domain.com
-  static const String baseUrl = 'https://cricket-backend.292zqcyh1dxi.us-south.codeengine.appdomain.cloud';
+  static String get baseUrl => AppConfig.backendUrl;
   
   static IO.Socket? _socket;
   static bool _isInitialized = false;
