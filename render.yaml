@@ -1,10 +1,12 @@
 services:
-  - type: static_site
+  - type: web
     name: cricket-ultimate-frontend
+    runtime: static
     region: singapore
     plan: free
     branch: gh-pages
-    publishPath: .
+    buildCommand: "true"
+    staticPublishPath: .
     routes:
       - type: rewrite
         source: /*
