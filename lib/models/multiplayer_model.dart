@@ -122,32 +122,3 @@ class MatchChallenge {
   bool get isPending => status == 'pending';
   bool get isExpired => status == 'expired' || DateTime.now().isAfter(expiresAt);
 }
-
-class LobbyChatMessage {
-  final String id;
-  final String roomId;
-  final String userId;
-  final String teamName;
-  final String message;
-  final DateTime createdAt;
-
-  const LobbyChatMessage({
-    required this.id,
-    required this.roomId,
-    required this.userId,
-    required this.teamName,
-    required this.message,
-    required this.createdAt,
-  });
-
-  factory LobbyChatMessage.fromJson(Map<String, dynamic> json) {
-    return LobbyChatMessage(
-      id: json['id'],
-      roomId: json['room_id'],
-      userId: json['user_id'],
-      teamName: json['team_name'] ?? 'Unknown',
-      message: json['message'] ?? '',
-      createdAt: DateTime.parse(json['created_at']),
-    );
-  }
-}

@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../core/theme.dart';
 import '../providers/multiplayer_provider.dart';
-import '../models/models.dart';
 import '../providers/auth_provider.dart';
 
 class MultiplayerRoomScreen extends ConsumerStatefulWidget {
@@ -37,352 +36,300 @@ class _MultiplayerRoomScreenState extends ConsumerState<MultiplayerRoomScreen> {
 
     // Listen for match start (only once per match)
     ref.listen<MultiplayerState>(multiplayerProvider, (previous, next) {
+      print('=== MULTIPLAYER STATE CHANGED ===');
+      print('Previous matchStartedId: ${previous?.matchStartedId}');
+      print('Next matchStartedId: ${next.matchStartedId}');
+      print('Has navigated: $_hasNavigated');
+      
       if (next.matchStartedId != null && 
           previous?.matchStartedId != next.matchStartedId && 
           !_hasNavigated) {
+        // Match started, navigate to match screen
+        print('=== NAVIGATING TO MATCH: ${next.matchStartedId} ===');
         _hasNavigated = true;
         final matchId = next.matchStartedId!;
+        
+        // Clear the match started ID immediately
         ref.read(multiplayerProvider.notifier).clearMatchStarted();
+        
+        // Navigate immediately — the match screen handles its own loading state
         context.push('/multiplayer/match/$matchId').then((_) {
+          print('=== NAVIGATION COMPLETED ===');
           if (mounted) {
-            _hasNavigated = false;
+            _hasNavigated = false; // Reset for next match
             ref.invalidate(activeMultiplayerMatchProvider);
           }
         });
       }
     });
 
-    return DefaultTabController(
-      length: 2,
-      child: PopScope(
-        canPop: true,
-        onPopInvokedWithResult: (didPop, result) async {
-          if (didPop) {
-            await ref.read(multiplayerProvider.notifier).leaveRoom();
-          }
-        },
-        child: Scaffold(
-          backgroundColor: AppTheme.background,
-          appBar: AppBar(
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            title: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  state.currentRoom?.roomName.toUpperCase() ?? 'LOBBY',
-                  style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, letterSpacing: 1),
-                ),
-                Text(
-                  state.isConnected ? '● Connected' : '○ Connecting...',
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: state.isConnected ? Colors.greenAccent : Colors.orangeAccent,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
+    return PopScope(
+      canPop: true,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) {
+          await ref.read(multiplayerProvider.notifier).leaveRoom();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: AppTheme.background,
+        appBar: AppBar(
+          title: Text(state.currentRoom?.roomName ?? 'ROOM'),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: () {
+                if (state.currentRoom != null) {
+                  ref.read(multiplayerProvider.notifier).refreshRoom();
+                }
+              },
             ),
-            actions: [
-              if (state.pendingChallenges.isNotEmpty)
-                IconButton(
-                  icon: Badge(
-                    label: Text('${state.pendingChallenges.length}'),
-                    child: const Icon(Icons.notifications_outlined),
+            if (state.pendingChallenges.isNotEmpty)
+              Stack(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.notifications),
+                    onPressed: () => _showChallengesDialog(context, ref, hasActiveMatch),
                   ),
-                  onPressed: () => _showChallengesDialog(context, ref, hasActiveMatch),
-                ),
-              IconButton(
-                icon: const Icon(Icons.refresh),
-                onPressed: () => ref.read(multiplayerProvider.notifier).refreshRoom(),
+                  Positioned(
+                    right: 8,
+                    top: 8,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: const BoxDecoration(
+                        color: Colors.red,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Text(
+                        '${state.pendingChallenges.length}',
+                        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
-            bottom: const TabBar(
-              indicatorColor: AppTheme.accent,
-              labelColor: AppTheme.accent,
-              unselectedLabelColor: Colors.white54,
-              tabs: [
-                Tab(
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.people_outline, size: 18),
-                      SizedBox(width: 8),
-                      Text('PLAYERS'),
-                    ],
-                  ),
-                ),
-                Tab(
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.chat_bubble_outline, size: 18),
-                      SizedBox(width: 8),
-                      Text('CHAT'),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          body: TabBarView(
-            children: [
-              _buildPlayersTab(context, ref, state, currentUser, hasActiveMatch),
-              _buildChatTab(context, ref, state, currentUser),
-            ],
-          ),
+          ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildPlayersTab(BuildContext context, WidgetRef ref, MultiplayerState state, currentUser, bool hasActiveMatch) {
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          color: Colors.black.withOpacity(0.2),
-          child: Row(
-            children: [
-              const Icon(Icons.info_outline, size: 14, color: AppTheme.accent),
-              const SizedBox(width: 8),
-              Text(
-                '${state.usersInRoom.length} Players Online',
-                style: const TextStyle(fontSize: 12, color: Colors.white70, fontWeight: FontWeight.bold),
+        body: Column(
+          children: [
+            // Room info banner
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [AppTheme.primary.withValues(alpha: 0.6), AppTheme.surface],
+                ),
               ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: state.usersInRoom.isEmpty
-              ? const Center(child: Text('Waiting for players...'))
-              : ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: state.usersInRoom.length,
-                  itemBuilder: (context, index) {
-                    final user = state.usersInRoom[index];
-                    final isCurrentUser = user.userId == currentUser?.id;
-                    return _buildUserCard(context, ref, user, isCurrentUser, hasActiveMatch);
-                  },
-                ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildChatTab(BuildContext context, WidgetRef ref, MultiplayerState state, currentUser) {
-    final TextEditingController chatController = TextEditingController();
-    final ScrollController scrollController = ScrollController();
-
-    // Auto-scroll to bottom when new messages arrive
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (scrollController.hasClients) {
-        scrollController.animateTo(
-          scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
-      }
-    });
-
-    return Column(
-      children: [
-        Expanded(
-          child: state.chatMessages.isEmpty
-              ? const Center(
-                  child: Column(
+              child: Column(
+                children: [
+                  Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.chat_outlined, size: 48, color: Colors.white10),
-                      SizedBox(height: 16),
-                      Text('No messages yet. Start the conversation!', style: TextStyle(color: Colors.white24)),
-                    ],
-                  ),
-                )
-              : ListView.builder(
-                  controller: scrollController,
-                  padding: const EdgeInsets.all(16),
-                  itemCount: state.chatMessages.length,
-                  itemBuilder: (context, index) {
-                    final msg = state.chatMessages[index];
-                    final isMe = msg.userId == currentUser?.id;
-                    
-                    return Align(
-                      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-                      child: Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
-                        padding: const EdgeInsets.all(12),
+                      const Icon(Icons.people, color: AppTheme.accent, size: 40),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: isMe ? AppTheme.primary : AppTheme.surfaceLight,
-                          borderRadius: BorderRadius.only(
-                            topLeft: const Radius.circular(16),
-                            topRight: const Radius.circular(16),
-                            bottomLeft: Radius.circular(isMe ? 16 : 0),
-                            bottomRight: Radius.circular(isMe ? 0 : 16),
-                          ),
-                          border: Border.all(
-                            color: isMe ? AppTheme.accent.withOpacity(0.3) : Colors.white10,
-                          ),
+                          color: state.isConnected ? Colors.green : Colors.orange,
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            if (!isMe)
-                              Text(
-                                msg.teamName,
-                                style: const TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppTheme.accent,
-                                ),
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                shape: BoxShape.circle,
                               ),
-                            const SizedBox(height: 4),
-                            Text(
-                              msg.message,
-                              style: const TextStyle(color: Colors.white, fontSize: 14),
+                              child: state.isConnected
+                                  ? const SizedBox()
+                                  : const CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation(Colors.white),
+                                    ),
                             ),
-                            const SizedBox(height: 4),
+                            const SizedBox(width: 4),
                             Text(
-                              '${msg.createdAt.toLocal().hour}:${msg.createdAt.toLocal().minute.toString().padLeft(2, '0')}',
-                              style: TextStyle(fontSize: 8, color: Colors.white.withOpacity(0.5)),
+                              state.isConnected ? 'LIVE' : 'CONNECTING',
+                              style: const TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
                             ),
                           ],
                         ),
                       ),
-                    );
-                  },
-                ),
-        ),
-        Container(
-          padding: EdgeInsets.fromLTRB(16, 8, 16, 8 + MediaQuery.of(context).viewInsets.bottom),
-          decoration: BoxDecoration(
-            color: AppTheme.surface,
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 10)],
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: chatController,
-                  style: const TextStyle(color: Colors.white, fontSize: 14),
-                  decoration: InputDecoration(
-                    hintText: 'Type a message...',
-                    hintStyle: const TextStyle(color: Colors.white24),
-                    filled: true,
-                    fillColor: AppTheme.background,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(24),
-                      borderSide: BorderSide.none,
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '${state.usersInRoom.length} Players Online',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.accent,
                     ),
                   ),
-                  onSubmitted: (val) {
-                    if (val.trim().isNotEmpty) {
-                      ref.read(multiplayerProvider.notifier).sendChatMessage(val);
-                      chatController.clear();
-                    }
-                  },
-                ),
-              ),
-              const SizedBox(width: 12),
-              GestureDetector(
-                onTap: () {
-                  if (chatController.text.trim().isNotEmpty) {
-                    ref.read(multiplayerProvider.notifier).sendChatMessage(chatController.text);
-                    chatController.clear();
-                  }
-                },
-                child: Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: const BoxDecoration(
-                    color: AppTheme.accent,
-                    shape: BoxShape.circle,
+                  const SizedBox(height: 4),
+                  Text(
+                    state.isConnected
+                        ? 'Challenge other players to a match!'
+                        : 'Connecting to room...',
+                    style: const TextStyle(fontSize: 12, color: Colors.white54),
                   ),
-                  child: const Icon(Icons.send, color: Colors.black, size: 20),
-                ),
+                ],
               ),
-            ],
-          ),
+            ),
+
+            // Users list
+            Expanded(
+              child: state.usersInRoom.isEmpty
+                  ? const Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.people_outline, size: 64, color: Colors.white24),
+                          SizedBox(height: 16),
+                          Text(
+                            'No other players in this room yet...',
+                            style: TextStyle(color: Colors.white38),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            'Waiting for players to join...',
+                            style: TextStyle(color: Colors.white24, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: state.usersInRoom.length,
+                      itemBuilder: (context, index) {
+                        final user = state.usersInRoom[index];
+                        final isCurrentUser = user.userId == currentUser?.id;
+                        
+                        return AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 300),
+                          child: _buildUserCard(context, ref, user, isCurrentUser, hasActiveMatch),
+                        );
+                      },
+                    ),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 
   Widget _buildUserCard(BuildContext context, WidgetRef ref, user, bool isCurrentUser, bool hasActiveMatch) {
-    return Container(
+    return Card(
       margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: isCurrentUser ? AppTheme.primary.withOpacity(0.1) : AppTheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isCurrentUser ? AppTheme.accent.withOpacity(0.5) : Colors.white.withOpacity(0.05),
-        ),
-      ),
-      child: ListTile(
-        contentPadding: const EdgeInsets.all(12),
-        leading: Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(colors: [AppTheme.primaryLight, AppTheme.primary]),
-            shape: BoxShape.circle,
-            border: Border.all(color: isCurrentUser ? AppTheme.accent : Colors.white24, width: 2),
-          ),
-          child: Center(
-            child: Text(
-              user.teamName[0].toUpperCase(),
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-            ),
-          ),
-        ),
-        title: Row(
+      color: isCurrentUser ? AppTheme.primary.withValues(alpha: 0.3) : AppTheme.surface,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
           children: [
-            Expanded(
-              child: Text(
-                user.teamName,
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                overflow: TextOverflow.ellipsis,
+            // Avatar
+            Container(
+              width: 50,
+              height: 50,
+              decoration: BoxDecoration(
+                color: AppTheme.primaryLight,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: isCurrentUser ? AppTheme.accent : Colors.white24,
+                  width: 2,
+                ),
+              ),
+              child: Center(
+                child: Text(
+                  user.teamName[0].toUpperCase(),
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
             ),
-            if (isCurrentUser)
-              Container(
-                margin: const EdgeInsets.only(left: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(color: AppTheme.accent, borderRadius: BorderRadius.circular(4)),
-                child: const Text('YOU', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.black)),
+            const SizedBox(width: 16),
+            
+            // User info
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        user.teamName,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      if (isCurrentUser) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: AppTheme.accent,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            'YOU',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      const Icon(Icons.star, size: 14, color: AppTheme.cardGold),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Level ${user.userLevel}',
+                        style: const TextStyle(fontSize: 12, color: Colors.white54),
+                      ),
+                    ],
+                  ),
+                ],
               ),
-          ],
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Row(
-            children: [
-              const Icon(Icons.military_tech, size: 14, color: AppTheme.cardGold),
-              const SizedBox(width: 4),
-              Text('Level ${user.userLevel}', style: const TextStyle(fontSize: 12, color: Colors.white54)),
-            ],
-          ),
-        ),
-        trailing: !isCurrentUser
-            ? ElevatedButton(
-                onPressed: hasActiveMatch ? null : () => _showChallengeDialog(context, ref, user),
+            ),
+
+            // Challenge button
+            if (!isCurrentUser)
+              ElevatedButton.icon(
+                onPressed: hasActiveMatch
+                    ? null
+                    : () => _showChallengeDialog(context, ref, user),
+                icon: const Icon(Icons.sports_cricket, size: 16),
+                label: Text(hasActiveMatch ? 'MATCH IN PROGRESS' : 'CHALLENGE'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.accent,
                   foregroundColor: Colors.black,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                  minimumSize: const Size(80, 32),
+                  disabledBackgroundColor: Colors.grey.shade700,
+                  disabledForegroundColor: Colors.white38,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 ),
-                child: Text(hasActiveMatch ? 'ACTIVE' : 'CHALLENGE', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-              )
-            : null,
+              ),
+          ],
+        ),
       ),
     );
   }
 
   void _showChallengeDialog(BuildContext context, WidgetRef ref, user) {
-    int selectedOvers = 5;
+    const int selectedOvers = 5;
     bool sending = false;
     
     showDialog(
@@ -390,48 +337,44 @@ class _MultiplayerRoomScreenState extends ConsumerState<MultiplayerRoomScreen> {
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           backgroundColor: AppTheme.surface,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          title: Text('Challenge ${user.teamName}'),
+          title: const Text('Challenge Player'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text('Select match duration:', style: TextStyle(fontSize: 14, color: Colors.white70)),
-              const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [5, 10, 20].map((overs) {
-                  final isSelected = selectedOvers == overs;
-                  return InkWell(
-                    onTap: () => setDialogState(() => selectedOvers = overs),
-                    child: Container(
-                      width: 50,
-                      height: 50,
-                      decoration: BoxDecoration(
-                        color: isSelected ? AppTheme.accent : AppTheme.surfaceLight,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: isSelected ? AppTheme.accent : Colors.white10),
-                      ),
-                      child: Center(
-                        child: Text(
-                          '$overs',
-                          style: TextStyle(
-                            color: isSelected ? Colors.black : Colors.white,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
+              Text(
+                'Challenge ${user.teamName} to a match?',
+                style: const TextStyle(fontSize: 14),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(
+                  color: AppTheme.surfaceLight,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppTheme.accent.withOpacity(0.5)),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.sports_cricket, color: AppTheme.accent, size: 18),
+                    SizedBox(width: 8),
+                    Text(
+                      '5 Overs Match',
+                      style: TextStyle(
+                        color: AppTheme.accent,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
                       ),
                     ),
-                  );
-                }).toList(),
+                  ],
+                ),
               ),
-              const SizedBox(height: 8),
-              const Text('Overs', style: TextStyle(fontSize: 10, color: Colors.white38)),
             ],
           ),
           actions: [
             TextButton(
               onPressed: sending ? null : () => Navigator.pop(context),
-              child: const Text('CANCEL', style: TextStyle(color: Colors.white54)),
+              child: const Text('CANCEL'),
             ),
             ElevatedButton(
               onPressed: sending
@@ -453,10 +396,9 @@ class _MultiplayerRoomScreenState extends ConsumerState<MultiplayerRoomScreen> {
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.accent,
                 foregroundColor: Colors.black,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
               child: sending
-                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                   : const Text('SEND CHALLENGE'),
             ),
           ],
@@ -474,84 +416,91 @@ class _MultiplayerRoomScreenState extends ConsumerState<MultiplayerRoomScreen> {
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
         backgroundColor: AppTheme.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: const Text('Incoming Challenges'),
+        title: const Text('Pending Challenges'),
         content: SizedBox(
           width: double.maxFinite,
-          child: state.pendingChallenges.isEmpty 
-            ? const Padding(
-                padding: EdgeInsets.symmetric(vertical: 20),
-                child: Text('No pending challenges', textAlign: TextAlign.center, style: TextStyle(color: Colors.white38)),
-              )
-            : ListView.builder(
-                shrinkWrap: true,
-                itemCount: state.pendingChallenges.length,
-                itemBuilder: (context, index) {
-                  final challenge = state.pendingChallenges[index];
-                  final isResponding = respondingId == challenge.id;
-                  
-                  return Container(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: AppTheme.surfaceLight,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: AppTheme.accent.withOpacity(0.2)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '${challenge.challengerTeamName ?? "Someone"}',
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'challenged you to a ${challenge.matchOvers} over match',
-                          style: const TextStyle(fontSize: 12, color: Colors.white54),
-                        ),
-                        const SizedBox(height: 16),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextButton(
-                                onPressed: respondingId != null
-                                    ? null
-                                    : () async {
-                                        setDialogState(() => respondingId = challenge.id);
-                                        await ref.read(multiplayerProvider.notifier).respondToChallenge(challenge.id, false);
-                                        if (context.mounted) Navigator.pop(context);
-                                      },
-                                child: const Text('DECLINE', style: TextStyle(color: Colors.redAccent)),
-                              ),
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: state.pendingChallenges.length,
+            itemBuilder: (context, index) {
+              final challenge = state.pendingChallenges[index];
+              final isResponding = respondingId == challenge.id;
+              
+              return Card(
+                color: AppTheme.surfaceLight,
+                margin: const EdgeInsets.only(bottom: 8),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Match Challenge',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '${challenge.matchOvers} Overs Match',
+                        style: const TextStyle(fontSize: 12, color: Colors.white70),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed: respondingId != null
+                                ? null
+                                : () async {
+                                    setDialogState(() => respondingId = challenge.id);
+                                    await ref.read(multiplayerProvider.notifier).respondToChallenge(challenge.id, false);
+                                    if (context.mounted) Navigator.pop(context);
+                                  },
+                            child: isResponding
+                                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                                : const Text('DECLINE'),
+                          ),
+                          const SizedBox(width: 8),
+                          ElevatedButton(
+                            onPressed: hasActiveMatch || respondingId != null
+                                ? null
+                                : () async {
+                              print('=== ACCEPTING CHALLENGE: ${challenge.id} ===');
+                              setDialogState(() => respondingId = challenge.id);
+                              
+                              try {
+                                // Accept challenge — navigation happens via ref.listen when matchStartedId is set
+                                await ref.read(multiplayerProvider.notifier).respondToChallenge(challenge.id, true);
+                                print('=== CHALLENGE ACCEPTED SUCCESSFULLY ===');
+                                
+                                if (context.mounted) {
+                                  Navigator.pop(context); // Close challenges dialog
+                                }
+                              } catch (e) {
+                                print('=== ERROR ACCEPTING CHALLENGE: $e ===');
+                                if (context.mounted) {
+                                  Navigator.pop(context);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('Failed to accept challenge: $e')),
+                                  );
+                                }
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.accent,
+                              foregroundColor: Colors.black,
+                              disabledBackgroundColor: Colors.grey.shade700,
+                              disabledForegroundColor: Colors.white38,
                             ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: ElevatedButton(
-                                onPressed: hasActiveMatch || respondingId != null
-                                    ? null
-                                    : () async {
-                                        setDialogState(() => respondingId = challenge.id);
-                                        await ref.read(multiplayerProvider.notifier).respondToChallenge(challenge.id, true);
-                                        if (context.mounted) Navigator.pop(context);
-                                      },
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: AppTheme.accent,
-                                  foregroundColor: Colors.black,
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                ),
-                                child: isResponding
-                                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
-                                    : const Text('ACCEPT'),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
+                            child: Text(hasActiveMatch ? 'MATCH ACTIVE' : 'ACCEPT'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
         ),
         actions: [
           TextButton(

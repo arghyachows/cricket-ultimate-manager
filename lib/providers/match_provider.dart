@@ -374,30 +374,6 @@ class MatchNotifier extends StateNotifier<MatchState> {
 
   MatchNotifier(this.ref) : super(const MatchState());
 
-  void refreshState() async {
-    if (_remoteMatchId == null) return;
-
-    try {
-      // Re-connect socket if needed
-      if (state.isSimulating) {
-        NodeBackendService.initSocket();
-        NodeBackendService.joinMatch(
-          _remoteMatchId!,
-          _onNodeBallUpdate,
-          _onNodeMatchComplete,
-        );
-      }
-
-      // Fetch latest state from backend to sync
-      final data = await NodeBackendService.getMatchState(_remoteMatchId!);
-      if (data != null && data['state'] != null) {
-        _onNodeBallUpdate({'state': data['state']});
-      }
-    } catch (e) {
-      print('⚠️ Failed to refresh match state: $e');
-    }
-  }
-
   static int _inningsScoreFromEvents(List<MatchEvent> events, int inn) {
     final inns = events.where((e) => e.innings == inn);
     return inns.isEmpty ? 0 : inns.last.scoreAfter;

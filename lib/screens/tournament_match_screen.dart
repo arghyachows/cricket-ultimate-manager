@@ -47,7 +47,7 @@ class TournamentMatchScreen extends ConsumerStatefulWidget {
 
 class _TournamentMatchScreenState
     extends ConsumerState<TournamentMatchScreen>
-    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
   bool _isLoading = true;
   bool _socketConnected = false;
@@ -86,7 +86,6 @@ class _TournamentMatchScreenState
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
     _tabController = TabController(length: 2, vsync: this);
     _homeTeamName = widget.homeTeamName ?? 'Home';
     _awayTeamName = widget.awayTeamName ?? 'Away';
@@ -95,20 +94,11 @@ class _TournamentMatchScreenState
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     _tabController.dispose();
     if (_socketConnected) {
       NodeBackendService.leaveMatch(widget.matchId);
     }
     super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      // Re-connect and refresh when returning to app
-      _loadAndConnect();
-    }
   }
 
   Future<void> _loadAndConnect() async {
