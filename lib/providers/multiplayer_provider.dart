@@ -400,3 +400,81 @@ class MultiplayerNotifier extends StateNotifier<MultiplayerState> {
     super.dispose();
   }
 }
+
+// ─── Multiplayer Match History Provider ─────────────────────────────────────
+
+/// Fetches all completed multiplayer matches for the current user from the DB.
+final multiplayerMatchHistoryProvider =
+    FutureProvider.autoDispose<List<MatchSummary>>((ref) async {
+  final userId = SupabaseService.currentUserId;
+  if (userId == null) return [];
+
+  final data = await SupabaseService.client
+      .from('multiplayer_matches')
+      .select()
+      .or('home_user_id.eq.$userId,away_user_id.eq.$userId')
+      .eq('status', 'completed')
+      .order('created_at', ascending: false)
+      .limit(50);
+
+  return (data as List).map<MatchSummary>((m) {
+    final isHome = m['home_user_id'] == userId;
+    final winnerId = m['winner_user_id'];
+    bool? homeWon;
+    if (winnerId != null) {
+      homeWon = winnerId == m['home_user_id'];
+    }
+    final userWon = (isHome && homeWon == true) || (!isHome && homeWon == false);
+
+    // Deserialize scorecard
+    Map<String, BatsmanStats> batsmanStats = {};
+    Map<String, BowlerStats> bowlerStats = {};
+    final sc = m['scorecard_data'];
+    if (sc != null && sc is Map<String, dynamic>) {
+      final batsmen = sc['batsmen'] as Map<String, dynamic>? ?? {};
+      for (final e in batsmen.entries) {
+        final b = e.value as Map<String, dynamic>;
+        batsmanStats[e.key] = BatsmanStats(
+          name: b['name'] as String? ?? '',
+          innings: b['innings'] as int? ?? 1,
+          battingOrder: b['battingOrder'] as int? ?? 99,
+          runs: b['runs'] as int? ?? 0,
+          balls: b['balls'] as int? ?? 0,
+          fours: b['fours'] as int? ?? 0,
+          sixes: b['sixes'] as int? ?? 0,
+          isOut: b['isOut'] as bool? ?? false,
+          dismissalType: b['dismissalType'] as String?,
+        );
+      }
+      final bowlers = sc['bowlers'] as Map<String, dynamic>? ?? {};
+      for (final e in bowlers.entries) {
+        final b = e.value as Map<String, dynamic>;
+        bowlerStats[e.key] = BowlerStats(
+          name: b['name'] as String? ?? '',
+          innings: b['innings'] as int? ?? 1,
+          overs: (b['overs'] as num? ?? 0).toDouble(),
+          maidens: b['maidens'] as int? ?? 0,
+          runs: b['runs'] as int? ?? 0,
+          wickets: b['wickets'] as int? ?? 0,
+        );
+      }
+    }
+
+    return MatchSummary(
+      id: m['id'],
+      matchDate: DateTime.parse(m['created_at']),
+      opponentName: isHome ? m['away_team_name'] : m['home_team_name'],
+      format: m['match_format'],
+      userScore: isHome ? m['home_score'] : m['away_score'],
+      userWickets: isHome ? m['home_wickets'] : m['away_wickets'],
+      userOvers: (isHome ? m['home_overs'] : m['away_overs'] as num? ?? 0).toDouble(),
+      opponentScore: isHome ? m['away_score'] : m['home_score'],
+      opponentWickets: isHome ? m['away_wickets'] : m['home_wickets'],
+      opponentOvers: (isHome ? m['away_overs'] : m['home_overs'] as num? ?? 0).toDouble(),
+      result: m['match_result'] ?? 'Completed',
+      isWin: userWon,
+      batsmanStats: batsmanStats,
+      bowlerStats: bowlerStats,
+    );
+  }).toList();
+});
