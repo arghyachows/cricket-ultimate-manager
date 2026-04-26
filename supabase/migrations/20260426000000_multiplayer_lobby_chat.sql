@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS multiplayer_chats (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     room_id UUID NOT NULL REFERENCES multiplayer_rooms(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    username TEXT NOT NULL,
+    team_name TEXT NOT NULL,
     message TEXT NOT NULL,
     created_at TIMESTAMPTZ DEFAULT now()
 );

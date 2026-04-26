@@ -348,21 +348,32 @@ class MultiplayerNotifier extends StateNotifier<MultiplayerState> {
             .eq('id', challengeId)
             .single();
 
-        await SupabaseService.client
-            .from('match_challenges')
-            .update({'status': 'accepted', 'responded_at': DateTime.now().toIso8601String()})
-            .eq('id', challengeId);
+        final userId = SupabaseService.currentUserId;
+        final team = ref.read(teamProvider).valueOrNull;
+        final homePresence = state.usersInRoom.firstWhere((u) => u.userId == challengeData['challenger_id'], orElse: () => null as RoomPresence);
 
-        await SupabaseService.client.from('multiplayer_matches').insert({
+        final match = await SupabaseService.client.from('multiplayer_matches').insert({
           'challenge_id': challengeId,
           'home_user_id': challengeData['challenger_id'],
           'away_user_id': challengeData['challenged_id'],
           'home_team_id': challengeData['challenger_team_id'],
           'away_team_id': challengeData['challenged_team_id'],
+          'home_team_name': homePresence?.teamName ?? 'Home',
+          'away_team_name': team?.teamName ?? 'Away',
           'match_format': challengeData['match_format'],
           'match_overs': challengeData['match_overs'],
           'status': 'waiting',
-        });
+        }).select().single();
+
+        state = state.copyWith(matchStartedId: match['id']);
+
+        await SupabaseService.client
+            .from('match_challenges')
+            .update({
+              'status': 'accepted', 
+              'responded_at': DateTime.now().toUtc().toIso8601String()
+            })
+            .eq('id', challengeId);
       } else {
         await SupabaseService.client
             .from('match_challenges')
@@ -371,7 +382,8 @@ class MultiplayerNotifier extends StateNotifier<MultiplayerState> {
       }
       _loadPendingChallenges();
     } catch (e) {
-      state = state.copyWith(error: 'Response failed: $e');
+      print('Error responding to challenge: $e');
+      state = state.copyWith(error: 'Failed to respond: $e');
     }
   }
 
