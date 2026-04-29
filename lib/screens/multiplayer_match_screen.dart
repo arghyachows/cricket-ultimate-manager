@@ -537,6 +537,9 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
 
     if (data['status'] == 'in_progress' || tossDecision.isNotEmpty) {
       _cancelTossDecisionFallback();
+      if (data['status'] == 'in_progress' && !_socketIOActive) {
+        _connectAndJoinSocket();
+      }
     } else if (tossWinner.isNotEmpty) {
       _scheduleTossDecisionFallback();
     }
@@ -704,28 +707,11 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
   /// Invokes the Node.js backend to run simulation.
   /// Uses Socket.IO for real-time ball updates (same as quick match).
   /// Supabase Realtime handles toss coordination and match completion.
-  void _invokeServerSimulation() async {
-    final data = _matchData;
-    if (data == null) return;
+  /// Connects to Socket.IO and joins the match room.
+  /// Called by both players (winner starts simulation, loser just watches).
+  Future<bool> _connectAndJoinSocket() async {
+    if (_socketIOActive) return true;
 
-    final homeSquadId = data['home_team_id'];
-    final awaySquadId = data['away_team_id'];
-
-    // Let backend load squad data from database
-    final config = {
-      'homeSquadId': homeSquadId,
-      'awaySquadId': awaySquadId,
-      'homeChemistry': 80,
-      'awayChemistry': 80,
-      'maxOvers': _state.matchOvers,
-      'pitchCondition': 'balanced',
-      'homeTeamName': _state.homeTeamName,
-      'awayTeamName': _state.awayTeamName,
-      'homeBatsFirst': _state.homeBatsFirst,
-      'useAICommentary': false,
-    };
-
-    // Step 1: Connect Socket.IO and join match room (same as quick match)
     print('🔌 Multiplayer: Connecting Socket.IO...');
     NodeBackendService.initSocket();
     final connected = await NodeBackendService.waitForConnection(
@@ -742,16 +728,43 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
 
       if (joined) {
         _socketIOActive = true;
-        // Small delay to ensure room join propagates
-        await Future.delayed(const Duration(milliseconds: 500));
+        _startMultiplayerPollingFallback();
+        return true;
       } else {
-        print('⚠️ Multiplayer: Failed to join Socket.IO room, falling back to Supabase Realtime');
+        print('⚠️ Multiplayer: Failed to join Socket.IO room');
       }
     } else {
-      print('⚠️ Multiplayer: Socket.IO connection failed, falling back to Supabase Realtime');
+      print('⚠️ Multiplayer: Socket.IO connection failed');
     }
+    return false;
+  }
+
+  /// Invokes the Node.js backend to run simulation.
+  /// Only the toss winner calls this.
+  void _invokeServerSimulation() async {
+    final data = _matchData;
+    if (data == null) return;
+
+    final homeTeamId = data['home_team_id'];
+    final awayTeamId = data['away_team_id'];
+
+    // Ensure we are connected to socket first
+    await _connectAndJoinSocket();
 
     // Step 2: Start the match via Node.js backend
+    final config = {
+      'homeTeamId': homeTeamId,
+      'awayTeamId': awayTeamId,
+      'homeChemistry': 80,
+      'awayChemistry': 80,
+      'maxOvers': _state.matchOvers,
+      'pitchCondition': 'balanced',
+      'homeTeamName': _state.homeTeamName,
+      'awayTeamName': _state.awayTeamName,
+      'homeBatsFirst': _state.homeBatsFirst,
+      'useAICommentary': false,
+    };
+
     final success = await NodeBackendService.startMultiplayerMatch(
       matchId: widget.matchId,
       config: config,
@@ -759,10 +772,6 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
 
     if (success) {
       print('✅ Multiplayer match started via Node.js backend');
-      // Start polling fallback in case Socket.IO events are missed
-      if (_socketIOActive) {
-        _startMultiplayerPollingFallback();
-      }
     } else {
       print('❌ Node.js backend failed to start multiplayer match');
     }
@@ -1290,6 +1299,10 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
         _cancelTossDecisionFallback();
       }
       return;
+    }
+
+    if (!_socketIOActive) {
+      _connectAndJoinSocket();
     }
 
     _cancelTossDecisionFallback();
