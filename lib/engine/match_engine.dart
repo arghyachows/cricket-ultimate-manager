@@ -65,22 +65,28 @@ class MatchEngine {
     this.awayTeamName = 'Away',
     this.homeBatsFirst = true,
   }) {
-    // Use the lineup order as provided (already sorted by position)
     _battingOrder1 = List.from(homeBatsFirst ? homeXI : awayXI);
-    _bowlingOrder1 = (homeBatsFirst ? homeXI : awayXI)
-        .where((p) =>
-            p.userCard?.playerCard?.role == 'bowler' ||
-            p.userCard?.playerCard?.role == 'all_rounder')
-        .toList();
-    if (_bowlingOrder1.isEmpty) _bowlingOrder1 = List.from(homeBatsFirst ? homeXI : awayXI);
+    
+    List<LineupPlayer> getBowlingOrder(List<LineupPlayer> xi) {
+      var bowlers = xi.where((p) =>
+              p.userCard?.playerCard?.role == 'bowler' ||
+              p.userCard?.playerCard?.role == 'all_rounder')
+          .toList();
+      if (bowlers.isEmpty) bowlers = List.from(xi);
+      
+      bowlers.sort((a, b) {
+        if (a.isBowler1) return -1;
+        if (b.isBowler1) return 1;
+        if (a.isBowler2) return -1;
+        if (b.isBowler2) return 1;
+        return 0;
+      });
+      return bowlers;
+    }
 
+    _bowlingOrder1 = getBowlingOrder(homeBatsFirst ? homeXI : awayXI);
     _battingOrder2 = List.from(homeBatsFirst ? awayXI : homeXI);
-    _bowlingOrder2 = (homeBatsFirst ? awayXI : homeXI)
-        .where((p) =>
-            p.userCard?.playerCard?.role == 'bowler' ||
-            p.userCard?.playerCard?.role == 'all_rounder')
-        .toList();
-    if (_bowlingOrder2.isEmpty) _bowlingOrder2 = List.from(homeBatsFirst ? awayXI : homeXI);
+    _bowlingOrder2 = getBowlingOrder(homeBatsFirst ? awayXI : homeXI);
 
     // First innings: batting order 1 bats, bowling order 2 bowls
     _currentBatting = _battingOrder1;

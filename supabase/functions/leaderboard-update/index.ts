@@ -36,14 +36,36 @@ serve(async (req) => {
     const { season_type = "weekly" } = await req.json().catch(() => ({}));
 
     // Calculate leaderboard from match results
-    const { data: users, error } = await supabase
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+    const { data: users, error: weeklyError } = await supabase
       .from("users")
-      .select("id, username, level, season_tier, matches_won, matches_played, win_rate")
-      .order("win_rate", { ascending: false })
+      .select(`
+        id,
+        username,
+        level,
+        season_tier,
+        matches_won:match_participations!inner(
+          count:match_id,
+          filter:status=eq.won AND created_at=gte.${oneWeekAgo.toISOString()}
+        ),
+        matches_played:match_participations!inner(
+          count:match_id,
+          filter:created_at=gte.${oneWeekAgo.toISOString()}
+        ),
+        win_rate:(
+          count:match_participations!inner(
+            filter:status=eq.won AND created_at=gte.${oneWeekAgo.toISOString()}
+          )::float / NULLIF(count:match_participations!inner(
+            filter:created_at=gte.${oneWeekAgo.toISOString()}
+          ), 0)
+        )
+      `)
+      .order("win_rate", { ascending: false, nullsLast: true })
       .order("matches_won", { ascending: false })
       .limit(100);
 
-    if (error) {
+    if (weeklyError) {
       return new Response(JSON.stringify({ error: "Failed to fetch leaderboard" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -101,3 +123,4 @@ serve(async (req) => {
     });
   }
 });
+

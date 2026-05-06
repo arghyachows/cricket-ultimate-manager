@@ -496,6 +496,11 @@ class MatchNotifier extends StateNotifier<MatchState> {
         'swing': p.userCard?.effectiveBowling ?? 50,
         'accuracy': p.userCard?.effectiveBowling ?? 50,
         'variations': p.userCard?.effectiveBowling ?? 50,
+        'isWicketKeeper': p.isWicketKeeper,
+        'isBowler1': p.isBowler1,
+        'isBowler2': p.isBowler2,
+        'isCaptain': p.isCaptain,
+        'isViceCaptain': p.isViceCaptain,
       }).toList();
 
       final awayXIData = awayXI.map((p) => {
@@ -513,6 +518,11 @@ class MatchNotifier extends StateNotifier<MatchState> {
         'swing': p.userCard?.effectiveBowling ?? 50,
         'accuracy': p.userCard?.effectiveBowling ?? 50,
         'variations': p.userCard?.effectiveBowling ?? 50,
+        'isWicketKeeper': p.isWicketKeeper,
+        'isBowler1': p.isBowler1,
+        'isBowler2': p.isBowler2,
+        'isCaptain': p.isCaptain,
+        'isViceCaptain': p.isViceCaptain,
       }).toList();
 
       print('👥 Home XI: ${homeXIData.length} players');

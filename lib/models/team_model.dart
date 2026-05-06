@@ -96,6 +96,15 @@ class Squad {
   LineupPlayer? get viceCaptain =>
       lineup.where((p) => p.isViceCaptain).firstOrNull;
 
+  LineupPlayer? get wicketKeeper =>
+      lineup.where((p) => p.isWicketKeeper).firstOrNull;
+
+  LineupPlayer? get bowler1 =>
+      lineup.where((p) => p.isBowler1).firstOrNull;
+
+  LineupPlayer? get bowler2 =>
+      lineup.where((p) => p.isBowler2).firstOrNull;
+
   List<LineupPlayer> get bowlers => playingXI
       .where((p) =>
           p.userCard?.playerCard?.role == 'bowler' ||
@@ -144,6 +153,9 @@ class LineupPlayer {
   final int battingOrder;      // 1-11
   final bool isCaptain;
   final bool isViceCaptain;
+  final bool isWicketKeeper;
+  final bool isBowler1;
+  final bool isBowler2;
   final UserCard? userCard;    // Joined data
 
   const LineupPlayer({
@@ -153,6 +165,9 @@ class LineupPlayer {
     required this.battingOrder,
     this.isCaptain = false,
     this.isViceCaptain = false,
+    this.isWicketKeeper = false,
+    this.isBowler1 = false,
+    this.isBowler2 = false,
     this.userCard,
   });
 
@@ -164,6 +179,9 @@ class LineupPlayer {
       battingOrder: json['batting_order'],
       isCaptain: json['is_captain'] ?? false,
       isViceCaptain: json['is_vice_captain'] ?? false,
+      isWicketKeeper: json['is_wicket_keeper'] ?? false,
+      isBowler1: json['is_bowler_1'] ?? false,
+      isBowler2: json['is_bowler_2'] ?? false,
       userCard: json['user_cards'] != null
           ? UserCard.fromJson(json['user_cards'])
           : null,

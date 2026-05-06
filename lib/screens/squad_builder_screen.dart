@@ -481,6 +481,7 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
             ),
             if (player.isCaptain)
               Container(
+                margin: const EdgeInsets.only(left: 4),
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
                   color: AppTheme.accent,
@@ -512,6 +513,57 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
                   ),
                 ),
               ),
+            if (player.isWicketKeeper)
+              Container(
+                margin: const EdgeInsets.only(left: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.tealAccent,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Text(
+                  'WK',
+                  style: TextStyle(
+                    color: Colors.black,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+            if (player.isBowler1)
+              Container(
+                margin: const EdgeInsets.only(left: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.redAccent,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Text(
+                  'B1',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+            if (player.isBowler2)
+              Container(
+                margin: const EdgeInsets.only(left: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.orangeAccent,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Text(
+                  'B2',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
           ],
         ),
         subtitle: Text(
@@ -532,6 +584,21 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
                   const PopupMenuItem(
                     value: 'vice_captain',
                     child: Text('Set Vice Captain'),
+                  ),
+                if (!player.isWicketKeeper)
+                  const PopupMenuItem(
+                    value: 'wicket_keeper',
+                    child: Text('Set Wicket Keeper'),
+                  ),
+                if (!player.isBowler1)
+                  const PopupMenuItem(
+                    value: 'bowler_1',
+                    child: Text('Set 1st Bowler'),
+                  ),
+                if (!player.isBowler2)
+                  const PopupMenuItem(
+                    value: 'bowler_2',
+                    child: Text('Set 2nd Bowler'),
                   ),
                 const PopupMenuItem(
                   value: 'swap',
@@ -606,6 +673,15 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
         break;
       case 'vice_captain':
         notifier.setViceCaptain(player.id);
+        break;
+      case 'wicket_keeper':
+        notifier.setWicketKeeper(player.id);
+        break;
+      case 'bowler_1':
+        notifier.setBowler1(player.id);
+        break;
+      case 'bowler_2':
+        notifier.setBowler2(player.id);
         break;
       case 'swap':
         _showSwapPlayerSheet(player);

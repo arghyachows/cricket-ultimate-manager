@@ -180,7 +180,7 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
     // Get the current lineup entry
     final oldRow = await SupabaseService.client
         .from('lineup_players')
-        .select('squad_id, batting_order, is_captain, is_vice_captain')
+        .select('squad_id, batting_order, is_captain, is_vice_captain, is_wicket_keeper, is_bowler_1, is_bowler_2')
         .eq('id', lineupPlayerId)
         .maybeSingle();
     if (oldRow == null) return;
@@ -189,6 +189,9 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
     final battingOrder = oldRow['batting_order'] as int;
     final wasCaptain = oldRow['is_captain'] as bool? ?? false;
     final wasVC = oldRow['is_vice_captain'] as bool? ?? false;
+    final wasWK = oldRow['is_wicket_keeper'] as bool? ?? false;
+    final wasB1 = oldRow['is_bowler_1'] as bool? ?? false;
+    final wasB2 = oldRow['is_bowler_2'] as bool? ?? false;
 
     // Delete old lineup entry
     await SupabaseService.client
@@ -221,6 +224,9 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
       'batting_order': battingOrder,
       'is_captain': wasCaptain,
       'is_vice_captain': wasVC,
+      'is_wicket_keeper': wasWK,
+      'is_bowler_1': wasB1,
+      'is_bowler_2': wasB2,
     });
 
     await loadTeam();
@@ -262,6 +268,54 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
     await loadTeam();
   }
 
+  Future<void> setWicketKeeper(String lineupPlayerId) async {
+    final squad = state.valueOrNull?.activeSquad;
+    if (squad == null) return;
+
+    for (final lp in squad.lineup.where((p) => p.isWicketKeeper)) {
+      await SupabaseService.client
+          .from('lineup_players')
+          .update({'is_wicket_keeper': false}).eq('id', lp.id);
+    }
+
+    await SupabaseService.client
+        .from('lineup_players')
+        .update({'is_wicket_keeper': true}).eq('id', lineupPlayerId);
+    await loadTeam();
+  }
+
+  Future<void> setBowler1(String lineupPlayerId) async {
+    final squad = state.valueOrNull?.activeSquad;
+    if (squad == null) return;
+
+    for (final lp in squad.lineup.where((p) => p.isBowler1)) {
+      await SupabaseService.client
+          .from('lineup_players')
+          .update({'is_bowler_1': false}).eq('id', lp.id);
+    }
+
+    await SupabaseService.client
+        .from('lineup_players')
+        .update({'is_bowler_1': true}).eq('id', lineupPlayerId);
+    await loadTeam();
+  }
+
+  Future<void> setBowler2(String lineupPlayerId) async {
+    final squad = state.valueOrNull?.activeSquad;
+    if (squad == null) return;
+
+    for (final lp in squad.lineup.where((p) => p.isBowler2)) {
+      await SupabaseService.client
+          .from('lineup_players')
+          .update({'is_bowler_2': false}).eq('id', lp.id);
+    }
+
+    await SupabaseService.client
+        .from('lineup_players')
+        .update({'is_bowler_2': true}).eq('id', lineupPlayerId);
+    await loadTeam();
+  }
+
   /// Reorder the lineup: move item at [oldIndex] to [newIndex] (0-based).
   Future<void> reorderLineup(int oldIndex, int newIndex) async {
     if (newIndex > oldIndex) newIndex--;
@@ -289,6 +343,9 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
             battingOrder: i + 1,
             isCaptain: lp.isCaptain,
             isViceCaptain: lp.isViceCaptain,
+            isWicketKeeper: lp.isWicketKeeper,
+            isBowler1: lp.isBowler1,
+            isBowler2: lp.isBowler2,
             userCard: lp.userCard,
           ));
         }
@@ -474,6 +531,18 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
       }
     }
 
+    String? wkCardId;
+    final wks = List<UserCard>.from(selected.where((c) => roleOf(c) == 'wicket_keeper'))
+      ..sort((a, b) => ratingOf(b).compareTo(ratingOf(a)));
+    if (wks.isNotEmpty) wkCardId = wks.first.id;
+
+    String? b1CardId;
+    String? b2CardId;
+    final blrs = List<UserCard>.from(selected.where((c) => roleOf(c) == 'bowler'))
+      ..sort((a, b) => ratingOf(b).compareTo(ratingOf(a)));
+    if (blrs.isNotEmpty) b1CardId = blrs.first.id;
+    if (blrs.length > 1) b2CardId = blrs[1].id;
+
     // Pause realtime to avoid state churn during multi-step write
     _lineupChannel?.unsubscribe();
 
@@ -493,6 +562,9 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
           'batting_order': i + 1,
           'is_captain': ordered[i].id == captainCardId,
           'is_vice_captain': ordered[i].id == vcCardId,
+          'is_wicket_keeper': ordered[i].id == wkCardId,
+          'is_bowler_1': ordered[i].id == b1CardId,
+          'is_bowler_2': ordered[i].id == b2CardId,
         });
       }
       if (rows.isNotEmpty) {
