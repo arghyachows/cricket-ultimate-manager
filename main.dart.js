@@ -35624,7 +35624,7 @@ if(o==null){o=A.a([],s)
 n.m(0,p,o)
 p=o}else p=o
 J.ei(p,q)}return n},
-jp(){switch(0){case 0:return"https://cricket-ultimate-backend.onrender.com"}},
+jp(){switch(0){case 0:return"https://node-backend-ten.vercel.app"}},
 b2o(a){if(a<=10)return"Bronze Pack"
 if(a<=25)return"Silver Pack"
 if(a<=45)return"Gold Pack"
