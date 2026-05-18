@@ -10,8 +10,8 @@ class AppConfig {
   static const _env = Environment.production;
   // ────────────────────────────────────────────────────────────────────────
 
-  static const String _renderUrl =
-      'https://cricket-ultimate-backend.onrender.com';
+  static const String _vercelUrl =
+      'https://node-backend-ten.vercel.app';
 
   static const String _localUrl = 'http://10.0.2.2:3000'; // Android emulator
   // For physical device on same LAN, replace with your machine's LAN IP:
@@ -21,7 +21,7 @@ class AppConfig {
   static String get backendUrl {
     switch (_env) {
       case Environment.production:
-        return _renderUrl;
+        return _vercelUrl;
       case Environment.local:
         return _localUrl;
     }
