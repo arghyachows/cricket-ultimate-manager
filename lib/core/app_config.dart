@@ -1,7 +1,7 @@
 /// Central configuration for backend URLs and feature flags.
 /// ─────────────────────────────────────────────────────────
 /// To switch environments, change [_env] below:
-///   Environment.production  → Render cloud backend
+///   Environment.production  → IBM Cloud Kubernetes backend
 ///   Environment.local       → local Docker / dev server
 class AppConfig {
   AppConfig._();
@@ -9,6 +9,10 @@ class AppConfig {
   // ── Change this to switch environments ──────────────────────────────────
   static const _env = Environment.production;
   // ────────────────────────────────────────────────────────────────────────
+
+  // IBM Cloud Kubernetes Ingress URL
+  static const String _ibmCloudUrl =
+      'https://cricket-cluster-5e896152da3455c837a30996c4d7aabb-0000.us-south.containers.appdomain.cloud';
 
   static const String _vercelUrl =
       'https://node-backend-ten.vercel.app';
@@ -21,7 +25,7 @@ class AppConfig {
   static String get backendUrl {
     switch (_env) {
       case Environment.production:
-        return _vercelUrl;
+        return _ibmCloudUrl;
       case Environment.local:
         return _localUrl;
     }
