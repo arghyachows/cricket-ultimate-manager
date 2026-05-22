@@ -14,9 +14,6 @@ class AppConfig {
   static const String _ibmCloudUrl =
       'https://cricket-cluster-5e896152da3455c837a30996c4d7aabb-0000.us-south.containers.appdomain.cloud';
 
-  static const String _vercelUrl =
-      'https://node-backend-ten.vercel.app';
-
   static const String _localUrl = 'http://10.0.2.2:3000'; // Android emulator
   // For physical device on same LAN, replace with your machine's LAN IP:
   // static const String _localUrl = 'http://192.168.x.x:3000';
