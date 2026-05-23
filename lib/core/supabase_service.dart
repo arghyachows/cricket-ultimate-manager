@@ -240,7 +240,6 @@ class SupabaseService {
     return await client
         .from('users')
         .select('id, username, level, season_tier, season_points, matches_played, matches_won')
-        .gt('matches_played', 0)
         .order('season_points', ascending: false)
         .limit(limit);
   }

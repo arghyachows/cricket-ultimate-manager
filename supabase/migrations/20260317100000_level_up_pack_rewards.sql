@@ -49,6 +49,10 @@ BEGIN
         level = v_new_level,
         matches_played = matches_played + 1,
         matches_won = CASE WHEN p_won THEN matches_won + 1 ELSE matches_won END,
+        season_points = season_points + CASE
+            WHEN p_won THEN 100 + LEAST(v_new_level * 5, 200)  -- Win: 100 + level bonus (max 300)
+            ELSE 10 + LEAST(v_new_level, 50)                    -- Loss: 10 + level bonus (max 60)
+        END,
         updated_at = NOW()
     WHERE id = p_user_id;
 

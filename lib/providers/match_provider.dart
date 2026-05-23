@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' show min;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import '../core/supabase_service.dart';
@@ -1198,6 +1199,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
           'level': newLevel > AppConstants.maxLevel ? AppConstants.maxLevel : newLevel,
           'matches_played': user.matchesPlayed + 1,
           if (won) 'matches_won': user.matchesWon + 1,
+          'season_points': user.seasonPoints + (won ? 100 + min(newLevel * 5, 200) : 10 + min(newLevel, 50)),
         }).eq('id', userId);
       } catch (_) {}
     }

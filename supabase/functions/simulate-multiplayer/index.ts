@@ -1160,6 +1160,9 @@ serve(async (req) => {
           if (u) {
             const newXp = (u.xp ?? 0) + xp;
             const newLevel = Math.min(Math.floor(newXp / 500) + 1, 100);
+            const seasonPointsGain = isWinner
+              ? 100 + Math.min(newLevel * 5, 200)
+              : 10 + Math.min(newLevel, 50);
             await supabase
               .from("users")
               .update({
@@ -1168,6 +1171,7 @@ serve(async (req) => {
                 level: newLevel,
                 matches_played: (u.matches_played ?? 0) + 1,
                 matches_won: isWinner ? (u.matches_won ?? 0) + 1 : (u.matches_won ?? 0),
+                season_points: (u.season_points ?? 0) + seasonPointsGain,
                 updated_at: new Date().toISOString(),
               })
               .eq("id", uid);
