@@ -12,6 +12,19 @@ class PlayerCard {
   final int stamina;
   final int pace;
   final int spin;
+  // Extended batting attributes
+  final int aggression;
+  final int technique;
+  final int power;
+  final int consistency;
+  final int temperament;
+  final int shotMaking;
+  final int running;
+  // Extended bowling attributes
+  final int accuracy;
+  final int variations;
+  final int yorkers;
+  final int bouncer;
   final String rarity;
   final String cardType;
   final String? imageUrl;
@@ -31,6 +44,19 @@ class PlayerCard {
     required this.stamina,
     this.pace = 50,
     this.spin = 50,
+    // Extended batting attributes (default to base rating)
+    this.aggression = 50,
+    this.technique = 50,
+    this.power = 50,
+    this.consistency = 50,
+    this.temperament = 50,
+    this.shotMaking = 50,
+    this.running = 50,
+    // Extended bowling attributes (default to base rating)
+    this.accuracy = 50,
+    this.variations = 50,
+    this.yorkers = 50,
+    this.bouncer = 50,
     required this.rarity,
     this.cardType = 'standard',
     this.imageUrl,
@@ -52,6 +78,19 @@ class PlayerCard {
       stamina: json['stamina'],
       pace: json['pace'] ?? 50,
       spin: json['spin'] ?? 50,
+      // Extended batting attributes
+      aggression: json['aggression'] ?? 50,
+      technique: json['technique'] ?? 50,
+      power: json['power'] ?? 50,
+      consistency: json['consistency'] ?? 50,
+      temperament: json['temperament'] ?? 50,
+      shotMaking: json['shot_making'] ?? 50,
+      running: json['running'] ?? 50,
+      // Extended bowling attributes
+      accuracy: json['accuracy'] ?? 50,
+      variations: json['variations'] ?? 50,
+      yorkers: json['yorkers'] ?? 50,
+      bouncer: json['bouncer'] ?? 50,
       rarity: json['rarity'],
       cardType: json['card_type'] ?? 'standard',
       imageUrl: json['image_url'],
@@ -73,6 +112,17 @@ class PlayerCard {
         'stamina': stamina,
         'pace': pace,
         'spin': spin,
+        'aggression': aggression,
+        'technique': technique,
+        'power': power,
+        'consistency': consistency,
+        'temperament': temperament,
+        'shot_making': shotMaking,
+        'running': running,
+        'accuracy': accuracy,
+        'variations': variations,
+        'yorkers': yorkers,
+        'bouncer': bouncer,
         'rarity': rarity,
         'card_type': cardType,
       };

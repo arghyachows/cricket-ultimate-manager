@@ -321,15 +321,28 @@ class CardDetailScreen extends ConsumerWidget {
       ('PACE', card.pace, Icons.speed),
       ('SPIN', card.spin, Icons.rotate_right),
       ('STAM', card.stamina, Icons.fitness_center),
+      // Extended batting attributes
+      ('AGG', card.aggression, Icons.flash_on),
+      ('TECH', card.technique, Icons.architecture),
+      ('POW', card.power, Icons.bolt),
+      ('CONS', card.consistency, Icons.trending_up),
+      ('TEMP', card.temperament, Icons.psychology),
+      ('SHOT', card.shotMaking, Icons.gesture),
+      ('RUN', card.running, Icons.directions_run),
+      // Extended bowling attributes
+      ('ACC', card.accuracy, Icons.gps_fixed),
+      ('VAR', card.variations, Icons.shuffle),
+      ('YORK', card.yorkers, Icons.vertical_align_bottom),
+      ('BNCR', card.bouncer, Icons.keyboard_arrow_up),
     ];
 
     return GridView.count(
-      crossAxisCount: 3,
+      crossAxisCount: 4,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       mainAxisSpacing: 8,
       crossAxisSpacing: 8,
-      childAspectRatio: 1.5,
+      childAspectRatio: 1.2,
       children: stats.map((stat) {
         final (label, value, icon) = stat;
         final statColor = value >= 90
@@ -353,12 +366,12 @@ class CardDetailScreen extends ConsumerWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(icon, size: 14, color: statColor),
-                  const SizedBox(width: 4),
+                  Icon(icon, size: 12, color: statColor),
+                  const SizedBox(width: 2),
                   Text(
                     '$value',
                     style: TextStyle(
-                      fontSize: 22,
+                      fontSize: 18,
                       fontWeight: FontWeight.bold,
                       color: statColor,
                     ),
@@ -369,8 +382,8 @@ class CardDetailScreen extends ConsumerWidget {
                 label,
                 style: const TextStyle(
                   color: Colors.white54,
-                  fontSize: 11,
-                  letterSpacing: 1,
+                  fontSize: 9,
+                  letterSpacing: 0.5,
                 ),
               ),
             ],
@@ -395,8 +408,26 @@ class CardDetailScreen extends ConsumerWidget {
           _buildInfoRow('League', card.league ?? '-'),
           _buildInfoRow('Acquired', userCard.acquiredAt.toString().substring(0, 10)),
           _buildInfoRow('Tradeable', userCard.isTradeable ? 'Yes' : 'No'),
-          _buildInfoRow('Effective Batting', '${userCard.effectiveBatting}'),
-          _buildInfoRow('Effective Bowling', '${userCard.effectiveBowling}'),
+          const Divider(color: Colors.white24),
+          const Text('Effective Ratings (with form/fatigue)',
+              style: TextStyle(color: Colors.white54, fontSize: 12)),
+          const SizedBox(height: 8),
+          _buildInfoRow('Batting', '${userCard.effectiveBatting}'),
+          _buildInfoRow('Bowling', '${userCard.effectiveBowling}'),
+          _buildInfoRow('Stamina', '${userCard.effectiveStamina}'),
+          _buildInfoRow('Pace', '${userCard.effectivePace}'),
+          _buildInfoRow('Spin', '${userCard.effectiveSpin}'),
+          _buildInfoRow('Aggression', '${userCard.effectiveAggression}'),
+          _buildInfoRow('Technique', '${userCard.effectiveTechnique}'),
+          _buildInfoRow('Power', '${userCard.effectivePower}'),
+          _buildInfoRow('Consistency', '${userCard.effectiveConsistency}'),
+          _buildInfoRow('Temperament', '${userCard.effectiveTemperament}'),
+          _buildInfoRow('Shot Making', '${userCard.effectiveShotMaking}'),
+          _buildInfoRow('Running', '${userCard.effectiveRunning}'),
+          _buildInfoRow('Accuracy', '${userCard.effectiveAccuracy}'),
+          _buildInfoRow('Variations', '${userCard.effectiveVariations}'),
+          _buildInfoRow('Yorkers', '${userCard.effectiveYorkers}'),
+          _buildInfoRow('Bouncer', '${userCard.effectiveBouncer}'),
         ],
       ),
     );

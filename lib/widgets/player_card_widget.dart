@@ -337,6 +337,10 @@ class PlayerCardWidget extends StatelessWidget {
         _miniStat('BWL', card.bowling, fontSize),
         const SizedBox(width: 4),
         _miniStat('FLD', card.fielding, fontSize),
+        const SizedBox(width: 4),
+        _miniStat('PAC', card.pace, fontSize),
+        const SizedBox(width: 4),
+        _miniStat('SPN', card.spin, fontSize),
       ],
     );
   }

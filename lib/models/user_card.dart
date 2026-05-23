@@ -91,6 +91,104 @@ class UserCard {
     return (base + formMod - fatigueMod).clamp(1, 99);
   }
 
+  int get effectiveStamina {
+    if (playerCard == null) return 0;
+    final base = playerCard!.stamina;
+    final fatigueMod = (fatigue / 20).round();
+    return (base - fatigueMod).clamp(1, 99);
+  }
+
+  int get effectivePace {
+    if (playerCard == null) return 0;
+    final base = playerCard!.pace;
+    final fatigueMod = (fatigue / 20).round();
+    return (base - fatigueMod).clamp(1, 99);
+  }
+
+  int get effectiveSpin {
+    if (playerCard == null) return 0;
+    final base = playerCard!.spin;
+    final fatigueMod = (fatigue / 20).round();
+    return (base - fatigueMod).clamp(1, 99);
+  }
+
+  int get effectiveAggression {
+    if (playerCard == null) return 0;
+    final base = playerCard!.aggression;
+    final formMod = ((form - 50) / 10).round();
+    return (base + formMod).clamp(1, 99);
+  }
+
+  int get effectiveTechnique {
+    if (playerCard == null) return 0;
+    final base = playerCard!.technique;
+    final formMod = ((form - 50) / 10).round();
+    return (base + formMod).clamp(1, 99);
+  }
+
+  int get effectivePower {
+    if (playerCard == null) return 0;
+    final base = playerCard!.power;
+    final fatigueMod = (fatigue / 20).round();
+    return (base - fatigueMod).clamp(1, 99);
+  }
+
+  int get effectiveConsistency {
+    if (playerCard == null) return 0;
+    final base = playerCard!.consistency;
+    final formMod = ((form - 50) / 10).round();
+    return (base + formMod).clamp(1, 99);
+  }
+
+  int get effectiveTemperament {
+    if (playerCard == null) return 0;
+    final base = playerCard!.temperament;
+    final formMod = ((form - 50) / 10).round();
+    return (base + formMod).clamp(1, 99);
+  }
+
+  int get effectiveShotMaking {
+    if (playerCard == null) return 0;
+    final base = playerCard!.shotMaking;
+    final fatigueMod = (fatigue / 20).round();
+    return (base - fatigueMod).clamp(1, 99);
+  }
+
+  int get effectiveRunning {
+    if (playerCard == null) return 0;
+    final base = playerCard!.running;
+    final fatigueMod = (fatigue / 20).round();
+    return (base - fatigueMod).clamp(1, 99);
+  }
+
+  int get effectiveAccuracy {
+    if (playerCard == null) return 0;
+    final base = playerCard!.accuracy;
+    final fatigueMod = (fatigue / 20).round();
+    return (base - fatigueMod).clamp(1, 99);
+  }
+
+  int get effectiveVariations {
+    if (playerCard == null) return 0;
+    final base = playerCard!.variations;
+    final fatigueMod = (fatigue / 20).round();
+    return (base - fatigueMod).clamp(1, 99);
+  }
+
+  int get effectiveYorkers {
+    if (playerCard == null) return 0;
+    final base = playerCard!.yorkers;
+    final fatigueMod = (fatigue / 20).round();
+    return (base - fatigueMod).clamp(1, 99);
+  }
+
+  int get effectiveBouncer {
+    if (playerCard == null) return 0;
+    final base = playerCard!.bouncer;
+    final fatigueMod = (fatigue / 20).round();
+    return (base - fatigueMod).clamp(1, 99);
+  }
+
   UserCard copyWith({
     int? level,
     int? xp,
