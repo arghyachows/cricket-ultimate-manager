@@ -23,6 +23,13 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen>
     _loadData();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Re-fetch whenever the screen becomes visible (e.g. after a match)
+    _loadData();
+  }
+
   Future<void> _loadData() async {
     try {
       final data = await SupabaseService.getLeaderboard(limit: 50);

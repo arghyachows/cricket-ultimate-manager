@@ -17,18 +17,28 @@ AS $$
 DECLARE
     v_new_xp INTEGER;
     v_new_level INTEGER;
+    v_new_matches_played INTEGER;
+    v_season_points_delta INTEGER;
 BEGIN
     -- Calculate new XP and level
-    SELECT xp + p_xp INTO v_new_xp FROM users WHERE id = p_user_id;
-    v_new_level := LEAST(FLOOR(v_new_xp::numeric / 500) + 1, 100);
+    SELECT xp + p_xp, matches_played + 1
+    INTO v_new_xp, v_new_matches_played
+    FROM users WHERE id = p_user_id;
 
-    -- Atomic update
+    v_new_level := LEAST(FLOOR(v_new_xp::numeric / 500) + 1, 100);
+    v_season_points_delta := CASE WHEN p_won
+        THEN 100 + LEAST(v_new_level * 5, 200)
+        ELSE 10 + LEAST(v_new_level, 50)
+    END;
+
+    -- Atomic update including season_points and matches_won
     UPDATE users SET
         coins = coins + p_coins,
         xp = v_new_xp,
         level = v_new_level,
-        matches_played = matches_played + 1,
+        matches_played = v_new_matches_played,
         matches_won = CASE WHEN p_won THEN matches_won + 1 ELSE matches_won END,
+        season_points = season_points + v_season_points_delta,
         updated_at = NOW()
     WHERE id = p_user_id;
 END;

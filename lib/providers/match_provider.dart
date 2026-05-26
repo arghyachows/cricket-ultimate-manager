@@ -218,6 +218,7 @@ class MatchState {
     int? newLevel,
     String? strikerCardId,
     String? nonStrikerCardId,
+    bool clearLevelUpPack = false,
   }) {
     return MatchState(
       match: match ?? this.match,
@@ -244,8 +245,8 @@ class MatchState {
       target: target ?? this.target,
       xiOrder1: xiOrder1 ?? this.xiOrder1,
       xiOrder2: xiOrder2 ?? this.xiOrder2,
-      levelUpPackAwarded: levelUpPackAwarded ?? this.levelUpPackAwarded,
-      newLevel: newLevel ?? this.newLevel,
+      levelUpPackAwarded: clearLevelUpPack ? null : (levelUpPackAwarded ?? this.levelUpPackAwarded),
+      newLevel: clearLevelUpPack ? null : (newLevel ?? this.newLevel),
       strikerCardId: strikerCardId ?? this.strikerCardId,
       nonStrikerCardId: nonStrikerCardId ?? this.nonStrikerCardId,
     );
@@ -370,6 +371,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
   Timer? _pollingTimer;
   MatchEngine? _engine;
   String? _remoteMatchId;
+  bool _matchCompleteFired = false;
   // Always use Node.js backend
   static const bool _nodeBackendEnabled = true;
 
@@ -406,6 +408,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
     _pollingTimer?.cancel();
     _engine = null;
     _remoteMatchId = null;
+    _matchCompleteFired = false;
     
     // Initialize fresh state
     state = MatchState(
@@ -1063,6 +1066,9 @@ class MatchNotifier extends StateNotifier<MatchState> {
   }
 
   void _onMatchComplete() {
+    if (_matchCompleteFired) return;
+    _matchCompleteFired = true;
+
     // For remote matches, we need to get scores from state, not engine
     final score1 = state.homeBatsFirst ? state.homeScore : state.awayScore;
     final score2 = state.homeBatsFirst ? state.awayScore : state.homeScore;
@@ -1155,6 +1161,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
     final oldLevel = oldUser?.level ?? 1;
     userNotifier.updateCoins(coins);
     userNotifier.updateXpAndLevel(xp);
+    userNotifier.updateMatchStats(won: homeWon == true);
     final updatedUser = ref.read(currentUserProvider).valueOrNull;
     final newLevel = updatedUser?.level ?? oldLevel;
 
@@ -1174,38 +1181,67 @@ class MatchNotifier extends StateNotifier<MatchState> {
     ref.read(careerStatsNotifierProvider.notifier).persistMatchStats(_matchHistory.first);
   }
 
+  /// Inserts a level-up pack row into user_card_packs if the user crossed a level boundary.
+  /// [oldLevel] is the level before XP was applied, [newLevel] is after.
+  static Future<void> _grantLevelUpPackIfNeeded(
+    String userId,
+    int oldLevel,
+    int newLevel,
+  ) async {
+    await SupabaseService.grantLevelUpPack(userId, oldLevel, newLevel);
+  }
+
   Future<void> _persistMatchRewards(int coins, int xp, bool won) async {
+    final userId = SupabaseService.currentUserId;
+    if (userId == null) return;
+
+    // Capture old level from DB before applying rewards
+    int oldDbLevel = 1;
+    int newDbLevel = 1;
     try {
-      final userId = SupabaseService.currentUserId;
-      if (userId == null) return;
-      await SupabaseService.client.rpc('award_match_rewards', params: {
+      // RPC returns jsonb: { old_level, new_level, pack_awarded }
+      final result = await SupabaseService.client.rpc('award_match_rewards', params: {
         'p_user_id': userId,
         'p_coins': coins,
         'p_xp': xp,
         'p_won': won,
       });
+      // RPC already inserts the pack atomically — no need to call grantLevelUpPack
+      oldDbLevel = (result?['old_level'] as int? ?? 1);
+      newDbLevel = (result?['new_level'] as int? ?? 1);
     } catch (_) {
-      // Fallback: direct update if RPC doesn't exist
+      // Fallback: direct update using fresh DB values to avoid double-counting
       try {
-        final userId = SupabaseService.currentUserId;
-        if (userId == null) return;
-        final user = ref.read(currentUserProvider).valueOrNull;
-        if (user == null) return;
-        final newXp = user.xp;
-        final newLevel = (newXp ~/ AppConstants.xpPerLevel) + 1;
+        final data = await SupabaseService.getCurrentUser();
+        if (data == null) return;
+        final dbCoins = (data['coins'] as int? ?? 0);
+        final dbXp = (data['xp'] as int? ?? 0);
+        final dbMatchesPlayed = (data['matches_played'] as int? ?? 0);
+        final dbMatchesWon = (data['matches_won'] as int? ?? 0);
+        final dbSeasonPoints = (data['season_points'] as int? ?? 0);
+        oldDbLevel = (dbXp ~/ AppConstants.xpPerLevel) + 1;
+        final newXp = dbXp + xp;
+        newDbLevel = (newXp ~/ AppConstants.xpPerLevel) + 1;
+        final clampedLevel = newDbLevel > AppConstants.maxLevel ? AppConstants.maxLevel : newDbLevel;
         await SupabaseService.client.from('users').update({
-          'coins': user.coins,
+          'coins': dbCoins + coins,
           'xp': newXp,
-          'level': newLevel > AppConstants.maxLevel ? AppConstants.maxLevel : newLevel,
-          'matches_played': user.matchesPlayed + 1,
-          if (won) 'matches_won': user.matchesWon + 1,
-          'season_points': user.seasonPoints + (won ? 100 + min(newLevel * 5, 200) : 10 + min(newLevel, 50)),
+          'level': clampedLevel,
+          'matches_played': dbMatchesPlayed + 1,
+          if (won) 'matches_won': dbMatchesWon + 1,
+          'season_points': dbSeasonPoints + (won ? 100 + min(clampedLevel * 5, 200) : 10 + min(clampedLevel, 50)),
         }).eq('id', userId);
+        // Fallback path: manually grant pack since RPC didn't run
+        try {
+          await _grantLevelUpPackIfNeeded(userId, oldDbLevel, newDbLevel);
+        } catch (_) {}
       } catch (_) {}
     }
-    // Refresh user data from server
-    ref.read(currentUserProvider.notifier).silentRefresh();
-    // Refresh card packs so new level-up pack appears
+
+    // Refresh AFTER DB writes complete so we read the updated values
+    // Delay ensures the RPC transaction has committed before reading back
+    await Future.delayed(const Duration(milliseconds: 800));
+    await ref.read(currentUserProvider.notifier).silentRefresh();
     ref.read(userCardPacksProvider.notifier).refresh();
   }
 
@@ -1281,6 +1317,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
       NodeBackendService.leaveMatch(_remoteMatchId!);
     }
     _remoteMatchId = null;
+    _matchCompleteFired = false;
     state = const MatchState();
   }
 

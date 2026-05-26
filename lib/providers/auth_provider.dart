@@ -99,6 +99,16 @@ class CurrentUserNotifier extends StateNotifier<AsyncValue<UserModel?>> {
     }
   }
 
+  void updateMatchStats({required bool won}) {
+    final user = state.valueOrNull;
+    if (user != null) {
+      state = AsyncValue.data(user.copyWith(
+        matchesPlayed: user.matchesPlayed + 1,
+        matchesWon: won ? user.matchesWon + 1 : user.matchesWon,
+      ));
+    }
+  }
+
   void updatePremium(int delta) {
     final user = state.valueOrNull;
     if (user != null) {

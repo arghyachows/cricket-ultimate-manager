@@ -3,9 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../core/theme.dart';
+import '../core/constants.dart';
 import '../core/node_backend_service.dart';
 import '../core/supabase_service.dart';
+import '../core/notification_service.dart';
 import '../providers/match_provider.dart';
+import '../providers/auth_provider.dart';
+import '../providers/card_packs_provider.dart';
 
 /// Commentary entry for the live timeline
 class _TCommentaryEntry {
@@ -82,6 +86,12 @@ class _TournamentMatchScreenState
 
   // Commentary log
   final List<_TCommentaryEntry> _commentaryLog = [];
+
+  // Rewards
+  int _coinsAwarded = 0;
+  int _xpAwarded = 0;
+  String? _levelUpPackAwarded;
+  int? _newLevel;
 
   @override
   void initState() {
@@ -337,11 +347,82 @@ class _TournamentMatchScreenState
   void _onMatchComplete(Map<String, dynamic> data) {
     if (!mounted) return;
     final result = data['result'] as String? ?? 'Match completed';
+
+    // Determine winner from result string (Node backend sets this)
+    // Treat home team winning as user winning (tournament matches are user's team vs AI)
+    final userWon = result.toLowerCase().contains(_homeTeamName.toLowerCase());
+    final isDraw = result.toLowerCase().contains('tie') || result.toLowerCase().contains('draw');
+    final coins = userWon ? AppConstants.matchWinCoins : (isDraw ? AppConstants.matchDrawCoins : AppConstants.matchLoseCoins);
+    final xp = userWon ? AppConstants.matchWinXP : AppConstants.matchPlayXP;
+
+    // Update local user state immediately
+    final userNotifier = ref.read(currentUserProvider.notifier);
+    final oldUser = ref.read(currentUserProvider).valueOrNull;
+    final oldLevel = oldUser?.level ?? 1;
+    userNotifier.updateCoins(coins);
+    userNotifier.updateXpAndLevel(xp);
+    userNotifier.updateMatchStats(won: userWon);
+    final updatedUser = ref.read(currentUserProvider).valueOrNull;
+    final newLevel = updatedUser?.level ?? oldLevel;
+
+    String? levelUpPack;
+    if (newLevel > oldLevel) {
+      levelUpPack = AppConstants.packNameForLevel(newLevel);
+    }
+
+    // Persist to DB
+    _persistTournamentRewards(coins, xp, userWon);
+
+    NotificationService.instance.showMatchResult(
+      title: 'Tournament Match ${userWon ? 'Victory!' : isDraw ? 'Draw' : 'Defeat'}',
+      body: '$result — +$coins coins, +$xp XP',
+    );
+
     setState(() {
       _isSimulating = false;
       _isMatchComplete = true;
       _matchResult = result;
+      _coinsAwarded = coins;
+      _xpAwarded = xp;
+      _levelUpPackAwarded = levelUpPack;
+      _newLevel = newLevel > oldLevel ? newLevel : null;
     });
+  }
+
+  Future<void> _persistTournamentRewards(int coins, int xp, bool won) async {
+    final userId = SupabaseService.currentUserId;
+    if (userId == null) return;
+    try {
+      // RPC atomically updates stats, season_points, and grants level-up pack
+      await SupabaseService.client.rpc('award_match_rewards', params: {
+        'p_user_id': userId,
+        'p_coins': coins,
+        'p_xp': xp,
+        'p_won': won,
+      });
+    } catch (_) {
+      try {
+        final data = await SupabaseService.getCurrentUser();
+        if (data == null) return;
+        final oldDbLevel = ((data['xp'] as int? ?? 0) ~/ AppConstants.xpPerLevel) + 1;
+        final newXp = (data['xp'] as int? ?? 0) + xp;
+        final newDbLevel = (newXp ~/ AppConstants.xpPerLevel) + 1;
+        final clampedLevel = newDbLevel.clamp(1, AppConstants.maxLevel);
+        await SupabaseService.client.from('users').update({
+          'coins': (data['coins'] as int? ?? 0) + coins,
+          'xp': newXp,
+          'level': clampedLevel,
+          'matches_played': (data['matches_played'] as int? ?? 0) + 1,
+          if (won) 'matches_won': (data['matches_won'] as int? ?? 0) + 1,
+        }).eq('id', userId);
+        try {
+          await SupabaseService.grantLevelUpPack(userId, oldDbLevel, newDbLevel);
+        } catch (_) {}
+      } catch (_) {}
+    }
+    await Future.delayed(const Duration(milliseconds: 800));
+    ref.read(currentUserProvider.notifier).silentRefresh();
+    ref.read(userCardPacksProvider.notifier).refresh();
   }
 
   // ─── Computed helpers ────────────────────────────────────────────
@@ -594,10 +675,37 @@ class _TournamentMatchScreenState
             width: double.infinity,
             padding: const EdgeInsets.all(16),
             color: AppTheme.accent.withValues(alpha: 0.15),
-            child: Text(
-              _matchResult!,
-              style: const TextStyle(color: AppTheme.accent, fontWeight: FontWeight.bold, fontSize: 16),
-              textAlign: TextAlign.center,
+            child: Column(
+              children: [
+                Text(
+                  _matchResult!,
+                  style: const TextStyle(color: AppTheme.accent, fontWeight: FontWeight.bold, fontSize: 16),
+                  textAlign: TextAlign.center,
+                ),
+                if (_coinsAwarded > 0) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.monetization_on, color: AppTheme.cardGold, size: 18),
+                      const SizedBox(width: 4),
+                      Text('+$_coinsAwarded', style: const TextStyle(color: AppTheme.cardGold, fontWeight: FontWeight.bold)),
+                      const SizedBox(width: 16),
+                      const Icon(Icons.star, color: AppTheme.primaryLight, size: 18),
+                      const SizedBox(width: 4),
+                      Text('+$_xpAwarded XP', style: const TextStyle(color: AppTheme.primaryLight, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ],
+                if (_levelUpPackAwarded != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'LEVEL UP! → Level $_newLevel — $_levelUpPackAwarded earned!',
+                    style: const TextStyle(color: AppTheme.accent, fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ],
             ),
           ),
       ],

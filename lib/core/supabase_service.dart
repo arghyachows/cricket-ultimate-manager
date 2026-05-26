@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'constants.dart';
 
 class SupabaseService {
   static SupabaseClient get client => Supabase.instance.client;
@@ -206,6 +207,26 @@ class SupabaseService {
   }
 
   // ---- MATCHES ----
+  static Future<void> grantLevelUpPack(String userId, int oldLevel, int newLevel) async {
+    if (newLevel <= oldLevel) return;
+    final packName = AppConstants.packNameForLevel(newLevel);
+    if (packName == null) return;
+    final probs = AppConstants.packProbabilities[packName];
+    if (probs == null) return;
+    await client.from('user_card_packs').insert({
+      'user_id': userId,
+      'pack_name': packName,
+      'card_count': 3,
+      'bronze_chance': (probs['bronze']! * 100),
+      'silver_chance': (probs['silver']! * 100),
+      'gold_chance': (probs['gold']! * 100),
+      'elite_chance': (probs['elite']! * 100),
+      'legend_chance': (probs['legend']! * 100),
+      'source': 'reward',
+      'opened': false,
+    });
+  }
+
   static Future<List<Map<String, dynamic>>> getMatches() async {
     final userId = currentUserId;
     if (userId == null) return [];

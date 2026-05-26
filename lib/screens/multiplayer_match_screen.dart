@@ -355,6 +355,42 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
 
   // ─── Load match data from DB ──────────────────────────────────────
 
+  Future<void> _persistMultiplayerRewards(int coins, int xp, bool won) async {
+    final userId = SupabaseService.currentUserId;
+    if (userId == null) return;
+    try {
+      // RPC atomically updates stats, season_points, and grants level-up pack
+      await SupabaseService.client.rpc('award_match_rewards', params: {
+        'p_user_id': userId,
+        'p_coins': coins,
+        'p_xp': xp,
+        'p_won': won,
+      });
+    } catch (_) {
+      try {
+        final data = await SupabaseService.getCurrentUser();
+        if (data == null) return;
+        final oldDbLevel = ((data['xp'] as int? ?? 0) ~/ AppConstants.xpPerLevel) + 1;
+        final newXp = (data['xp'] as int? ?? 0) + xp;
+        final newDbLevel = (newXp ~/ AppConstants.xpPerLevel) + 1;
+        final clampedLevel = newDbLevel.clamp(1, AppConstants.maxLevel);
+        await SupabaseService.client.from('users').update({
+          'coins': (data['coins'] as int? ?? 0) + coins,
+          'xp': newXp,
+          'level': clampedLevel,
+          'matches_played': (data['matches_played'] as int? ?? 0) + 1,
+          if (won) 'matches_won': (data['matches_won'] as int? ?? 0) + 1,
+        }).eq('id', userId);
+        try {
+          await SupabaseService.grantLevelUpPack(userId, oldDbLevel, newDbLevel);
+        } catch (_) {}
+      } catch (_) {}
+    }
+    await Future.delayed(const Duration(milliseconds: 800));
+    await ref.read(currentUserProvider.notifier).silentRefresh();
+    ref.read(userCardPacksProvider.notifier).refresh();
+  }
+
   Future<void> _loadMatch() async {
     try {
       final data = await SupabaseService.client
@@ -482,11 +518,15 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
       body: '${data['match_result'] ?? 'Match Complete'} — +$coins coins, +$xp XP',
     );
 
-    // Detect level-up
+    // Update local user state immediately
+    final userNotifier = ref.read(currentUserProvider.notifier);
     final oldUser = ref.read(currentUserProvider).valueOrNull;
     final oldLevel = oldUser?.level ?? 1;
-    final newXp = (oldUser?.xp ?? 0) + xp;
-    final computedNewLevel = (newXp ~/ AppConstants.xpPerLevel) + 1;
+    userNotifier.updateCoins(coins);
+    userNotifier.updateXpAndLevel(xp);
+    userNotifier.updateMatchStats(won: userWon);
+    final updatedUser = ref.read(currentUserProvider).valueOrNull;
+    final computedNewLevel = updatedUser?.level ?? oldLevel;
     if (computedNewLevel > oldLevel) {
       final packName = AppConstants.packNameForLevel(computedNewLevel);
       _setState((s) => s.copyWith(
@@ -495,8 +535,8 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
           ));
     }
 
-    ref.read(currentUserProvider.notifier).silentRefresh();
-    ref.read(userCardPacksProvider.notifier).refresh();
+    // Persist rewards to DB
+    _persistMultiplayerRewards(coins, xp, userWon);
   }
 
   void _syncFromDb(Map<String, dynamic> data) {
@@ -1231,11 +1271,17 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
       // Server awards rewards via Edge Function
       ref.invalidate(activeMultiplayerMatchProvider);
 
-      // Detect level-up before refresh
+      // Update local user state immediately
+      final userNotifier = ref.read(currentUserProvider.notifier);
       final oldUser = ref.read(currentUserProvider).valueOrNull;
       final oldLevel = oldUser?.level ?? 1;
-      final newXp = (oldUser?.xp ?? 0) + xp;
-      final computedNewLevel = (newXp ~/ AppConstants.xpPerLevel) + 1;
+      userNotifier.updateCoins(coins);
+      userNotifier.updateXpAndLevel(xp);
+      userNotifier.updateMatchStats(won: userWon);
+      final updatedUser = ref.read(currentUserProvider).valueOrNull;
+      final computedNewLevel = updatedUser?.level ?? oldLevel;
+
+      // Detect level-up before refresh
       if (computedNewLevel > oldLevel) {
         final packName = AppConstants.packNameForLevel(computedNewLevel);
         _setState((s) => s.copyWith(
@@ -1244,8 +1290,8 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
             ));
       }
 
-      ref.read(currentUserProvider.notifier).silentRefresh();
-      ref.read(userCardPacksProvider.notifier).refresh();
+      // Persist rewards to DB
+      _persistMultiplayerRewards(coins, xp, userWon);
 
       // Send local notification
       final rtResultLabel = userWon

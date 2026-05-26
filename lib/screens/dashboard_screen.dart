@@ -23,6 +23,15 @@ class DashboardScreen extends ConsumerWidget {
     final userAsync = ref.watch(currentUserProvider);
     final matchState = ref.watch(matchProvider);
 
+    // Trigger a fresh DB read whenever a quick match completes
+    ref.listen<MatchState>(matchProvider, (previous, next) {
+      if (next.isMatchComplete && previous?.isMatchComplete == false) {
+        Future.delayed(const Duration(milliseconds: 1000), () {
+          ref.read(currentUserProvider.notifier).silentRefresh();
+        });
+      }
+    });
+
     return Scaffold(
       body: SafeArea(
         child: userAsync.when(
