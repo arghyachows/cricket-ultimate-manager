@@ -1,36 +1,61 @@
-name: Build and Deploy to Render Static Site
+name: Deploy Flutter Web to OCI
 
 on:
   push:
-    branches: [master]
-  workflow_dispatch:
+    branches: [ "master", "main" ]
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+
     steps:
-      - name: ⬇️ Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: 🛠️ Setup Flutter
+      - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.29.0'
           channel: 'stable'
           cache: true
 
-      - name: 📦 Get dependencies
+      - name: Install dependencies
         run: flutter pub get
 
-      - name: 🏗️ Build Web
-        run: flutter build web --release --base-href "/"
+      - name: Build Flutter Web
+        run: flutter build web --release
 
-      - name: 🚀 Deploy to Branch
-        uses: JamesIves/github-pages-deploy-action@v4
+      - name: Compress web build
+        run: tar -czf web-build.tar.gz -C build/web .
+
+      - name: Upload Build Tarball to VM
+        uses: appleboy/scp-action@v0.1.7
         with:
-          folder: build/web
-          branch: gh-pages
-          token: ${{ secrets.GITHUB_TOKEN }}
+          host: ${{ secrets.OCI_HOST }}
+          username: ${{ secrets.OCI_USERNAME }}
+          key: ${{ secrets.OCI_SSH_KEY }}
+          port: 22
+          source: "web-build.tar.gz"
+          target: "~/"
 
-      - name: ✅ Done
-        run: echo "Build complete and pushed to gh-pages branch."
+      - name: Extract Build and Set Permissions
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.OCI_HOST }}
+          username: ${{ secrets.OCI_USERNAME }}
+          key: ${{ secrets.OCI_SSH_KEY }}
+          port: 22
+          script: |
+            # Ensure target directory exists
+            sudo mkdir -p /var/www/cricket-web
+            
+            # Clear old build files
+            sudo rm -rf /var/www/cricket-web/*
+            
+            # Extract tarball into target directory
+            sudo tar -xzf ~/web-build.tar.gz -C /var/www/cricket-web
+            
+            # Set correct ownership for web server
+            sudo chown -R www-data:www-data /var/www/cricket-web
+            
+            # Clean up tarball from home directory
+            rm ~/web-build.tar.gz
