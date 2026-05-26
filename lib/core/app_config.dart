@@ -7,7 +7,7 @@ class AppConfig {
   AppConfig._();
 
   // ── Change this to switch environments ──────────────────────────────────
-  static const _env = Environment.local;
+  static const _env = Environment.oracleCloud;
   // ────────────────────────────────────────────────────────────────────────
 
   // IBM Cloud Kubernetes Ingress URL
@@ -18,6 +18,8 @@ class AppConfig {
   // For physical device on same LAN, replace with your machine's LAN IP:
   // static const String _localUrl = 'http://192.168.x.x:3000';
 
+  static const String _oracleCloudUrl = 'http://140.238.243.40:3000';
+
   /// The base URL for the Node.js backend (REST + Socket.IO).
   static String get backendUrl {
     switch (_env) {
@@ -25,11 +27,13 @@ class AppConfig {
         return _ibmCloudUrl;
       case Environment.local:
         return _localUrl;
+      case Environment.oracleCloud:
+        return _oracleCloudUrl;
     }
   }
 
   /// Whether verbose debug logging is enabled.
-  static bool get debugLogging => _env == Environment.local;
+  static bool get debugLogging => _env != Environment.production;
 }
 
-enum Environment { production, local }
+enum Environment { production, local, oracleCloud }
