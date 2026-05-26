@@ -119,4 +119,5 @@ class AppConstants {
   static const String matchHistoryRoute = '/match/history';
   static const String multiplayerRoute = '/multiplayer';
   static const String multiplayerRoomRoute = '/multiplayer/room';
+  static const String challengeRoute = '/challenges';
 }

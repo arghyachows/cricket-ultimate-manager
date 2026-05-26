@@ -170,6 +170,17 @@ class MatchScreen extends ConsumerWidget {
               const SizedBox(height: 12),
 
               _MatchModeCard(
+                title: 'CHALLENGES',
+                subtitle: 'Weekly ladder vs AI opponents',
+                icon: Icons.emoji_events,
+                color: Colors.amberAccent,
+                reward: 'Elite Pack',
+                enabled: xi.length == 11 && !hasActiveMatch,
+                onTap: () => context.go(AppConstants.challengeRoute),
+              ),
+              const SizedBox(height: 12),
+
+              _MatchModeCard(
                 title: 'WEEKEND LEAGUE',
                 subtitle: 'Elite competition for top rewards',
                 icon: Icons.military_tech,

@@ -7,3 +7,4 @@ export 'match_provider.dart';
 export 'pack_provider.dart';
 export 'career_stats_provider.dart';
 export 'multiplayer_provider.dart';
+export 'challenge_provider.dart';

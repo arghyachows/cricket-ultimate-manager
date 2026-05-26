@@ -23,6 +23,7 @@ import '../screens/multiplayer_lobby_screen.dart';
 import '../screens/multiplayer_room_screen.dart';
 import '../screens/multiplayer_debug_screen.dart';
 import '../screens/multiplayer_match_screen.dart';
+import '../screens/challenge_screen.dart';
 import 'constants.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -83,7 +84,13 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: AppConstants.matchPreviewRoute,
             builder: (context, state) {
-              return const MatchPreviewScreen();
+              final extra = state.extra as Map<String, dynamic>?;
+              return MatchPreviewScreen(
+                challengeMode: extra?['challenge_mode'] as bool? ?? false,
+                opponentDifficulty: extra?['opponent_difficulty'] as String?,
+                opponentTeamName: extra?['opponent_team_name'] as String?,
+                opponentChemistry: extra?['opponent_chemistry'] as int?,
+              );
             },
           ),
           GoRoute(
@@ -145,6 +152,10 @@ final routerProvider = Provider<GoRouter>((ref) {
               final matchId = state.pathParameters['matchId']!;
               return MultiplayerMatchScreen(matchId: matchId);
             },
+          ),
+          GoRoute(
+            path: AppConstants.challengeRoute,
+            builder: (context, state) => const ChallengeScreen(),
           ),
           GoRoute(
             path: AppConstants.profileRoute,

@@ -9,7 +9,18 @@ import '../models/models.dart';
 import '../engine/ai_opponent.dart';
 
 class MatchPreviewScreen extends ConsumerStatefulWidget {
-  const MatchPreviewScreen({super.key});
+  final bool challengeMode;
+  final String? opponentDifficulty;
+  final String? opponentTeamName;
+  final int? opponentChemistry;
+
+  const MatchPreviewScreen({
+    super.key,
+    this.challengeMode = false,
+    this.opponentDifficulty,
+    this.opponentTeamName,
+    this.opponentChemistry,
+  });
 
   @override
   ConsumerState<MatchPreviewScreen> createState() => _MatchPreviewScreenState();
@@ -59,8 +70,12 @@ class _MatchPreviewScreenState extends ConsumerState<MatchPreviewScreen>
     super.initState();
     _pitchType = _pitchTypes[_rng.nextInt(_pitchTypes.length)];
     _weather = _weatherConditions[_rng.nextInt(_weatherConditions.length)];
-    _aiTeamName = AIOpponent.randomTeamName();
-    _aiChemistry = AIOpponent.randomChemistry();
+    _aiTeamName = widget.challengeMode 
+        ? (widget.opponentTeamName ?? AIOpponent.randomTeamName())
+        : AIOpponent.randomTeamName();
+    _aiChemistry = widget.challengeMode 
+        ? (widget.opponentChemistry ?? AIOpponent.randomChemistry())
+        : AIOpponent.randomChemistry();
     _aiXI = [];
     _loadAI();
 
@@ -73,8 +88,10 @@ class _MatchPreviewScreenState extends ConsumerState<MatchPreviewScreen>
 
   Future<void> _loadAI() async {
     setState(() => _aiLoading = true);
-    _aiTeamName = AIOpponent.randomTeamName();
-    _aiChemistry = AIOpponent.randomChemistry();
+    if (!widget.challengeMode) {
+      _aiTeamName = AIOpponent.randomTeamName();
+      _aiChemistry = AIOpponent.randomChemistry();
+    }
     _aiXI = await AIOpponent.generateXI(difficulty: _selectedDifficulty);
     if (mounted) setState(() => _aiLoading = false);
   }
