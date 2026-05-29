@@ -70,6 +70,9 @@ class _MatchPreviewScreenState extends ConsumerState<MatchPreviewScreen>
     super.initState();
     _pitchType = _pitchTypes[_rng.nextInt(_pitchTypes.length)];
     _weather = _weatherConditions[_rng.nextInt(_weatherConditions.length)];
+    if (widget.challengeMode && widget.opponentDifficulty != null) {
+      _selectedDifficulty = widget.opponentDifficulty!;
+    }
     _aiTeamName = widget.challengeMode 
         ? (widget.opponentTeamName ?? AIOpponent.randomTeamName())
         : AIOpponent.randomTeamName();
@@ -155,6 +158,7 @@ class _MatchPreviewScreenState extends ConsumerState<MatchPreviewScreen>
       userWonToss: _userWonToss,
       tossDecision: _tossDecision ?? 'bat',
       homeBatsFirst: _homeBatsFirst,
+      challengeMode: widget.challengeMode,
     );
 
     context.go(AppConstants.liveMatchRoute);
@@ -341,7 +345,7 @@ class _MatchPreviewScreenState extends ConsumerState<MatchPreviewScreen>
                 child: Padding(
                   padding: EdgeInsets.only(right: d != 'International' ? 8 : 0),
                   child: GestureDetector(
-                      onTap: !_tossComplete
+                      onTap: (!_tossComplete && !widget.challengeMode)
                           ? () {
                               setState(() => _selectedDifficulty = d);
                               _loadAI();
@@ -398,7 +402,7 @@ class _MatchPreviewScreenState extends ConsumerState<MatchPreviewScreen>
                 child: Padding(
                   padding: EdgeInsets.only(right: isLast ? 0 : 8),
                   child: GestureDetector(
-                      onTap: !_tossComplete
+                      onTap: (!_tossComplete && !widget.challengeMode)
                           ? () => setState(() {
                               _selectedOvers = o;
                             })

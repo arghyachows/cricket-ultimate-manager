@@ -8,7 +8,6 @@ import '../models/challenge_model.dart';
 import '../models/team_model.dart';
 import '../engine/ai_opponent.dart';
 import 'auth_provider.dart';
-import 'match_provider.dart';
 import 'card_packs_provider.dart';
 
 /// Provider for the quick match challenge ladder state.
@@ -277,25 +276,4 @@ class ChallengeNotifier extends StateNotifier<ChallengeState> {
     return ((startOfYear.weekday <= 4 ? 1 : 0) + days + startOfYear.weekday - 1) ~/ 7 + 1;
   }
 }
-
-/// Subscribe to match completion to auto-detect challenge match results.
-final challengeMatchListenerProvider = Provider<void>((ref) {
-  ref.listen(matchProvider, (previous, next) {
-    if (next.isMatchComplete && previous?.isMatchComplete == false) {
-      final challengeState = ref.read(challengeProvider);
-      if (!challengeState.isLoaded || challengeState.allCompleted) return;
-
-      // Only process if user won (homeWon == true)
-      if (next.homeWon != true) return;
-
-      final current = challengeState.currentOpponent;
-      if (current == null) return;
-
-      // Mark as defeated (but verify the match was played against this opponent)
-      // The challenge screen will set the current opponent before match start
-      Future.microtask(() {
-        ref.read(challengeProvider.notifier).markCurrentAsDefeated(current);
-      });
-    }
-  });
-});
+

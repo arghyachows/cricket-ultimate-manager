@@ -15,12 +15,7 @@ class ChallengeScreen extends ConsumerStatefulWidget {
 }
 
 class _ChallengeScreenState extends ConsumerState<ChallengeScreen> {
-  @override
-  void initState() {
-    super.initState();
-    // Activate the match listener for auto-detecting wins
-    Future.microtask(() => ref.read(challengeMatchListenerProvider));
-  }
+
 
   void _playOpponent(ChallengeOpponent opponent) {
     final teamAsync = ref.read(teamProvider);

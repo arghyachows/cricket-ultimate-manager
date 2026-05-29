@@ -11,6 +11,7 @@ import '../core/notification_service.dart';
 import 'auth_provider.dart';
 import 'card_packs_provider.dart';
 import 'career_stats_provider.dart';
+import 'challenge_provider.dart';
 
 // Match state
 final matchProvider =
@@ -51,6 +52,7 @@ class MatchState {
   final String strikerCardId;
   /// Card ID of the non-striker (for AT CREASE display).
   final String nonStrikerCardId;
+  final bool challengeMode;
 
   const MatchState({
     this.match,
@@ -81,6 +83,7 @@ class MatchState {
     this.newLevel,
     this.strikerCardId = '',
     this.nonStrikerCardId = '',
+    this.challengeMode = false,
   });
 
   bool get hasActiveMatch => isSimulating || isMatchComplete;
@@ -218,6 +221,7 @@ class MatchState {
     int? newLevel,
     String? strikerCardId,
     String? nonStrikerCardId,
+    bool? challengeMode,
     bool clearLevelUpPack = false,
   }) {
     return MatchState(
@@ -249,6 +253,7 @@ class MatchState {
       newLevel: clearLevelUpPack ? null : (newLevel ?? this.newLevel),
       strikerCardId: strikerCardId ?? this.strikerCardId,
       nonStrikerCardId: nonStrikerCardId ?? this.nonStrikerCardId,
+      challengeMode: challengeMode ?? this.challengeMode,
     );
   }
 }
@@ -402,6 +407,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
     bool userWonToss = true,
     String tossDecision = 'bat',
     bool homeBatsFirst = true,
+    bool challengeMode = false,
   }) async {
     // Clean up any previous match
     _simulationTimer?.cancel();
@@ -423,6 +429,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
       userWonToss: userWonToss,
       tossDecision: tossDecision,
       homeBatsFirst: homeBatsFirst,
+      challengeMode: challengeMode,
       xiOrder1: (homeBatsFirst ? homeXI : awayXI)
           .map<String>((p) => p.userCard?.playerCard?.playerName ?? 'Unknown')
           .toList(),
@@ -1179,6 +1186,19 @@ class MatchNotifier extends StateNotifier<MatchState> {
 
     // Persist player career stats
     ref.read(careerStatsNotifierProvider.notifier).persistMatchStats(_matchHistory.first);
+
+    // Challenge mode win recording & unlocking
+    if (state.challengeMode && homeWon == true) {
+      final challengeState = ref.read(challengeProvider);
+      if (challengeState.isLoaded && !challengeState.allCompleted) {
+        final current = challengeState.currentOpponent;
+        if (current != null) {
+          Future.microtask(() {
+            ref.read(challengeProvider.notifier).markCurrentAsDefeated(current);
+          });
+        }
+      }
+    }
   }
 
   /// Inserts a level-up pack row into user_card_packs if the user crossed a level boundary.
