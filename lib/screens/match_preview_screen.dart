@@ -70,8 +70,11 @@ class _MatchPreviewScreenState extends ConsumerState<MatchPreviewScreen>
     super.initState();
     _pitchType = _pitchTypes[_rng.nextInt(_pitchTypes.length)];
     _weather = _weatherConditions[_rng.nextInt(_weatherConditions.length)];
-    if (widget.challengeMode && widget.opponentDifficulty != null) {
-      _selectedDifficulty = widget.opponentDifficulty!;
+    if (widget.challengeMode) {
+      if (widget.opponentDifficulty != null) {
+        _selectedDifficulty = widget.opponentDifficulty!;
+      }
+      _selectedOvers = 5;
     }
     _aiTeamName = widget.challengeMode 
         ? (widget.opponentTeamName ?? AIOpponent.randomTeamName())
@@ -328,9 +331,17 @@ class _MatchPreviewScreenState extends ConsumerState<MatchPreviewScreen>
           const SizedBox(height: 16),
 
           // Difficulty selector
-          const Text(
-            'DIFFICULTY',
-            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1, color: Colors.white54),
+          Row(
+            children: [
+              const Text(
+                'DIFFICULTY',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1, color: Colors.white54),
+              ),
+              if (widget.challengeMode) ...[
+                const SizedBox(width: 4),
+                const Icon(Icons.lock, size: 11, color: Colors.white38),
+              ],
+            ],
           ),
           const SizedBox(height: 8),
           Row(
@@ -344,41 +355,44 @@ class _MatchPreviewScreenState extends ConsumerState<MatchPreviewScreen>
               return Expanded(
                 child: Padding(
                   padding: EdgeInsets.only(right: d != 'International' ? 8 : 0),
-                  child: GestureDetector(
-                      onTap: (!_tossComplete && !widget.challengeMode)
-                          ? () {
-                              setState(() => _selectedDifficulty = d);
-                              _loadAI();
-                            }
-                          : null,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      decoration: BoxDecoration(
-                        color: selected ? color.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.05),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: selected ? color : Colors.white12,
-                          width: selected ? 1.5 : 1,
+                  child: Opacity(
+                    opacity: widget.challengeMode && !selected ? 0.35 : 1.0,
+                    child: GestureDetector(
+                        onTap: (!_tossComplete && !widget.challengeMode)
+                            ? () {
+                                setState(() => _selectedDifficulty = d);
+                                _loadAI();
+                              }
+                            : null,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        decoration: BoxDecoration(
+                          color: selected ? color.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.05),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: selected ? color : Colors.white12,
+                            width: selected ? 1.5 : 1,
+                          ),
                         ),
-                      ),
-                      child: Column(
-                        children: [
-                          Icon(
-                            d == 'Village' ? Icons.park : d == 'Domestic' ? Icons.stadium : Icons.public,
-                            color: selected ? color : Colors.white38,
-                            size: 20,
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            d.toUpperCase(),
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
+                        child: Column(
+                          children: [
+                            Icon(
+                              d == 'Village' ? Icons.park : d == 'Domestic' ? Icons.stadium : Icons.public,
                               color: selected ? color : Colors.white38,
-                              letterSpacing: 0.5,
+                              size: 20,
                             ),
-                          ),
-                        ],
+                            const SizedBox(height: 4),
+                            Text(
+                              d.toUpperCase(),
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: selected ? color : Colors.white38,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -389,9 +403,17 @@ class _MatchPreviewScreenState extends ConsumerState<MatchPreviewScreen>
           const SizedBox(height: 16),
 
           // Overs selector
-          const Text(
-            'OVERS',
-            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1, color: Colors.white54),
+          Row(
+            children: [
+              const Text(
+                'OVERS',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1, color: Colors.white54),
+              ),
+              if (widget.challengeMode) ...[
+                const SizedBox(width: 4),
+                const Icon(Icons.lock, size: 11, color: Colors.white38),
+              ],
+            ],
           ),
           const SizedBox(height: 8),
           Row(
@@ -401,31 +423,34 @@ class _MatchPreviewScreenState extends ConsumerState<MatchPreviewScreen>
               return Expanded(
                 child: Padding(
                   padding: EdgeInsets.only(right: isLast ? 0 : 8),
-                  child: GestureDetector(
-                      onTap: (!_tossComplete && !widget.challengeMode)
-                          ? () => setState(() {
-                              _selectedOvers = o;
-                            })
-                          : null,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      decoration: BoxDecoration(
-                        color: selected
-                            ? AppTheme.accent.withValues(alpha: 0.2)
-                            : Colors.white.withValues(alpha: 0.05),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: selected ? AppTheme.accent : Colors.white12,
-                          width: selected ? 1.5 : 1,
+                  child: Opacity(
+                    opacity: widget.challengeMode && !selected ? 0.35 : 1.0,
+                    child: GestureDetector(
+                        onTap: (!_tossComplete && !widget.challengeMode)
+                            ? () => setState(() {
+                                _selectedOvers = o;
+                              })
+                            : null,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        decoration: BoxDecoration(
+                          color: selected
+                              ? AppTheme.accent.withValues(alpha: 0.2)
+                              : Colors.white.withValues(alpha: 0.05),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: selected ? AppTheme.accent : Colors.white12,
+                            width: selected ? 1.5 : 1,
+                          ),
                         ),
-                      ),
-                      child: Center(
-                        child: Text(
-                          '$o',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: selected ? AppTheme.accent : Colors.white38,
+                        child: Center(
+                          child: Text(
+                            '$o',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: selected ? AppTheme.accent : Colors.white38,
+                            ),
                           ),
                         ),
                       ),
