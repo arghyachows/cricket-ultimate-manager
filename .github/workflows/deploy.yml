@@ -1,4 +1,4 @@
-name: Deploy Flutter Web to OCI
+name: Deploy Flutter Web to OCI Object Storage
 
 on:
   push:
@@ -24,38 +24,14 @@ jobs:
       - name: Build Flutter Web
         run: flutter build web --release
 
-      - name: Compress web build
-        run: tar -czf web-build.tar.gz -C build/web .
-
-      - name: Upload Build Tarball to VM
-        uses: appleboy/scp-action@v0.1.7
+      # Deploy built frontend assets in build/web to OCI Object Storage
+      - name: Synchronize Build Files with OCI Object Storage
+        uses: oracle-actions/run-oci-cli-command@v1.3.0
         with:
-          host: ${{ secrets.OCI_HOST }}
-          username: ${{ secrets.OCI_USERNAME }}
-          key: ${{ secrets.OCI_SSH_KEY }}
-          port: 22
-          source: "web-build.tar.gz"
-          target: "~/"
-
-      - name: Extract Build and Set Permissions
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.OCI_HOST }}
-          username: ${{ secrets.OCI_USERNAME }}
-          key: ${{ secrets.OCI_SSH_KEY }}
-          port: 22
-          script: |
-            # Ensure target directory exists
-            sudo mkdir -p /var/www/cricket-web
-            
-            # Clear old build files
-            sudo rm -rf /var/www/cricket-web/*
-            
-            # Extract tarball into target directory
-            sudo tar -xzf ~/web-build.tar.gz -C /var/www/cricket-web
-            
-            # Set correct ownership for web server
-            sudo chown -R www-data:www-data /var/www/cricket-web
-            
-            # Clean up tarball from home directory
-            rm ~/web-build.tar.gz
+          command: "os object sync --bucket-name ${{ secrets.OCI_BUCKET_NAME }} --namespace-name ${{ secrets.OCI_NAMESPACE }} --src-dir build/web --delete"
+        env:
+          OCI_CLI_USER: ${{ secrets.OCI_CLI_USER }}
+          OCI_CLI_TENANCY: ${{ secrets.OCI_CLI_TENANCY }}
+          OCI_CLI_FINGERPRINT: ${{ secrets.OCI_CLI_FINGERPRINT }}
+          OCI_CLI_KEY_CONTENT: ${{ secrets.OCI_PRIVATE_KEY }}
+          OCI_CLI_REGION: ${{ secrets.OCI_CLI_REGION }}
