@@ -18,7 +18,7 @@ class AppConfig {
   // For physical device on same LAN, replace with your machine's LAN IP:
   // static const String _localUrl = 'http://192.168.x.x:3000';
 
-  static const String _oracleCloudUrl = 'http://140.238.243.40:3000';
+  static const String _oracleCloudUrl = 'https://cricketmanager.duckdns.org';
 
   /// The base URL for the Node.js backend (REST + Socket.IO).
   static String get backendUrl {
