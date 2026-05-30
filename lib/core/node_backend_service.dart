@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'app_config.dart';
@@ -35,6 +36,7 @@ class NodeBackendService {
     // If already connected, skip
     if (_socket != null && _socket!.connected) {
       print('🔌 Socket already connected');
+      _registerLifecycleObserver();
       return;
     }
 
@@ -47,6 +49,7 @@ class NodeBackendService {
       _isInitialized = false;
     }
 
+    _registerLifecycleObserver();
     print('🔌 Initializing Socket.IO connection to $baseUrl');
     
     _socket = IO.io(
@@ -660,6 +663,39 @@ class NodeBackendService {
       _socket!.dispose();
       _socket = null;
       _isInitialized = false;
+    }
+  }
+
+  static bool _lifecycleObserverRegistered = false;
+
+  static void _registerLifecycleObserver() {
+    if (_lifecycleObserverRegistered) return;
+    WidgetsBinding.instance.addObserver(_SocketLifecycleObserver());
+    _lifecycleObserverRegistered = true;
+    print('📱 SocketLifecycleObserver registered successfully');
+  }
+
+  static void handleAppResume() {
+    if (_socket == null) return;
+    print('📱 Reconnect check on App Resume: isConnected=$isConnected, currentJoinedMatchId=$_currentJoinedMatchId');
+    
+    // Completely reconnect to guarantee fresh connection and trigger room join state sync
+    if (_currentJoinedMatchId != null) {
+      print('🔄 App resumed with active match. Reconnecting socket to guarantee fresh state...');
+      _socket!.disconnect();
+      _socket!.connect();
+    } else if (!_socket!.connected) {
+      _socket!.connect();
+    }
+  }
+}
+
+class _SocketLifecycleObserver extends WidgetsBindingObserver {
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      print('📱 App resumed: Checking Socket.IO connection status...');
+      NodeBackendService.handleAppResume();
     }
   }
 }
