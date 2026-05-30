@@ -188,12 +188,148 @@ class _TournamentMatchScreenState
       widget.matchId,
       _onBallUpdate,
       _onMatchComplete,
+      onRoomJoined: _onRoomJoined,
     );
 
     if (joined && mounted) {
       setState(() => _socketConnected = true);
       // Load existing commentary for this match (catch-up on missed balls)
       _loadCommentary();
+    }
+  }
+
+  void _onRoomJoined(Map<String, dynamic> data) {
+    if (!mounted) return;
+    try {
+      print('👤 Room joined callback in screen. Syncing state...');
+      final stateData = data['state'] as Map<String, dynamic>?;
+      final commentaryLogRaw = data['commentaryLog'] as List?;
+
+      if (stateData == null) return;
+
+      final innings = stateData['innings'] as int? ?? 1;
+      final score1 = stateData['score1'] as int? ?? 0;
+      final score2 = stateData['score2'] as int? ?? 0;
+      final wickets1 = stateData['wickets1'] as int? ?? 0;
+      final wickets2 = stateData['wickets2'] as int? ?? 0;
+      final target = stateData['target'] as int? ?? 0;
+      final matchComplete = stateData['matchComplete'] as bool? ?? false;
+      final matchResult = stateData['matchResult'] as String?;
+      final currentBatsmanName = stateData['currentBatsman'] as String? ?? '';
+      final currentBowlerName = stateData['currentBowler'] as String? ?? '';
+
+      // Pick up homeBatsFirst from state if available
+      if (stateData.containsKey('homeBatsFirst')) {
+        _homeBatsFirst = stateData['homeBatsFirst'] as bool? ?? _homeBatsFirst;
+      }
+
+      final hbf = _homeBatsFirst;
+      final homeScore = hbf ? score1 : score2;
+      final homeWickets = hbf ? wickets1 : wickets2;
+      final awayScore = hbf ? score2 : score1;
+      final awayWickets = hbf ? wickets2 : wickets1;
+
+      // Update batsman/bowler names
+      String homeBatsman = _homeBatsman;
+      String awayBatsman = _awayBatsman;
+      if ((innings == 1 && hbf) || (innings == 2 && !hbf)) {
+        homeBatsman = currentBatsmanName;
+      } else {
+        awayBatsman = currentBatsmanName;
+      }
+
+      // Reconstruct overs string from ball & over numbers in state
+      final overNumber = stateData['overNumber'] as int? ?? 0;
+      final ballNumber = stateData['ballNumber'] as int? ?? 0;
+      String oversStr;
+      if (ballNumber == 6) {
+        oversStr = '${overNumber + 1}.0';
+      } else {
+        oversStr = '$overNumber.$ballNumber';
+      }
+
+      String homeOvers = _homeOvers;
+      String awayOvers = _awayOvers;
+      if (innings == 1) {
+        if (hbf) homeOvers = oversStr; else awayOvers = oversStr;
+      } else {
+        if (hbf) awayOvers = oversStr; else homeOvers = oversStr;
+      }
+
+      // Scorecard stats
+      final batsmanStatsData = stateData['batsmanStats'] as Map<String, dynamic>? ?? {};
+      final batsmanStats = <String, BatsmanStats>{};
+      batsmanStatsData.forEach((key, value) {
+        final stats = value as Map<String, dynamic>;
+        batsmanStats[key] = BatsmanStats(
+          name: stats['name'] ?? '',
+          innings: stats['innings'] ?? 1,
+          battingOrder: stats['battingOrder'] ?? 99,
+          runs: stats['runs'] ?? 0,
+          balls: stats['balls'] ?? 0,
+          fours: stats['fours'] ?? 0,
+          sixes: stats['sixes'] ?? 0,
+          isOut: stats['isOut'] ?? false,
+          dismissalType: stats['dismissalType'],
+        );
+      });
+
+      final bowlerStatsData = stateData['bowlerStats'] as Map<String, dynamic>? ?? {};
+      final bowlerStats = <String, BowlerStats>{};
+      bowlerStatsData.forEach((key, value) {
+        final stats = value as Map<String, dynamic>;
+        bowlerStats[key] = BowlerStats(
+          name: stats['name'] ?? '',
+          innings: stats['innings'] ?? 1,
+          balls: stats['balls'] ?? 0,
+          runs: stats['runs'] ?? 0,
+          wickets: stats['wickets'] ?? 0,
+          maidens: stats['maidens'] ?? 0,
+          dotBalls: stats['dotBalls'] ?? 0,
+        );
+      });
+
+      // Commentary log reconstruction
+      if (commentaryLogRaw != null && commentaryLogRaw.isNotEmpty) {
+        _commentaryLog.clear();
+        for (final entry in commentaryLogRaw) {
+          final e = Map<String, dynamic>.from(entry as Map);
+          _commentaryLog.add(_TCommentaryEntry(
+            commentary: e['commentary'] ?? '',
+            eventType: e['eventType'] ?? '',
+            runs: e['runs'] ?? 0,
+            innings: e['innings'] ?? 1,
+            oversDisplay: '${e['overNumber'] ?? 0}.${e['ballNumber'] ?? 0}',
+          ));
+        }
+      }
+
+      setState(() {
+        _isSimulating = true;
+        _homeScore = homeScore;
+        _homeWickets = homeWickets;
+        _awayScore = awayScore;
+        _awayWickets = awayWickets;
+        _homeOvers = homeOvers;
+        _awayOvers = awayOvers;
+        _currentInnings = innings;
+        _target = target;
+        _currentCommentary = _commentaryLog.isNotEmpty ? _commentaryLog.last.commentary : _currentCommentary;
+        _homeBatsman = homeBatsman;
+        _awayBatsman = awayBatsman;
+        _currentBowler = currentBowlerName;
+        _batsmanStats = batsmanStats;
+        _bowlerStats = bowlerStats;
+      });
+
+      if (matchComplete) {
+        _onMatchComplete({
+          'result': matchResult ?? 'Match completed',
+          'state': stateData,
+        });
+      }
+    } catch (e) {
+      print('❌ Room joined state sync error: $e');
     }
   }
 

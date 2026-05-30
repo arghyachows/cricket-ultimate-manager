@@ -24,6 +24,9 @@ class NodeBackendService {
   static Function(dynamic)? _streamBallHandler;
   static Function(dynamic)? _streamCompleteHandler;
 
+  static String? _currentJoinedMatchId;
+  static Function(Map<String, dynamic>)? _onRoomJoinedCallback;
+
   /// Whether the socket is currently connected
   static bool get isConnected => _socket != null && _socket!.connected;
 
@@ -62,6 +65,10 @@ class NodeBackendService {
     _socket!.onConnect((_) {
       print('✅ Connected to Node.js backend');
       _isInitialized = true;
+      if (_currentJoinedMatchId != null) {
+        print('🔄 Re-joining match room on connect: $_currentJoinedMatchId');
+        _socket!.emit('joinMatch', _currentJoinedMatchId);
+      }
     });
 
     _socket!.onDisconnect((_) {
@@ -80,6 +87,10 @@ class NodeBackendService {
     _socket!.onReconnect((attempt) {
       print('🔄 Reconnected after $attempt attempts');
       _isInitialized = true;
+      if (_currentJoinedMatchId != null) {
+        print('🔄 Re-joining match room on reconnect: $_currentJoinedMatchId');
+        _socket!.emit('joinMatch', _currentJoinedMatchId);
+      }
     });
 
     _socket!.onReconnectError((error) {
@@ -133,8 +144,9 @@ class NodeBackendService {
   static Future<bool> joinMatch(
     String matchId,
     Function(Map<String, dynamic>) onBallUpdate,
-    Function(Map<String, dynamic>) onMatchComplete,
-  ) async {
+    Function(Map<String, dynamic>) onMatchComplete, {
+    Function(Map<String, dynamic>)? onRoomJoined,
+  }) async {
     // Ensure socket is initialized and connected
     if (_socket == null || !_socket!.connected) {
       print('⚠️ Socket not connected, initializing...');
@@ -146,18 +158,22 @@ class NodeBackendService {
       }
     }
 
-    return _joinMatchRoom(matchId, onBallUpdate, onMatchComplete);
+    return _joinMatchRoom(matchId, onBallUpdate, onMatchComplete, onRoomJoined: onRoomJoined);
   }
 
   static bool _joinMatchRoom(
     String matchId,
     Function(Map<String, dynamic>) onBallUpdate,
-    Function(Map<String, dynamic>) onMatchComplete,
-  ) {
+    Function(Map<String, dynamic>) onMatchComplete, {
+    Function(Map<String, dynamic>)? onRoomJoined,
+  }) {
     if (_socket == null || !_socket!.connected) {
       print('❌ Cannot join room: socket not connected');
       return false;
     }
+
+    _currentJoinedMatchId = matchId;
+    _onRoomJoinedCallback = onRoomJoined;
 
     // Remove only previous callback-based handlers (preserve stream handlers)
     if (_cbBallHandler != null) _socket!.off('ballUpdate', _cbBallHandler!);
@@ -168,13 +184,21 @@ class NodeBackendService {
     _socket!.emit('joinMatch', matchId);
 
     _cbJoinedHandler = (data) {
-      print('✅ Joined match room: ${data['matchId']}');
+      try {
+        final joinedData = Map<String, dynamic>.from(data as Map);
+        print('✅ Joined match room: ${joinedData['matchId']}');
+        if (_onRoomJoinedCallback != null) {
+          _onRoomJoinedCallback!(joinedData);
+        }
+      } catch (e) {
+        print('❌ Error in joined handler: $e');
+      }
     };
     _socket!.on('joined', _cbJoinedHandler!);
 
     _cbBallHandler = (data) {
       try {
-        final updateData = data as Map<String, dynamic>;
+        final updateData = Map<String, dynamic>.from(data as Map);
         onBallUpdate(updateData);
         // Feed broadcast stream only if no dedicated stream handler is active
         if (_streamBallHandler == null && !_ballUpdateController.isClosed) {
@@ -188,7 +212,7 @@ class NodeBackendService {
 
     _cbCompleteHandler = (data) {
       try {
-        final completeData = data as Map<String, dynamic>;
+        final completeData = Map<String, dynamic>.from(data as Map);
         onMatchComplete(completeData);
         if (_streamCompleteHandler == null && !_matchCompleteController.isClosed) {
           _matchCompleteController.add(completeData);
@@ -208,6 +232,8 @@ class NodeBackendService {
       print('👋 Leaving match room: $matchId');
       _socket!.emit('leaveMatch', matchId);
     }
+    _currentJoinedMatchId = null;
+    _onRoomJoinedCallback = null;
     // Remove only callback-based handlers (preserve stream handlers)
     if (_cbBallHandler != null) {
       _socket?.off('ballUpdate', _cbBallHandler!);

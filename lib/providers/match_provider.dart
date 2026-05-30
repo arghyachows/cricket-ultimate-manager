@@ -570,6 +570,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
         _remoteMatchId!,
         _onNodeBallUpdate,
         _onNodeMatchComplete,
+        onRoomJoined: _onNodeRoomJoined,
       );
 
       if (!joined) {
@@ -856,6 +857,116 @@ class MatchNotifier extends StateNotifier<MatchState> {
     } catch (e, stack) {
       print('❌ Error processing Node.js ball update: $e');
       print('Stack trace: $stack');
+    }
+  }
+
+  void _onNodeRoomJoined(Map<String, dynamic> data) {
+    try {
+      print('👤 Node match: Room joined callback received. Syncing state...');
+      final stateData = data['state'] as Map<String, dynamic>?;
+      final commentaryLogRaw = data['commentaryLog'] as List?;
+
+      if (stateData == null) return;
+
+      final innings = stateData['innings'] as int? ?? 1;
+      final overNumber = stateData['overNumber'] as int? ?? 0;
+      final ballNumber = stateData['ballNumber'] as int? ?? 0;
+
+      final score1 = stateData['score1'] as int? ?? 0;
+      final score2 = stateData['score2'] as int? ?? 0;
+      final wickets1 = stateData['wickets1'] as int? ?? 0;
+      final wickets2 = stateData['wickets2'] as int? ?? 0;
+      final target = stateData['target'] as int? ?? 0;
+      final matchComplete = stateData['matchComplete'] as bool? ?? false;
+      final matchResult = stateData['matchResult'] as String?;
+
+      if (stateData.containsKey('homeBatsFirst')) {
+        _homeBatsFirst = stateData['homeBatsFirst'] as bool? ?? _homeBatsFirst;
+      }
+
+      final hbf = _homeBatsFirst;
+      final homeScore = hbf ? score1 : score2;
+      final homeWickets = hbf ? wickets1 : wickets2;
+      final awayScore = hbf ? score2 : score1;
+      final awayWickets = hbf ? wickets2 : wickets1;
+
+      // Update batsman stats from state
+      final batsmanStatsData = stateData['batsmanStats'] as Map<String, dynamic>? ?? {};
+      final batsmanStats = <String, BatsmanStats>{};
+      batsmanStatsData.forEach((key, value) {
+        final stats = value as Map<String, dynamic>;
+        batsmanStats[key] = BatsmanStats(
+          name: stats['name'] ?? '',
+          innings: stats['innings'] ?? 1,
+          battingOrder: stats['battingOrder'] ?? 99,
+          runs: stats['runs'] ?? 0,
+          balls: stats['balls'] ?? 0,
+          fours: stats['fours'] ?? 0,
+          sixes: stats['sixes'] ?? 0,
+          isOut: stats['isOut'] ?? false,
+          dismissalType: stats['dismissalType'],
+        );
+      });
+
+      // Update bowler stats from state
+      final bowlerStatsData = stateData['bowlerStats'] as Map<String, dynamic>? ?? {};
+      final bowlerStats = <String, BowlerStats>{};
+      bowlerStatsData.forEach((key, value) {
+        final stats = value as Map<String, dynamic>;
+        bowlerStats[key] = BowlerStats(
+          name: stats['name'] ?? '',
+          innings: stats['innings'] ?? 1,
+          balls: stats['balls'] ?? 0,
+          runs: stats['runs'] ?? 0,
+          wickets: stats['wickets'] ?? 0,
+          maidens: stats['maidens'] ?? 0,
+          dotBalls: stats['dotBalls'] ?? 0,
+        );
+      });
+
+      // Reconstruct events from commentaryLog
+      final newEvents = <MatchEvent>[];
+      if (commentaryLogRaw != null) {
+        for (var i = 0; i < commentaryLogRaw.length; i++) {
+          final entry = Map<String, dynamic>.from(commentaryLogRaw[i] as Map);
+          newEvents.add(MatchEvent(
+            id: 'node_joined_${i}_${DateTime.now().millisecondsSinceEpoch}',
+            matchId: _remoteMatchId!,
+            innings: entry['innings'] ?? innings,
+            overNumber: entry['overNumber'] ?? 0,
+            ballNumber: entry['ballNumber'] ?? 0,
+            battingTeamId: '',
+            bowlingTeamId: '',
+            batsmanCardId: '',
+            bowlerCardId: '',
+            eventType: entry['eventType'] ?? 'dot_ball',
+            runs: entry['runs'] ?? 0,
+            commentary: entry['commentary'] ?? '',
+            scoreAfter: innings == 1 ? homeScore : awayScore,
+            wicketsAfter: innings == 1 ? homeWickets : awayWickets,
+          ));
+        }
+      }
+
+      state = state.copyWith(
+        events: newEvents.isNotEmpty ? newEvents : state.events,
+        currentCommentary: newEvents.isNotEmpty ? newEvents.last.commentary : state.currentCommentary,
+        currentInnings: innings,
+        batsmanStats: batsmanStats,
+        bowlerStats: bowlerStats,
+        target: target,
+      );
+
+      print('✅ State synced successfully via room join callback');
+
+      if (matchComplete) {
+        _onNodeMatchComplete({
+          'result': matchResult ?? 'Match completed',
+          'state': stateData,
+        });
+      }
+    } catch (e) {
+      print('❌ Node match: Error handling room join sync: $e');
     }
   }
 
