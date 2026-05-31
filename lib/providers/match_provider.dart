@@ -880,11 +880,11 @@ class MatchNotifier extends StateNotifier<MatchState> {
       final matchComplete = stateData['matchComplete'] as bool? ?? false;
       final matchResult = stateData['matchResult'] as String?;
 
+      bool hbf = state.homeBatsFirst;
       if (stateData.containsKey('homeBatsFirst')) {
-        _homeBatsFirst = stateData['homeBatsFirst'] as bool? ?? _homeBatsFirst;
+        hbf = stateData['homeBatsFirst'] as bool? ?? hbf;
       }
 
-      final hbf = _homeBatsFirst;
       final homeScore = hbf ? score1 : score2;
       final homeWickets = hbf ? wickets1 : wickets2;
       final awayScore = hbf ? score2 : score1;
@@ -955,6 +955,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
         batsmanStats: batsmanStats,
         bowlerStats: bowlerStats,
         target: target,
+        homeBatsFirst: hbf,
       );
 
       print('✅ State synced successfully via room join callback');
