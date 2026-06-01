@@ -5,9 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import '../core/supabase_service.dart';
 import '../models/challenge_model.dart';
-import '../models/team_model.dart';
 import '../engine/ai_opponent.dart';
-import 'auth_provider.dart';
 import 'card_packs_provider.dart';
 
 /// Provider for the quick match challenge ladder state.
@@ -276,4 +274,4 @@ class ChallengeNotifier extends StateNotifier<ChallengeState> {
     return ((startOfYear.weekday <= 4 ? 1 : 0) + days + startOfYear.weekday - 1) ~/ 7 + 1;
   }
 }
-
+

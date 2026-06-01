@@ -501,7 +501,6 @@ class MatchEngine {
     required int chemistry,
   }) {
     final batsman = _currentBatsman;
-    final bowler = _currentBowler;
     
     // Base T20 probabilities
     var probs = {
@@ -528,7 +527,7 @@ class MatchEngine {
     probs['single'] = probs['single']! + 0.03 * normalized;
 
     // ─── Step 3: Add player trait impacts ──────────────────────────────
-    final aggression = batsman.userCard?.playerCard?.rating?.toDouble() ?? battingRating.toDouble();
+    final aggression = batsman.userCard!.playerCard!.rating.toDouble();
     final technique = battingRating.toDouble();
     final power = battingRating.toDouble();
     final consistency = battingRating.toDouble();
@@ -575,8 +574,6 @@ class MatchEngine {
     final ballsRemaining = (maxOvers * 6) - (_overNumber * 6 + _ballNumber);
     
     // Dynamic phase boundaries based on match format
-    final totalBalls = maxOvers * 6;
-    final ballsElapsed = _overNumber * 6 + _ballNumber;
     final powerplayEnd = (maxOvers * 0.3).floor().clamp(0, 10);
     final middleOversEnd = (maxOvers * 0.8).floor();
     
