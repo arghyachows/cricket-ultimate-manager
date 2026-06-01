@@ -248,7 +248,7 @@ class _ChallengeScreenState extends ConsumerState<ChallengeScreen> {
               ),
               Text(
                 '${state.defeatedCount} / ${state.totalCount}',
-                style: TextStyle(
+                const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
                   color: AppTheme.accent,
@@ -474,9 +474,9 @@ class _ChallengeScreenState extends ConsumerState<ChallengeScreen> {
                       color: AppTheme.accent.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(6),
                     ),
-                    child: Text(
+                    const Text(
                       'PLAY',
-                      style: TextStyle(
+                      const TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.bold,
                         color: AppTheme.accent,
@@ -531,9 +531,9 @@ class _ChallengeScreenState extends ConsumerState<ChallengeScreen> {
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(
+                const Text(
                   'Elite Pack',
-                  style: TextStyle(
+                  const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
                     color: AppTheme.cardElite,
@@ -581,9 +581,9 @@ class _ChallengeScreenState extends ConsumerState<ChallengeScreen> {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
-            Text(
+            const Text(
               'Check your packs for the Elite Pack reward',
-              style: TextStyle(
+              const TextStyle(
                 fontSize: 13,
                 color: AppTheme.cardElite,
                 fontWeight: FontWeight.w600,

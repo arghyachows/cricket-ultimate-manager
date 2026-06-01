@@ -10,7 +10,6 @@ class NodeBackendService {
   static String get baseUrl => AppConfig.backendUrl;
   
   static IO.Socket? _socket;
-  static bool _isInitialized = false;
 
   // Broadcast streams for passive subscribers (dashboard banners, etc.)
   static final _ballUpdateController = StreamController<Map<String, dynamic>>.broadcast();
@@ -46,7 +45,6 @@ class NodeBackendService {
       _socket!.disconnect();
       _socket!.dispose();
       _socket = null;
-      _isInitialized = false;
     }
 
     _registerLifecycleObserver();
@@ -67,7 +65,6 @@ class NodeBackendService {
 
     _socket!.onConnect((_) {
       print('✅ Connected to Node.js backend');
-      _isInitialized = true;
       if (_currentJoinedMatchId != null) {
         print('🔄 Re-joining match room on connect: $_currentJoinedMatchId');
         _socket!.emit('joinMatch', _currentJoinedMatchId);
@@ -76,7 +73,6 @@ class NodeBackendService {
 
     _socket!.onDisconnect((_) {
       print('❌ Disconnected from Node.js backend');
-      _isInitialized = false;
     });
 
     _socket!.onConnectError((error) {
@@ -89,7 +85,6 @@ class NodeBackendService {
 
     _socket!.onReconnect((attempt) {
       print('🔄 Reconnected after $attempt attempts');
-      _isInitialized = true;
       if (_currentJoinedMatchId != null) {
         print('🔄 Re-joining match room on reconnect: $_currentJoinedMatchId');
         _socket!.emit('joinMatch', _currentJoinedMatchId);
@@ -102,7 +97,6 @@ class NodeBackendService {
 
     _socket!.onReconnectFailed((_) {
       print('❌ Reconnection failed after all attempts');
-      _isInitialized = false;
     });
 
     print('🚀 Attempting to connect...');
@@ -662,7 +656,6 @@ class NodeBackendService {
       _socket!.disconnect();
       _socket!.dispose();
       _socket = null;
-      _isInitialized = false;
     }
   }
 

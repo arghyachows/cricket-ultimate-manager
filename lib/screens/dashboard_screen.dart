@@ -28,10 +28,10 @@ class DailyObjectivesCardPlaceholder extends StatelessWidget {
         color: AppTheme.surface,
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Column(
+      const Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          const Row(
             children: [
               const Icon(Icons.assignment, color: AppTheme.accent, size: 20),
               const SizedBox(width: 8),
@@ -1344,7 +1344,7 @@ class _LiveMatchBanner extends StatelessWidget {
                     ),
                   ),
                   const Spacer(),
-                  Icon(Icons.monetization_on, size: 14, color: AppTheme.cardGold),
+                  const Icon(Icons.monetization_on, size: 14, color: AppTheme.cardGold),
                   const SizedBox(width: 4),
                   Text(
                     '+${matchState.coinsAwarded}',

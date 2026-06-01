@@ -110,7 +110,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     height: 120,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      gradient: LinearGradient(
+                      const LinearGradient(
                         colors: [AppTheme.accent, AppTheme.primaryLight],
                       ),
                       boxShadow: [

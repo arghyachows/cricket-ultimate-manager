@@ -729,8 +729,8 @@ class _ScorecardTab extends StatelessWidget {
           ),
           ...batsmen.map((b) => Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              border: Border(bottom: BorderSide(color: Colors.white10)),
+            const BoxDecoration(
+              const Border(bottom: BorderSide(color: Colors.white10)),
             ),
             child: Row(
               children: [
@@ -796,8 +796,8 @@ class _ScorecardTab extends StatelessWidget {
           ),
           ...bowlers.map((b) => Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              border: Border(bottom: BorderSide(color: Colors.white10)),
+            const BoxDecoration(
+              const Border(bottom: BorderSide(color: Colors.white10)),
             ),
             child: Row(
               children: [
