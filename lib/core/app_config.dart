@@ -34,6 +34,9 @@ class AppConfig {
 
   /// Whether verbose debug logging is enabled.
   static bool get debugLogging => _env != Environment.production;
+
+  /// Current environment (for external use).
+  static Environment get environment => _env;
 }
 
 enum Environment { production, local, oracleCloud }
