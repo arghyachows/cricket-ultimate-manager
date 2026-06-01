@@ -1853,7 +1853,7 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: const [
               Icon(Icons.sports_cricket, size: 16, color: AppTheme.accent),
               SizedBox(width: 8),

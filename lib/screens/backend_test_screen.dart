@@ -11,6 +11,7 @@ class BackendTestScreen extends StatefulWidget {
 class _BackendTestScreenState extends State<BackendTestScreen> {
   String _status = 'Not tested';
   bool _isHealthy = false;
+  bool _isSocketConnected = false;
 
   @override
   void initState() {
