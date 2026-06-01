@@ -8,6 +8,7 @@ import '../core/theme.dart';
 import '../core/constants.dart';
 import '../core/supabase_service.dart';
 import '../core/node_backend_service.dart';
+import '../models/models.dart';
 import '../providers/providers.dart';
 import '../widgets/coin_display.dart';
 import '../widgets/daily_objectives_card.dart';
