@@ -163,7 +163,7 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen>
                                                           ),
                                                           title: Text(card.playerCard!.playerName, style: const TextStyle(fontWeight: FontWeight.bold)),
                                                           subtitle: Text(
-                                                            '${card.playerCard!.role?.toUpperCase() ?? ''} • ${card.playerCard!.rarity?.toUpperCase() ?? ''}',
+                                                            '${card.playerCard!.role.toUpperCase()} • ${card.playerCard!.rarity.toUpperCase()}',
                                                             style: TextStyle(color: rarityColor, fontSize: 11),
                                                           ),
                                                           trailing: Column(
