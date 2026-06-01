@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/theme.dart';
 import '../core/constants.dart';
@@ -15,15 +16,230 @@ import '../widgets/daily_objectives_card.dart';
 /// Persists across widget rebuilds within the same app session.
 final _dismissedMatchIdProvider = StateProvider<String?>((ref) => null);
 
-class DashboardScreen extends ConsumerWidget {
+class DailyObjectivesCard extends StatelessWidget {
+  final List<DailyObjective> objectives;
+
+  const DailyObjectivesCard({super.key, required this.objectives});
+
+  @override
+  Widget build(BuildContext context) {
+    if (objectives.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.assignment, color: AppTheme.accent, size: 20),
+              const SizedBox(width: 8),
+              const Text(
+                'DAILY OBJECTIVES',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1,
+                  color: Colors.white70,
+                  fontSize: 12,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '${objectives.where((o) => o.isCompleted).length}/${objectives.length}',
+                style: const TextStyle(color: AppTheme.accent, fontWeight: FontWeight.bold, fontSize: 12),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ...objectives.map((obj) => _ObjectiveRow(objective: obj)),
+        ],
+      ),
+    );
+  }
+}
+
+class _ObjectiveRow extends StatelessWidget {
+  final DailyObjective objective;
+  const _ObjectiveRow({required this.objective});
+
+  @override
+  Widget build(BuildContext context) {
+    final isComplete = objective.isCompleted;
+    final progress = objective.progress.clamp(0.0, 1.0);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          Container(
+            width: 28, height: 28,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: isComplete
+                  ? AppTheme.success.withValues(alpha: 0.2)
+                  : Colors.white.withValues(alpha: 0.05),
+              border: Border.all(color: isComplete ? AppTheme.success : Colors.white24),
+            ),
+            child: isComplete
+                ? const Icon(Icons.check, size: 16, color: AppTheme.success)
+                : null,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  objective.description,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: isComplete ? Colors.white38 : Colors.white,
+                    decoration: isComplete ? TextDecoration.lineThrough : null,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    backgroundColor: Colors.white12,
+                    valueColor: AlwaysStoppedAnimation(
+                      isComplete ? AppTheme.success : AppTheme.accent,
+                    ),
+                    minHeight: 4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppTheme.accent.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.monetization_on, size: 12, color: AppTheme.accent),
+                const SizedBox(width: 2),
+                Text(
+                  '${objective.rewardCoins}',
+                  style: const TextStyle(
+                    color: AppTheme.accent,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class DailyObjectivesCardPlaceholder extends StatelessWidget {
+  const DailyObjectivesCardPlaceholder({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.assignment, color: AppTheme.accent, size: 20),
+              const SizedBox(width: 8),
+              const Text(
+                'DAILY OBJECTIVES',
+                style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1, color: Colors.white70, fontSize: 12),
+              ),
+              const Spacer(),
+              const Text('0/0', style: TextStyle(color: AppTheme.accent, fontWeight: FontWeight.bold, fontSize: 12)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const Center(
+            child: Text('No objectives today', style: TextStyle(color: Colors.white38, fontSize: 13)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends ConsumerState<DashboardScreen> {
+  bool _showDailyReward = false;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(_checkDailyReward);
+  }
+
+  Future<void> _checkDailyReward() async {
+    final user = ref.read(currentUserProvider).valueOrNull;
+    if (user == null) return;
+    final now = DateTime.now();
+    final last = user.lastDailyReward;
+    final claimed = last != null &&
+        last.year == now.year && last.month == now.month && last.day == now.day;
+    if (!claimed) setState(() => _showDailyReward = true);
+  }
+
+  Future<void> _claimDailyReward() async {
+    final user = ref.read(currentUserProvider).valueOrNull;
+    if (user == null) return;
+    await SupabaseService.client.from('transactions').insert({
+      'user_id': user.id,
+      'type': 'daily_reward',
+      'coins_amount': 100,
+      'description': 'Daily login reward',
+    });
+    await SupabaseService.client.rpc('increment_user_coins', {'user_id': user.id, 'delta': 100});
+    await SupabaseService.client.from('users').update({
+      'last_daily_reward': DateTime.now().toUtc().toIso8601String(),
+    }).eq('id', user.id);
+    ref.read(currentUserProvider.notifier).silentRefresh();
+    setState(() => _showDailyReward = false);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('💰 +100 coins claimed!'),
+          backgroundColor: AppTheme.success,
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final userAsync = ref.watch(currentUserProvider);
     final matchState = ref.watch(matchProvider);
 
-    // Trigger a fresh DB read whenever a quick match completes
     ref.listen<MatchState>(matchProvider, (previous, next) {
       if (next.isMatchComplete && previous?.isMatchComplete == false) {
         Future.delayed(const Duration(milliseconds: 1000), () {
@@ -38,218 +254,45 @@ class DashboardScreen extends ConsumerWidget {
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (e, _) => Center(child: Text('Error: $e')),
           data: (user) {
-            if (user == null) {
-              return const Center(child: Text('Not logged in'));
-            }
+            if (user == null) return const Center(child: Text('Not logged in'));
             return RefreshIndicator(
-              onRefresh: () async {
-                await ref.read(currentUserProvider.notifier).silentRefresh();
-              },
+              onRefresh: () async => ref.read(currentUserProvider.notifier).silentRefresh(),
               child: CustomScrollView(
-              slivers: [
-                // Header
-                SliverToBoxAdapter(
-                  child: _buildHeader(context, user, ref),
-                ),
-                // Live match banner (quick match)
-                if (matchState.hasActiveMatch)
+                slivers: [
+                  // ── 1. Hero Header ────────────────────────────────────
                   SliverToBoxAdapter(
-                    child: _LiveMatchBanner(matchState: matchState),
-                  ),
-                // Live multiplayer match banner
-                SliverToBoxAdapter(
-                  child: _MultiplayerMatchBanner(),
-                ),
-                // Live tournament match banner
-                SliverToBoxAdapter(
-                  child: _TournamentMatchBanner(),
-                ),
-                // Quick actions
-                SliverPadding(
-                  padding: const EdgeInsets.all(16),
-                  sliver: SliverGrid(
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      mainAxisSpacing: 12,
-                      crossAxisSpacing: 12,
-                      childAspectRatio: 1.5,
+                    child: _HeroHeader(
+                      user: user,
+                      showDailyReward: _showDailyReward,
+                      onClaimDailyReward: _claimDailyReward,
                     ),
-                    delegate: SliverChildListDelegate([
-                      _QuickActionCard(
-                        icon: Icons.card_giftcard_rounded,
-                        label: 'Open Packs',
-                        color: AppTheme.cardGold,
-                        onTap: () => context.go(AppConstants.packsRoute),
-                      ),
-                      _QuickActionCard(
-                        icon: Icons.sports_cricket_rounded,
-                        label: 'Play Match',
-                        color: AppTheme.primaryLight,
-                        onTap: () => context.go(AppConstants.matchRoute),
-                      ),
-                      _QuickActionCard(
-                        icon: Icons.groups_rounded,
-                        label: 'My Squad',
-                        color: Colors.blueAccent,
-                        onTap: () =>
-                            context.go(AppConstants.squadBuilderRoute),
-                      ),
-                      _QuickActionCard(
-                        icon: Icons.emoji_events_rounded,
-                        label: 'Tournaments',
-                        color: AppTheme.cardElite,
-                        onTap: () =>
-                            context.go(AppConstants.tournamentsRoute),
-                      ),
-                      _QuickActionCard(
-                        icon: Icons.leaderboard_rounded,
-                        label: 'Leaderboard',
-                        color: Colors.orangeAccent,
-                        onTap: () =>
-                            context.go(AppConstants.leaderboardRoute),
-                      ),
-                      _QuickActionCard(
-                        icon: Icons.storefront_rounded,
-                        label: 'Market',
-                        color: Colors.tealAccent,
-                        onTap: () => context.go(AppConstants.marketRoute),
-                      ),
-                    ]),
                   ),
-                ),
-                // Daily Objectives
-                const SliverToBoxAdapter(
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16),
-                    child: DailyObjectivesCard(objectives: []),
+                  // ── 2. Live Match Banners ─────────────────────────
+                  if (matchState.hasActiveMatch)
+                    SliverToBoxAdapter(child: _LiveMatchBanner(matchState: matchState)),
+                  const SliverToBoxAdapter(child: _MultiplayerMatchBanner()),
+                  const SliverToBoxAdapter(child: _TournamentMatchBanner()),
+                  // ── 3. Featured Card ────────────────────────────────
+                  const SliverToBoxAdapter(child: _FeaturedCardSection()),
+                  // ── 4. Quick Actions ─────────────────────────────────
+                  SliverToBoxAdapter(child: _QuickActionsSection()),
+                  // ── 5. Recent Matches ────────────────────────────────
+                  const SliverToBoxAdapter(child: _RecentMatchesSection()),
+                  // ── 6. Daily Objectives ─────────────────────────────
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: _DailyObjectivesSection(),
+                    ),
                   ),
-                ),
-                const SliverToBoxAdapter(child: SizedBox(height: 100)),
-              ],
-            ),
+                  // ── 7. Pack Highlights ───────────────────────────────
+                  const SliverToBoxAdapter(child: _PackHighlightsSection()),
+                  const SliverToBoxAdapter(child: SizedBox(height: 100)),
+                ],
+              ),
             );
           },
         ),
-      ),
-    );
-  }
-
-  Widget _buildHeader(BuildContext context, user, WidgetRef ref) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            AppTheme.primary.withValues(alpha: 0.6),
-            AppTheme.background,
-          ],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Welcome back,',
-                    style: Theme.of(context).textTheme.bodyLarge,
-                  ),
-                  Text(
-                    user.username,
-                    style: Theme.of(context)
-                        .textTheme
-                        .displayMedium
-                        ?.copyWith(color: AppTheme.accent),
-                  ),
-                ],
-              ),
-              Row(
-                children: [
-                  // Profile button
-                  IconButton(
-                    onPressed: () => context.go(AppConstants.profileRoute),
-                    icon: const Icon(Icons.person_rounded),
-                    color: AppTheme.accent,
-                    style: IconButton.styleFrom(
-                      backgroundColor: AppTheme.surface,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  // Level badge
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [AppTheme.accent, AppTheme.cardGold],
-                      ),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      'LV ${user.level}',
-                      style: const TextStyle(
-                        color: Colors.black,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          // Currency row
-          CoinDisplay(coins: user.coins, premiumTokens: user.premiumTokens),
-          const SizedBox(height: 12),
-          // Stats row
-          Row(
-            children: [
-              _StatChip(
-                label: 'Played',
-                value: '${user.matchesPlayed}',
-                icon: Icons.sports_cricket,
-              ),
-              const SizedBox(width: 12),
-              _StatChip(
-                label: 'Won',
-                value: '${user.matchesWon}',
-                icon: Icons.emoji_events,
-              ),
-              const SizedBox(width: 12),
-              _StatChip(
-                label: 'Win %',
-                value: '${user.winRate.toStringAsFixed(0)}%',
-                icon: Icons.trending_up,
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          // XP progress
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: LinearProgressIndicator(
-              value: (user.xp % AppConstants.xpPerLevel) /
-                  AppConstants.xpPerLevel,
-              backgroundColor: AppTheme.surfaceLight,
-              valueColor:
-                  const AlwaysStoppedAnimation<Color>(AppTheme.accent),
-              minHeight: 8,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '${user.xp % AppConstants.xpPerLevel} / ${AppConstants.xpPerLevel} XP to next level',
-            style: const TextStyle(fontSize: 12, color: Colors.white54),
-          ),
-        ],
       ),
     );
   }
@@ -339,6 +382,882 @@ class _StatChip extends StatelessWidget {
     );
   }
 }
+
+// ══════════════════════════════════════════════════════════════════
+//  SECTION 1: HERO HEADER
+// ══════════════════════════════════════════════════════════════════
+
+class _HeroHeader extends ConsumerWidget {
+  final UserModel user;
+  final bool showDailyReward;
+  final VoidCallback onClaimDailyReward;
+
+  const _HeroHeader({
+    required this.user,
+    required this.showDailyReward,
+    required this.onClaimDailyReward,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final teamAsync = ref.watch(teamProvider);
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppTheme.primary.withValues(alpha: 0.5),
+            AppTheme.background,
+          ],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Top row: greeting + tier badge + profile
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Welcome back,',
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.white60),
+                    ),
+                    Text(
+                      user.username,
+                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                            color: AppTheme.accent,
+                            fontWeight: FontWeight.bold,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+              _SeasonTierBadge(tier: user.seasonTier),
+              const SizedBox(width: 8),
+              IconButton(
+                onPressed: () => context.go(AppConstants.profileRoute),
+                icon: const Icon(Icons.person_rounded),
+                color: AppTheme.accent,
+                style: IconButton.styleFrom(backgroundColor: AppTheme.surface),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          // Currency + daily reward
+          Row(
+            children: [
+              Expanded(child: CoinDisplay(coins: user.coins, premiumTokens: user.premiumTokens)),
+              if (showDailyReward) ...[
+                const SizedBox(width: 8),
+                _DailyRewardButton(onTap: onClaimDailyReward),
+              ],
+            ],
+          ),
+
+          const SizedBox(height: 12),
+
+          // Team info row
+          teamAsync.when(
+            data: (team) {
+              if (team == null) {
+                return GestureDetector(
+                  onTap: () => context.go(AppConstants.squadBuilderRoute),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primary.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppTheme.primary.withValues(alpha: 0.4)),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.add_circle_outline, size: 16, color: AppTheme.primaryLight),
+                        SizedBox(width: 6),
+                        Text('Create your team',
+                            style: TextStyle(color: AppTheme.primaryLight, fontWeight: FontWeight.w600, fontSize: 13)),
+                      ],
+                    ),
+                  ),
+                );
+              }
+              return Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(color: AppTheme.surfaceLight, borderRadius: BorderRadius.circular(8)),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.groups_rounded, size: 14, color: AppTheme.accent),
+                        const SizedBox(width: 6),
+                        Text(team.teamName,
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 13)),
+                      ],
+                    ),
+                  ),
+                  if (team.overallRating > 0) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primary.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: AppTheme.primary.withValues(alpha: 0.4)),
+                      ),
+                      child: Text('OVR ${team.overallRating}',
+                          style: const TextStyle(color: AppTheme.primaryLight, fontWeight: FontWeight.bold, fontSize: 12)),
+                    ),
+                  ],
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.teal.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.science_rounded, size: 12, color: Colors.teal.shade300),
+                        const SizedBox(width: 4),
+                        Text('${team.chemistry}',
+                            style: TextStyle(color: Colors.teal.shade300, fontWeight: FontWeight.bold, fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            },
+            loading: () => const SizedBox.shrink(),
+            error: (_, __) => const SizedBox.shrink(),
+          ),
+
+          const SizedBox(height: 12),
+
+          // Stats chips
+          Row(
+            children: [
+              _StatChip(label: 'Played', value: '${user.matchesPlayed}', icon: Icons.sports_cricket),
+              const SizedBox(width: 8),
+              _StatChip(label: 'Won', value: '${user.matchesWon}', icon: Icons.emoji_events),
+              const SizedBox(width: 8),
+              _StatChip(label: 'WR', value: '${user.winRate.toStringAsFixed(0)}%',
+                  icon: Icons.trending_up),
+              const SizedBox(width: 8),
+              _StatChip(label: 'LV ${user.level}', value: '', icon: Icons.star),
+            ],
+          ),
+
+          const SizedBox(height: 10),
+
+          // XP bar
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: LinearProgressIndicator(
+              value: (user.xp % AppConstants.xpPerLevel) / AppConstants.xpPerLevel,
+              backgroundColor: AppTheme.surfaceLight,
+              valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.accent),
+              minHeight: 6,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '${user.xp % AppConstants.xpPerLevel} / ${AppConstants.xpPerLevel} XP to next level',
+            style: const TextStyle(fontSize: 11, color: Colors.white45),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SeasonTierBadge extends StatelessWidget {
+  final String tier;
+  const _SeasonTierBadge({required this.tier});
+
+  Color get _c {
+    switch (tier) {
+      case 'champion': return Colors.amber;
+      case 'elite': return AppTheme.cardElite;
+      case 'gold': return AppTheme.cardGold;
+      case 'silver': return AppTheme.cardSilver;
+      default: return AppTheme.cardBronze;
+    }
+  }
+
+  String get _label {
+    switch (tier) {
+      case 'champion': return '⚔️ CHAMPION';
+      case 'elite': return '💎 ELITE';
+      case 'gold': return '🥇 GOLD';
+      case 'silver': return '🥈 SILVER';
+      default: return '🥉 BRONZE';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: _c.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: _c.withValues(alpha: 0.4)),
+      ),
+      child: Text(_label,
+          style: TextStyle(color: _c, fontWeight: FontWeight.bold, fontSize: 11, letterSpacing: 0.5)),
+    );
+  }
+}
+
+class _DailyRewardButton extends StatelessWidget {
+  final VoidCallback onTap;
+  const _DailyRewardButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(colors: [Colors.amber, Colors.orange]),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [BoxShadow(color: Colors.amber.withValues(alpha: 0.3), blurRadius: 8, offset: const Offset(0, 2))],
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.card_giftcard, size: 14, color: Colors.black87),
+            SizedBox(width: 4),
+            Text('Daily!',
+                style: TextStyle(color: Colors.black87, fontWeight: FontWeight.bold, fontSize: 12)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  SECTION 3: FEATURED CARD
+// ══════════════════════════════════════════════════════════════════
+
+class _FeaturedCardSection extends ConsumerWidget {
+  const _FeaturedCardSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cardsAsync = ref.watch(userCardsProvider);
+
+    return cardsAsync.when(
+      data: (cards) {
+        if (cards.isEmpty) return const SizedBox.shrink();
+        final featured = cards.reduce((a, b) => a.overallRating >= b.overallRating ? a : b);
+        final playerCard = featured.playerCard;
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  AppTheme.getRarityColor(playerCard.rarity).withValues(alpha: 0.15),
+                  AppTheme.surface,
+                ],
+              ),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: AppTheme.getRarityColor(playerCard.rarity).withValues(alpha: 0.3),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: AppTheme.getRarityColor(playerCard.rarity),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(playerCard.rarity.toUpperCase(),
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 9, letterSpacing: 1)),
+                    ),
+                    const SizedBox(width: 8),
+                    const Icon(Icons.star, size: 14, color: AppTheme.accent),
+                    const SizedBox(width: 4),
+                    const Text('STAR PLAYER',
+                        style: TextStyle(color: AppTheme.accent, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1)),
+                    const Spacer(),
+                    GestureDetector(
+                      onTap: () => context.go(AppConstants.collectionRoute),
+                      child: const Text('View all', style: TextStyle(color: Colors.white38, fontSize: 12)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    // Card preview
+                    Container(
+                      width: 70, height: 90,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft, end: Alignment.bottomRight,
+                          colors: [
+                            AppTheme.getRarityColor(playerCard.rarity).withValues(alpha: 0.6),
+                            AppTheme.getRarityColor(playerCard.rarity).withValues(alpha: 0.2),
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: AppTheme.getRarityColor(playerCard.rarity).withValues(alpha: 0.6)),
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(playerCard.playerName.split(' ').last,
+                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                          Text(featured.level > 1 ? '+${(featured.level - 1) * 2}' : '',
+                              style: const TextStyle(color: AppTheme.accent, fontSize: 10, fontWeight: FontWeight.bold)),
+                          Text('${featured.overallRating}',
+                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 22)),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(playerCard.playerName,
+                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                          const SizedBox(height: 4),
+                          Text('${playerCard.role.replaceAll('_', ' ').toUpperCase()} · ${playerCard.country}',
+                              style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              _MiniStat(label: 'BAT', value: featured.batting, color: AppTheme.primaryLight),
+                              const SizedBox(width: 8),
+                              _MiniStat(label: 'BOW', value: featured.bowling, color: Colors.orangeAccent),
+                              const SizedBox(width: 8),
+                              _MiniStat(label: 'FIE', value: featured.fielding, color: Colors.blueAccent),
+                              if (featured.level > 1) ...[
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.accent.withValues(alpha: 0.2),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text('LV${featured.level}',
+                                      style: const TextStyle(color: AppTheme.accent, fontWeight: FontWeight.bold, fontSize: 10)),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+    );
+  }
+}
+
+class _MiniStat extends StatelessWidget {
+  final String label;
+  final int value;
+  final Color color;
+  const _MiniStat({required this.label, required this.value, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(label, style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 2),
+        Text('$value', style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+      ],
+    );
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  SECTION 4: QUICK ACTIONS
+// ══════════════════════════════════════════════════════════════════
+
+class _QuickActionsSection extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('⚡ QUICK PLAY',
+              style: TextStyle(color: Colors.white60, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+          const SizedBox(height: 10),
+          // Row 1: Play Match (large left) + Packs (small right)
+          Row(
+            children: [
+              Expanded(
+                flex: 2,
+                child: _ActionTile(
+                  icon: Icons.sports_cricket_rounded,
+                  label: 'Play Match',
+                  color: AppTheme.primaryLight,
+                  gradient: [AppTheme.primary.withValues(alpha: 0.4), AppTheme.surface],
+                  onTap: () => context.go(AppConstants.matchRoute),
+                  height: 100,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _ActionTile(
+                  icon: Icons.card_giftcard_rounded,
+                  label: 'Packs',
+                  color: AppTheme.cardGold,
+                  gradient: [AppTheme.cardGold.withValues(alpha: 0.25), AppTheme.surface],
+                  onTap: () => context.go(AppConstants.packsRoute),
+                  height: 100,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          // Row 2: Squad + Tournaments + Leaderboard + Market (4 equal)
+          Row(
+            children: [
+              Expanded(child: _ActionTile(icon: Icons.groups_rounded, label: 'Squad', color: Colors.blueAccent,
+                  gradient: [Colors.blueAccent.withValues(alpha: 0.2), AppTheme.surface],
+                  onTap: () => context.go(AppConstants.squadBuilderRoute), height: 82)),
+              const SizedBox(width: 8),
+              Expanded(child: _ActionTile(icon: Icons.emoji_events_rounded, label: 'Tourney', color: AppTheme.cardElite,
+                  gradient: [AppTheme.cardElite.withValues(alpha: 0.2), AppTheme.surface],
+                  onTap: () => context.go(AppConstants.tournamentsRoute), height: 82)),
+              const SizedBox(width: 8),
+              Expanded(child: _ActionTile(icon: Icons.leaderboard_rounded, label: 'Ranks', color: Colors.orangeAccent,
+                  gradient: [Colors.orangeAccent.withValues(alpha: 0.2), AppTheme.surface],
+                  onTap: () => context.go(AppConstants.leaderboardRoute), height: 82)),
+              const SizedBox(width: 8),
+              Expanded(child: _ActionTile(icon: Icons.storefront_rounded, label: 'Market', color: Colors.tealAccent,
+                  gradient: [Colors.tealAccent.withValues(alpha: 0.2), AppTheme.surface],
+                  onTap: () => context.go(AppConstants.marketRoute), height: 82)),
+            ],
+          ),
+          const SizedBox(height: 16),
+        ],
+      ),
+    );
+  }
+}
+
+class _ActionTile extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final List<Color> gradient;
+  final VoidCallback onTap;
+  final double height;
+
+  const _ActionTile({
+    required this.icon, required this.label, required this.color,
+    required this.gradient, required this.onTap, this.height = 80,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Ink(
+          height: height,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(colors: gradient, begin: Alignment.topLeft, end: Alignment.bottomRight),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: color.withValues(alpha: 0.3)),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              ShaderMask(
+                shaderCallback: (bounds) => LinearGradient(
+                  colors: [color, color.withValues(alpha: 0.7)],
+                ).createShader(bounds),
+                child: Icon(icon, size: height * 0.38, color: Colors.white),
+              ),
+              const SizedBox(height: 6),
+              Text(label,
+                  style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 11, letterSpacing: 0.3),
+                  textAlign: TextAlign.center),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  SECTION 5: RECENT MATCHES
+// ══════════════════════════════════════════════════════════════════
+
+class _RecentMatchesSection extends ConsumerStatefulWidget {
+  const _RecentMatchesSection();
+
+  @override
+  ConsumerState<_RecentMatchesSection> createState() => _RecentMatchesSectionState();
+}
+
+class _RecentMatchesSectionState extends ConsumerState<_RecentMatchesSection> {
+  List<Map<String, dynamic>> _matches = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(_fetch);
+  }
+
+  Future<void> _fetch() async {
+    final userId = SupabaseService.currentUserId;
+    if (userId == null) return;
+    try {
+      final rows = await SupabaseService.client
+          .from('matches')
+          .select()
+          .or('home_user_id.eq.$userId,away_user_id.eq.$userId')
+          .eq('status', 'completed')
+          .order('completed_at', ascending: false)
+          .limit(3);
+      if (mounted) setState(() { _matches = List<Map<String, dynamic>>.from(rows as List); _loading = false; });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading || _matches.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text('🏏 RECENT MATCHES',
+                  style: TextStyle(color: Colors.white60, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+              const Spacer(),
+              GestureDetector(
+                onTap: () => context.go(AppConstants.matchHistoryRoute),
+                child: const Text('See all', style: TextStyle(color: Colors.white38, fontSize: 12)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ...(_matches.take(2).map((m) => _RecentMatchTile(match: m))),
+        ],
+      ),
+    );
+  }
+}
+
+class _RecentMatchTile extends StatelessWidget {
+  final Map<String, dynamic> match;
+  const _RecentMatchTile({required this.match});
+
+  @override
+  Widget build(BuildContext context) {
+    final userId = SupabaseService.currentUserId;
+    final isHome = match['home_user_id'] == userId;
+    final myScore = isHome ? match['home_score'] : match['away_score'];
+    final myWickets = isHome ? match['home_wickets'] : match['away_wickets'];
+    final oppScore = isHome ? match['away_score'] : match['home_score'];
+    final oppWickets = isHome ? match['away_wickets'] : match['home_wickets'];
+    final winnerId = match['winner_user_id'];
+    final won = winnerId == userId;
+    final draw = winnerId == null;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: won
+              ? Colors.green.withValues(alpha: 0.3)
+              : (draw ? Colors.orange.withValues(alpha: 0.2) : Colors.red.withValues(alpha: 0.2)),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 4, height: 40,
+            decoration: BoxDecoration(
+              color: won ? Colors.green : (draw ? Colors.orange : Colors.red),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(match['format']?.toString().toUpperCase() ?? 'T20',
+                    style: const TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold)),
+                Text(won ? 'Victory!' : (draw ? 'Draw' : 'Defeat'),
+                    style: TextStyle(
+                      color: won ? Colors.green : (draw ? Colors.orange : Colors.red),
+                      fontWeight: FontWeight.bold, fontSize: 14,
+                    )),
+              ],
+            ),
+          ),
+          Text('$myScore/$myWickets', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+          const SizedBox(width: 8),
+          const Text('vs', style: TextStyle(color: Colors.white38, fontSize: 12)),
+          const SizedBox(width: 8),
+          Text('$oppScore/$oppWickets', style: const TextStyle(color: Colors.white54, fontSize: 14)),
+          const SizedBox(width: 8),
+          Text('(${match['home_overs'] ?? 0} ov)', style: const TextStyle(color: Colors.white38, fontSize: 11)),
+        ],
+      ),
+    );
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  SECTION 6: DAILY OBJECTIVES (from DB)
+// ══════════════════════════════════════════════════════════════════
+
+class _DailyObjectivesSection extends ConsumerStatefulWidget {
+  @override
+  ConsumerState<_DailyObjectivesSection> createState() => _DailyObjectivesSectionState();
+}
+
+class _DailyObjectivesSectionState extends ConsumerState<_DailyObjectivesSection> {
+  List<DailyObjective> _objectives = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(_fetch);
+  }
+
+  Future<void> _fetch() async {
+    final userId = SupabaseService.currentUserId;
+    if (userId == null) return;
+    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    try {
+      final rows = await SupabaseService.client
+          .from('daily_objectives')
+          .select()
+          .eq('user_id', userId)
+          .eq('date', today)
+          .eq('status', 'active');
+      if (mounted) {
+        setState(() {
+          _objectives = (rows as List).map((r) => DailyObjective.fromJson(r)).toList();
+          _loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) return const SizedBox.shrink();
+    if (_objectives.isEmpty) return const SizedBox.shrink();
+    return DailyObjectivesCard(objectives: _objectives);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  SECTION 7: PACK HIGHLIGHTS
+// ══════════════════════════════════════════════════════════════════
+
+class _PackHighlightsSection extends ConsumerStatefulWidget {
+  const _PackHighlightsSection();
+
+  @override
+  ConsumerState<_PackHighlightsSection> createState() => _PackHighlightsSectionState();
+}
+
+class _PackHighlightsSectionState extends ConsumerState<_PackHighlightsSection> {
+  List<Map<String, dynamic>> _packs = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(_fetch);
+  }
+
+  Future<void> _fetch() async {
+    try {
+      final rows = await SupabaseService.client
+          .from('pack_types')
+          .select()
+          .eq('is_available', true)
+          .order('coin_cost', ascending: true)
+          .limit(3);
+      if (mounted) {
+        setState(() {
+          _packs = List<Map<String, dynamic>>.from(rows as List);
+          _loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading || _packs.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text('📦 PACK STORE',
+                  style: TextStyle(color: Colors.white60, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+              const Spacer(),
+              GestureDetector(
+                onTap: () => context.go(AppConstants.packsRoute),
+                child: const Text('See all', style: TextStyle(color: Colors.white38, fontSize: 12)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: _packs.map((p) => _PackTile(pack: p)).toList(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PackTile extends StatelessWidget {
+  final Map<String, dynamic> pack;
+  const _PackTile({required this.pack});
+
+  Color get _color {
+    final name = pack['name'] as String? ?? '';
+    if (name.contains('Legend')) return AppTheme.cardLegend;
+    if (name.contains('Elite')) return AppTheme.cardElite;
+    if (name.contains('Gold')) return AppTheme.cardGold;
+    if (name.contains('Silver')) return AppTheme.cardSilver;
+    return AppTheme.cardBronze;
+  }
+
+  IconData get _icon {
+    final name = pack['name'] as String? ?? '';
+    if (name.contains('Legend')) return Icons.auto_awesome;
+    if (name.contains('Elite')) return Icons.diamond;
+    if (name.contains('Gold')) return Icons.military_tech;
+    if (name.contains('Silver')) return Icons.workspace_premium;
+    return Icons.style;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final name = pack['name'] as String? ?? 'Pack';
+    final coinCost = pack['coin_cost'] as int? ?? 0;
+    final premiumCost = pack['premium_cost'] as int? ?? 0;
+    final cardCount = pack['card_count'] as int? ?? 3;
+    final color = _color;
+
+    return GestureDetector(
+      onTap: () => context.go(AppConstants.packsRoute),
+      child: Container(
+        width: 160,
+        margin: const EdgeInsets.only(right: 10),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [color.withValues(alpha: 0.2), AppTheme.surface],
+            begin: Alignment.topLeft, end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withValues(alpha: 0.35)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Icon(_icon, color: color, size: 24),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(color: color.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(4)),
+                  child: Text('x$cardCount', style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 11)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(name, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
+            const Spacer(),
+            Row(
+              children: [
+                if (coinCost > 0) ...[
+                  const Icon(Icons.monetization_on, size: 13, color: AppTheme.accent),
+                  const SizedBox(width: 3),
+                  Text(coinCost >= 1000 ? '${(coinCost / 1000).toStringAsFixed(0)}K' : '$coinCost',
+                      style: const TextStyle(color: AppTheme.accent, fontWeight: FontWeight.bold, fontSize: 13)),
+                ] else if (premiumCost > 0) ...[
+                  const Icon(Icons.diamond, size: 13, color: Colors.purpleAccent),
+                  const SizedBox(width: 3),
+                  Text('$premiumCost', style: const TextStyle(color: Colors.purpleAccent, fontWeight: FontWeight.bold, fontSize: 13)),
+                ],
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  LIVE MATCH BANNER (existing, preserved)
+// ══════════════════════════════════════════════════════════════════
 
 class _LiveMatchBanner extends StatelessWidget {
   final MatchState matchState;
