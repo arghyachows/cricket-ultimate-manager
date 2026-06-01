@@ -115,7 +115,7 @@ class _MultiplayerDebugScreenState extends ConsumerState<MultiplayerDebugScreen>
         },
       );
 
-      await channel.subscribe();
+      channel.subscribe();
       _addLog('✓ Channel subscribed successfully');
 
       await Future.delayed(const Duration(seconds: 2));

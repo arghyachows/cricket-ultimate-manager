@@ -88,7 +88,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       'coins_amount': 100,
       'description': 'Daily login reward',
     });
-    await SupabaseService.client.rpc('increment_user_coins', {'user_id': user.id, 'delta': 100});
+    await SupabaseService.client.rpc('increment_user_coins', params: {'user_id': user.id, 'delta': 100});
     await SupabaseService.client.from('users').update({
       'last_daily_reward': DateTime.now().toUtc().toIso8601String(),
     }).eq('id', user.id);
@@ -442,7 +442,7 @@ class _HeroHeader extends ConsumerWidget {
           const SizedBox(height: 4),
           Text(
             '${user.xp % AppConstants.xpPerLevel} / ${AppConstants.xpPerLevel} XP to next level',
-            style: const TextStyle(fontSize: 11, color: Colors.white45),
+            style: const TextStyle(fontSize: 11, color: Colors.white54),
           ),
         ],
       ),
@@ -531,9 +531,10 @@ class _FeaturedCardSection extends ConsumerWidget {
 
     return cardsAsync.when(
       data: (cards) {
-        if (cards.isEmpty) return const SizedBox.shrink();
-        final featured = cards.reduce((a, b) => a.overallRating >= b.overallRating ? a : b);
-        final playerCard = featured.playerCard;
+        final validCards = cards.where((c) => c.playerCard != null).toList();
+        if (validCards.isEmpty) return const SizedBox.shrink();
+        final featured = validCards.reduce((a, b) => a.effectiveRating >= b.effectiveRating ? a : b);
+        final playerCard = featured.playerCard!;
 
         return Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -601,7 +602,7 @@ class _FeaturedCardSection extends ConsumerWidget {
                               style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
                           Text(featured.level > 1 ? '+${(featured.level - 1) * 2}' : '',
                               style: const TextStyle(color: AppTheme.accent, fontSize: 10, fontWeight: FontWeight.bold)),
-                          Text('${featured.overallRating}',
+                          Text('${featured.effectiveRating}',
                               style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 22)),
                         ],
                       ),
@@ -619,11 +620,11 @@ class _FeaturedCardSection extends ConsumerWidget {
                           const SizedBox(height: 8),
                           Row(
                             children: [
-                              _MiniStat(label: 'BAT', value: featured.batting, color: AppTheme.primaryLight),
+                              _MiniStat(label: 'BAT', value: featured.effectiveBatting, color: AppTheme.primaryLight),
                               const SizedBox(width: 8),
-                              _MiniStat(label: 'BOW', value: featured.bowling, color: Colors.orangeAccent),
+                              _MiniStat(label: 'BOW', value: featured.effectiveBowling, color: Colors.orangeAccent),
                               const SizedBox(width: 8),
-                              _MiniStat(label: 'FIE', value: featured.fielding, color: Colors.blueAccent),
+                              _MiniStat(label: 'FIE', value: playerCard.fielding, color: Colors.blueAccent),
                               if (featured.level > 1) ...[
                                 const SizedBox(width: 8),
                                 Container(
@@ -1377,6 +1378,8 @@ class _LiveMatchBanner extends StatelessWidget {
 // ─── Multiplayer Live Match Banner ──────────────────────────────────
 
 class _MultiplayerMatchBanner extends ConsumerStatefulWidget {
+  const _MultiplayerMatchBanner({super.key});
+
   @override
   ConsumerState<_MultiplayerMatchBanner> createState() => _MultiplayerMatchBannerState();
 }
@@ -1690,6 +1693,8 @@ class _MultiplayerMatchBannerState extends ConsumerState<_MultiplayerMatchBanner
 // ─── Tournament Match Banner ─────────────────────────────────────
 
 class _TournamentMatchBanner extends ConsumerStatefulWidget {
+  const _TournamentMatchBanner({super.key});
+
   @override
   ConsumerState<_TournamentMatchBanner> createState() => _TournamentMatchBannerState();
 }

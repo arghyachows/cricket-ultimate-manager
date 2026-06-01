@@ -357,7 +357,7 @@ class MultiplayerNotifier extends StateNotifier<MultiplayerState> {
         );
 
     // Subscribe to the channel
-    await _roomChannel!.subscribe();
+    _roomChannel!.subscribe();
   }
 
   void _handleUserJoined(Map<String, dynamic> data) {
