@@ -7,6 +7,8 @@ import '../providers/providers.dart';
 import '../models/models.dart';
 import '../widgets/player_card_widget.dart';
 
+int quickSellPrice(String rarity) => AppConstants.quickSellPrices[rarity] ?? 25;
+
 class CollectionScreen extends ConsumerStatefulWidget {
   const CollectionScreen({super.key});
 
@@ -72,50 +74,29 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen>
     final cards = ref.watch(filteredUserCardsProvider);
     final filter = ref.watch(cardFilterProvider);
     final cardsAsync = ref.watch(userCardsProvider);
+    final allCards = cardsAsync.valueOrNull ?? [];
 
     return cardsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => Center(child: Text('Error: $e')),
       data: (_) {
-        if (cards.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.style_outlined, size: 80, color: Colors.white24),
-                const SizedBox(height: 16),
-                const Text(
-                  'No cards yet!',
-                  style: TextStyle(fontSize: 20, color: Colors.white54),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Open packs to get player cards',
-                  style: TextStyle(color: Colors.white38),
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton.icon(
-                  onPressed: () {
-                    _tabController.animateTo(1);
-                  },
-                  icon: const Icon(Icons.card_giftcard),
-                  label: const Text('OPEN PACKS'),
-                ),
-              ],
-            ),
-          );
-        }
-
         return Column(
           children: [
+            // Stats bar
+            _buildStatsBar(allCards, cards, filter),
             // Filter bar
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               child: Row(
                 children: [
-                  Text('${cards.length} cards',
-                      style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                  Text(
+                    '${cards.length} of ${allCards.length} cards',
+                    style: const TextStyle(color: Colors.white54, fontSize: 12),
+                  ),
                   const Spacer(),
+                  // View toggle
+                  _ViewToggle(),
+                  const SizedBox(width: 8),
                   IconButton(
                     icon: const Icon(Icons.filter_list, size: 20),
                     onPressed: () => _showFilterSheet(context, ref, filter),
@@ -124,39 +105,205 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen>
               ),
             ),
             Expanded(
-              child: RefreshIndicator(
-                onRefresh: () async {
-                  await ref.read(userCardsProvider.notifier).refresh();
-                  await ref.read(currentUserProvider.notifier).silentRefresh();
-                },
-                child: GridView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 6,
-                    childAspectRatio: 0.65,
-                    crossAxisSpacing: 6,
-                    mainAxisSpacing: 6,
-                  ),
-                  itemCount: cards.length,
-                  itemBuilder: (context, index) {
-                    final card = cards[index];
-                    if (card.playerCard == null) return const SizedBox();
+              child: cards.isEmpty
+                  ? _buildEmptyState(filter)
+                  : RefreshIndicator(
+                      onRefresh: () async {
+                        await ref.read(userCardsProvider.notifier).refresh();
+                        await ref.read(currentUserProvider.notifier).silentRefresh();
+                      },
+                      child: GridView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: _getCrossAxisCount(context),
+                          childAspectRatio: 0.65,
+                          crossAxisSpacing: 6,
+                          mainAxisSpacing: 6,
+                        ),
+                        itemCount: cards.length,
+                        itemBuilder: (context, index) {
+                          final card = cards[index];
+                          if (card.playerCard == null) return const SizedBox();
 
-                    return GestureDetector(
-                      onTap: () => context.go('/card/${card.id}'),
-                      child: PlayerCardWidget(
-                        playerCard: card.playerCard!,
-                        userCard: card,
-                        size: CardSize.small,
+                          return GestureDetector(
+                            onTap: () => context.go('/card/${card.id}'),
+                            onLongPress: () => _showQuickActions(context, card),
+                            child: PlayerCardWidget(
+                              playerCard: card.playerCard!,
+                              userCard: card,
+                              size: CardSize.small,
+                            ),
+                          );
+                        },
                       ),
-                    );
-                  },
-                ),
-              ),
+                    ),
             ),
           ],
         );
       },
+    );
+  }
+
+  int _getCrossAxisCount(BuildContext context) {
+    final width = MediaQuery.of(context).size.width;
+    if (width > 1200) return 10;
+    if (width > 900) return 8;
+    if (width > 600) return 7;
+    if (width > 400) return 6;
+    return 5;
+  }
+
+  Widget _buildStatsBar(List<UserCard> all, List<UserCard> filtered, CardFilter filter) {
+    final hasFilters = filter.rarity != null || filter.role != null;
+    final avgRating = all.isEmpty ? 0 : (all.fold<int>(0, (sum, c) => sum + (c.playerCard?.rating ?? 0)) / all.length).round();
+    final legendaryCount = all.where((c) => c.playerCard?.rarity == 'legend').length;
+    final eliteCount = all.where((c) => c.playerCard?.rarity == 'elite').length;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppTheme.surface.withValues(alpha: 0.5),
+        border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.1))),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _StatChip(label: 'TOTAL', value: '${all.length}', icon: Icons.style),
+          _StatChip(label: 'AVG', value: '$avgRating', icon: Icons.star),
+          if (legendaryCount > 0) _StatChip(label: 'LEGEND', value: '$legendaryCount', icon: Icons.auto_awesome, color: AppTheme.cardLegend),
+          if (eliteCount > 0) _StatChip(label: 'ELITE', value: '$eliteCount', icon: Icons.diamond, color: AppTheme.cardElite),
+          if (hasFilters)
+            TextButton.icon(
+              onPressed: () => ref.read(cardFilterProvider.notifier).state = const CardFilter(),
+              icon: const Icon(Icons.clear, size: 14),
+              label: const Text('CLEAR', style: TextStyle(fontSize: 11)),
+              style: TextButton.styleFrom(foregroundColor: Colors.orange),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(CardFilter filter) {
+    final hasFilters = filter.rarity != null || filter.role != null;
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.style_outlined, size: 80, color: hasFilters ? Colors.orange : Colors.white24),
+          const SizedBox(height: 16),
+          Text(
+            hasFilters ? 'No matching cards!' : 'No cards yet!',
+            style: const TextStyle(fontSize: 20, color: Colors.white54),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            hasFilters ? 'Try different filters' : 'Open packs to get player cards',
+            style: const TextStyle(color: Colors.white38),
+          ),
+          const SizedBox(height: 24),
+          if (hasFilters)
+            OutlinedButton.icon(
+              onPressed: () => ref.read(cardFilterProvider.notifier).state = const CardFilter(),
+              icon: const Icon(Icons.filter_list_off),
+              label: const Text('CLEAR FILTERS'),
+            )
+          else
+            ElevatedButton.icon(
+              onPressed: () => _tabController.animateTo(1),
+              icon: const Icon(Icons.card_giftcard),
+              label: const Text('OPEN PACKS'),
+            ),
+        ],
+      ),
+    );
+  }
+
+  void _showQuickActions(BuildContext context, UserCard card) {
+    final rarityColor = AppTheme.getRarityColor(card.playerCard?.rarity ?? 'bronze');
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 50,
+                  height: 70,
+                  decoration: BoxDecoration(
+                    color: rarityColor.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: rarityColor.withValues(alpha: 0.5)),
+                  ),
+                  child: Icon(Icons.person, color: rarityColor, size: 30),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(card.playerCard?.playerName ?? 'Unknown', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      Text('${card.playerCard!.role.toUpperCase()} • ${card.playerCard!.rarity.toUpperCase()}', style: TextStyle(color: rarityColor, fontSize: 12)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            ListTile(
+              leading: const Icon(Icons.info_outline),
+              title: const Text('View Details'),
+              onTap: () { Navigator.pop(context); context.go('/card/${card.id}'); },
+            ),
+            ListTile(
+              leading: const Icon(Icons.sell),
+              title: const Text('Sell on Market'),
+              onTap: () { Navigator.pop(context); _showSellDialog(context, card); },
+            ),
+            ListTile(
+              leading: const Icon(Icons.add_to_photos),
+              title: const Text('Add to Squad'),
+              onTap: () { Navigator.pop(context); context.go('/squad'); },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showSellDialog(BuildContext context, UserCard card) {
+    final priceController = TextEditingController(text: '${quickSellPrice(card.playerCard?.rarity ?? 'bronze') * 10}');
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        title: const Text('SELL CARD'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: priceController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'Price (coins)', prefixText: '🪙 '),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('CANCEL')),
+          ElevatedButton(
+            onPressed: () { Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Coming soon!'))); },
+            child: const Text('LIST'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -325,6 +472,64 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen>
           },
         );
       },
+    );
+  }
+}
+
+// ─── Helper widgets ──────────────────────────────────────
+
+class _StatChip extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color? color;
+
+  const _StatChip({required this.label, required this.value, required this.icon, this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = color ?? AppTheme.accent;
+    return Column(
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: c),
+            const SizedBox(width: 4),
+            Text(value, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: c)),
+          ],
+        ),
+        Text(label, style: const TextStyle(fontSize: 10, color: Colors.white54)),
+      ],
+    );
+  }
+}
+
+class _ViewToggle extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            icon: const Icon(Icons.grid_view, size: 18),
+            onPressed: () {},
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+          ),
+          IconButton(
+            icon: const Icon(Icons.view_list, size: 18),
+            onPressed: () {},
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+          ),
+        ],
+      ),
     );
   }
 }
