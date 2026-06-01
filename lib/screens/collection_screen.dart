@@ -19,6 +19,7 @@ class CollectionScreen extends ConsumerStatefulWidget {
 class _CollectionScreenState extends ConsumerState<CollectionScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  bool _isGridView = true;
 
   @override
   void initState() {
@@ -95,7 +96,10 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen>
                   ),
                   const Spacer(),
                   // View toggle
-                  _ViewToggle(),
+                  _ViewToggle(
+                    isGrid: _isGridView,
+                    onToggle: () => setState(() => _isGridView = !_isGridView),
+                  ),
                   const SizedBox(width: 8),
                   IconButton(
                     icon: const Icon(Icons.filter_list, size: 20),
@@ -112,31 +116,71 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen>
                         await ref.read(userCardsProvider.notifier).refresh();
                         await ref.read(currentUserProvider.notifier).silentRefresh();
                       },
-                      child: GridView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: _getCrossAxisCount(context),
-                          childAspectRatio: 0.65,
-                          crossAxisSpacing: 6,
-                          mainAxisSpacing: 6,
-                        ),
-                        itemCount: cards.length,
-                        itemBuilder: (context, index) {
-                          final card = cards[index];
-                          if (card.playerCard == null) return const SizedBox();
-
-                          return GestureDetector(
-                            onTap: () => context.go('/card/${card.id}'),
-                            onLongPress: () => _showQuickActions(context, card),
-                            child: PlayerCardWidget(
-                              playerCard: card.playerCard!,
-                              userCard: card,
-                              size: CardSize.small,
-                            ),
-                          );
-                        },
-                      ),
-                    ),
+                      child: _isGridView
+                                                ? GridView.builder(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                                                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                                                      crossAxisCount: _getCrossAxisCount(context),
+                                                      childAspectRatio: 0.65,
+                                                      crossAxisSpacing: 6,
+                                                      mainAxisSpacing: 6,
+                                                    ),
+                                                    itemCount: cards.length,
+                                                    itemBuilder: (context, index) {
+                                                      final card = cards[index];
+                                                      if (card.playerCard == null) return const SizedBox();
+                                                      return GestureDetector(
+                                                        onTap: () => context.go('/card/${card.id}'),
+                                                        onLongPress: () => _showQuickActions(context, card),
+                                                        child: PlayerCardWidget(
+                                                          playerCard: card.playerCard!,
+                                                          userCard: card,
+                                                          size: CardSize.small,
+                                                        ),
+                                                      );
+                                                    },
+                                                  )
+                                                : ListView.builder(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                                                    itemCount: cards.length,
+                                                    itemBuilder: (context, index) {
+                                                      final card = cards[index];
+                                                      if (card.playerCard == null) return const SizedBox();
+                                                      final rarityColor = AppTheme.getRarityColor(card.playerCard!.rarity);
+                                                      return Card(
+                                                        color: AppTheme.surface,
+                                                        margin: const EdgeInsets.only(bottom: 8),
+                                                        child: ListTile(
+                                                          leading: Container(
+                                                            width: 44,
+                                                            height: 60,
+                                                            decoration: BoxDecoration(
+                                                              color: rarityColor.withValues(alpha: 0.2),
+                                                              borderRadius: BorderRadius.circular(6),
+                                                              border: Border.all(color: rarityColor.withValues(alpha: 0.5)),
+                                                            ),
+                                                            child: Icon(Icons.person, color: rarityColor, size: 24),
+                                                          ),
+                                                          title: Text(card.playerCard!.playerName, style: const TextStyle(fontWeight: FontWeight.bold)),
+                                                          subtitle: Text(
+                                                            '${card.playerCard!.role?.toUpperCase() ?? ''} • ${card.playerCard!.rarity?.toUpperCase() ?? ''}',
+                                                            style: TextStyle(color: rarityColor, fontSize: 11),
+                                                          ),
+                                                          trailing: Column(
+                                                            mainAxisAlignment: MainAxisAlignment.center,
+                                                            crossAxisAlignment: CrossAxisAlignment.end,
+                                                            children: [
+                                                              Text('${card.playerCard!.rating}', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: rarityColor)),
+                                                              const Text('OVR', style: TextStyle(fontSize: 10, color: Colors.white54)),
+                                                            ],
+                                                          ),
+                                                          onTap: () => context.go('/card/${card.id}'),
+                                                          onLongPress: () => _showQuickActions(context, card),
+                                                        ),
+                                                      );
+                                                    },
+                                                  ),
+                                          ),
             ),
           ],
         );
@@ -506,6 +550,11 @@ class _StatChip extends StatelessWidget {
 }
 
 class _ViewToggle extends StatelessWidget {
+  final bool isGrid;
+  final VoidCallback onToggle;
+
+  const _ViewToggle({required this.isGrid, required this.onToggle});
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -517,14 +566,14 @@ class _ViewToggle extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           IconButton(
-            icon: const Icon(Icons.grid_view, size: 18),
-            onPressed: () {},
+            icon: Icon(Icons.grid_view, size: 18, color: isGrid ? AppTheme.accent : Colors.white54),
+            onPressed: isGrid ? null : onToggle,
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
           ),
           IconButton(
-            icon: const Icon(Icons.view_list, size: 18),
-            onPressed: () {},
+            icon: Icon(Icons.view_list, size: 18, color: !isGrid ? AppTheme.accent : Colors.white54),
+            onPressed: !isGrid ? null : onToggle,
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
           ),
