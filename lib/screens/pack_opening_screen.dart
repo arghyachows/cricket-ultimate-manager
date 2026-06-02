@@ -145,10 +145,15 @@ class _PackOpeningScreenState extends ConsumerState<PackOpeningScreen>
 
   Widget _buildUnopenedPack(PackType pack) {
     Color packColor = AppTheme.cardBronze;
-    if (pack.name.contains('Legend')) packColor = AppTheme.cardLegend;
-    else if (pack.name.contains('Elite')) packColor = AppTheme.cardElite;
-    else if (pack.name.contains('Gold')) packColor = AppTheme.cardGold;
-    else if (pack.name.contains('Silver')) packColor = AppTheme.cardSilver;
+    if (pack.name.contains('Legend')) {
+      packColor = AppTheme.cardLegend;
+    } else if (pack.name.contains('Elite')) {
+      packColor = AppTheme.cardElite;
+    } else if (pack.name.contains('Gold')) {
+      packColor = AppTheme.cardGold;
+    } else if (pack.name.contains('Silver')) {
+      packColor = AppTheme.cardSilver;
+    }
 
     return Center(
       child: GestureDetector(
@@ -324,7 +329,7 @@ class _PackOpeningScreenState extends ConsumerState<PackOpeningScreen>
                           height: 300,
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(16),
-                            gradient: LinearGradient(
+                            gradient: const LinearGradient(
                               colors: [
                                 AppTheme.surfaceLight,
                                 AppTheme.surface,

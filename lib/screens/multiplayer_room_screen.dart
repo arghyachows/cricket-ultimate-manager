@@ -139,7 +139,7 @@ class _MultiplayerRoomScreenState extends ConsumerState<MultiplayerRoomScreen> {
                             Container(
                               width: 8,
                               height: 8,
-                              decoration: BoxDecoration(
+                              decoration: const BoxDecoration(
                                 color: Colors.white,
                                 shape: BoxShape.circle,
                               ),
@@ -351,7 +351,7 @@ class _MultiplayerRoomScreenState extends ConsumerState<MultiplayerRoomScreen> {
                 decoration: BoxDecoration(
                   color: AppTheme.surfaceLight,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppTheme.accent.withOpacity(0.5)),
+                  border: Border.all(color: AppTheme.accent.withValues(alpha: 0.5)),
                 ),
                 child: const Row(
                   mainAxisSize: MainAxisSize.min,

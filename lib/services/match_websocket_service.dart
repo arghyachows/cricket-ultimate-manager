@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'package:socket_io_client/socket_io_client.dart' as IO;
+import 'package:socket_io_client/socket_io_client.dart' as io;
 import '../core/node_backend_service.dart';
 
 /// WebSocket service for real-time match updates.
@@ -9,9 +9,7 @@ class MatchWebSocketService {
   final void Function(Map<String, dynamic>) onMatchComplete;
   final void Function(Map<String, dynamic>) onRoomJoined;
 
-  IO.Socket? _socket;
-  String? _matchId;
-  String? _roomId;
+  io.Socket? _socket;
 
   MatchWebSocketService({
     required this.onBallUpdate,
@@ -20,10 +18,7 @@ class MatchWebSocketService {
   });
 
   Future<void> connectToMatch(String matchId, String roomId) async {
-    _matchId = matchId;
-    _roomId = roomId;
-    
-    _socket = IO.io('${NodeBackendService.baseUrl}', <String, dynamic>{
+    _socket = io.io(NodeBackendService.baseUrl, <String, dynamic>{
       'transports': ['websocket'],
       'autoConnect': false,
     });
@@ -32,7 +27,7 @@ class MatchWebSocketService {
     _socket!.on('match_complete', (data) => onMatchComplete(data as Map<String, dynamic>));
     _socket!.on('room_joined', (data) => onRoomJoined(data as Map<String, dynamic>));
 
-    await _socket!.connect();
+    _socket!.connect();
     _socket!.emit('join_match', {'matchId': matchId, 'roomId': roomId});
   }
 

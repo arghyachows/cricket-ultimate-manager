@@ -491,7 +491,6 @@ class CardDetailScreen extends ConsumerWidget {
   void _showQuickSellDialog(
       BuildContext context, WidgetRef ref, UserCard userCard, int sellPrice) {
     final card = userCard.playerCard!;
-    final rarityColor = AppTheme.getRarityColor(card.rarity);
 
     showDialog(
       context: context,

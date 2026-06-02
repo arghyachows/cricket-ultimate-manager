@@ -137,7 +137,7 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen>
                       const Icon(Icons.error_outline,
                           size: 48, color: Colors.red),
                       const SizedBox(height: 12),
-                      Text('Error loading tournaments',
+                      const Text('Error loading tournaments',
                           style: TextStyle(color: Colors.white70)),
                       const SizedBox(height: 8),
                       ElevatedButton(
@@ -287,7 +287,7 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen>
                           ),
                           if (startsAt != null) ...[
                             const SizedBox(width: 8),
-                            Icon(Icons.schedule,
+                            const Icon(Icons.schedule,
                                 size: 12, color: Colors.white38),
                             const SizedBox(width: 4),
                             Text(
@@ -646,13 +646,13 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen>
               color: Colors.white.withValues(alpha: 0.05),
               child: Row(
                 children: [
-                  SizedBox(width: 32, child: Text('#', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white54, fontSize: 12))),
-                  Expanded(child: Text('TEAM', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white54, fontSize: 12))),
-                  SizedBox(width: 32, child: Text('P', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white54, fontSize: 12))),
-                  SizedBox(width: 32, child: Text('W', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white54, fontSize: 12))),
-                  SizedBox(width: 40, child: Text('PTS', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white54, fontSize: 12))),
-                  SizedBox(width: 50, child: Text('NRR', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white54, fontSize: 12))),
-                  if (isTournamentCompleted) SizedBox(width: 60, child: Text('COINS', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.amber, fontSize: 12))),
+                  const SizedBox(width: 32, child: Text('#', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white54, fontSize: 12))),
+                  const Expanded(child: Text('TEAM', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white54, fontSize: 12))),
+                  const SizedBox(width: 32, child: Text('P', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white54, fontSize: 12))),
+                  const SizedBox(width: 32, child: Text('W', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white54, fontSize: 12))),
+                  const SizedBox(width: 40, child: Text('PTS', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white54, fontSize: 12))),
+                  const SizedBox(width: 50, child: Text('NRR', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white54, fontSize: 12))),
+                  if (isTournamentCompleted) const SizedBox(width: 60, child: Text('COINS', textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.amber, fontSize: 12))),
                 ],
               ),
             ),
@@ -902,7 +902,7 @@ class _TournamentScreenState extends ConsumerState<TournamentScreen>
                             Row(
                               children: [
                                 if (scheduledAt != null) ...[
-                                  Icon(Icons.schedule, size: 12, color: Colors.white38),
+                                  const Icon(Icons.schedule, size: 12, color: Colors.white38),
                                   const SizedBox(width: 4),
                                   Text(
                                     _formatMatchTime(scheduledAt),

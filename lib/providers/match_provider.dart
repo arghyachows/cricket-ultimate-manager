@@ -8,6 +8,7 @@ import 'card_packs_provider.dart';
 import 'career_stats_provider.dart';
 import 'challenge_provider.dart';
 import 'match/match_state.dart';
+export 'match/match_state.dart';
 import 'match/match_node_backend.dart';
 import 'match/match_local_engine.dart';
 import 'match/match_completion_handler.dart';

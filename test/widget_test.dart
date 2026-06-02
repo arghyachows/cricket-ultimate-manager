@@ -1,30 +1,34 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
-import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:cricket_ultimate_manager/main.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const CricketUltimateManager());
+  setUpAll(() async {
+    // Mock the SharedPreferences MethodChannel calls to prevent MissingPluginException
+    TestWidgetsFlutterBinding.ensureInitialized();
+    
+    // Ignore the deprecation warning for setMockMethodCallHandler in test files
+    // ignore: deprecated_member_use
+    const MethodChannel('plugins.flutter.io/shared_preferences')
+        // ignore: deprecated_member_use
+        .setMockMethodCallHandler((MethodCall methodCall) async {
+      if (methodCall.method == 'getAll') {
+        return <String, dynamic>{};
+      }
+      return null;
+    });
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    // Initialize Supabase with dummy credentials
+    await Supabase.initialize(
+      url: 'https://kollxlzqqgznfiutpqjz.supabase.co',
+      anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtvbGx4bHpxcWd6bmZpdXRwcWp6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzMzY4MDUsImV4cCI6MjA4ODkxMjgwNX0.0Dn1J-j5INjGwd6oDDYTJUFSvSIRxknJ5nORbYUj8kY',
+    );
+  });
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
-
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+  testWidgets('App renders without crashing', (WidgetTester tester) async {
+    await tester.pumpWidget(const ProviderScope(child: CricketUltimateManager()));
+    expect(find.byType(CricketUltimateManager), findsOneWidget);
   });
 }

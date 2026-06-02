@@ -1,4 +1,3 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -19,7 +18,6 @@ class _ChallengeScreenState extends ConsumerState<ChallengeScreen> {
 
   void _playOpponent(ChallengeOpponent opponent) {
     final teamAsync = ref.read(teamProvider);
-    final chemistry = ref.read(chemistryProvider);
     final team = teamAsync.valueOrNull;
     if (team == null) return;
 
@@ -248,7 +246,7 @@ class _ChallengeScreenState extends ConsumerState<ChallengeScreen> {
               ),
               Text(
                 '${state.defeatedCount} / ${state.totalCount}',
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
                   color: AppTheme.accent,
@@ -474,7 +472,7 @@ class _ChallengeScreenState extends ConsumerState<ChallengeScreen> {
                       color: AppTheme.accent.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(6),
                     ),
-                    child: Text(
+                    child: const Text(
                       'PLAY',
                       style: TextStyle(
                         fontSize: 10,
@@ -531,7 +529,7 @@ class _ChallengeScreenState extends ConsumerState<ChallengeScreen> {
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(
+                const Text(
                   'Elite Pack',
                   style: TextStyle(
                     fontSize: 18,
@@ -581,7 +579,7 @@ class _ChallengeScreenState extends ConsumerState<ChallengeScreen> {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
-            Text(
+            const Text(
               'Check your packs for the Elite Pack reward',
               style: TextStyle(
                 fontSize: 13,

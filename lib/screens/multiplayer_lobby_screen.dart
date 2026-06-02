@@ -79,7 +79,7 @@ class _MultiplayerLobbyScreenState extends ConsumerState<MultiplayerLobbyScreen>
                 width: 60,
                 height: 60,
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
+                  gradient: const LinearGradient(
                     colors: [AppTheme.primary, AppTheme.primaryLight],
                   ),
                   borderRadius: BorderRadius.circular(12),

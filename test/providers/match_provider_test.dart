@@ -501,7 +501,6 @@ void main() {
     test('computeSkipToEndResult returns MatchState', () {
       // We can't easily test this without a full MatchEngine setup,
       // but we can verify the method exists and is callable
-      final state = MatchState(currentInnings: 1, matchOvers: 20, events: const []);
       // Just verify the class is accessible and the static method exists
       expect(MatchLocalEngine.computeSkipToEndResult, isNotNull);
     });

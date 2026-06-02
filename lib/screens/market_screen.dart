@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/theme.dart';
 import '../core/constants.dart';
 import '../providers/providers.dart';
-import '../providers/cards_provider.dart' show listedCardIdsProvider;
 import '../models/models.dart';
 
 /// Reusable sell-on-market dialog (called from card detail & sell tab)
@@ -147,7 +146,7 @@ void showSellOnMarketDialog(BuildContext context, WidgetRef ref, UserCard card) 
               }
               if (buyNow > AppConstants.maxListingPrice) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Max price is ${AppConstants.maxListingPrice}')),
+                  const SnackBar(content: Text('Max price is ${AppConstants.maxListingPrice}')),
                 );
                 return;
               }
@@ -456,7 +455,7 @@ class _ListingCard extends ConsumerWidget {
                             style: const TextStyle(
                                 color: Colors.white38, fontSize: 11)),
                         const Spacer(),
-                        Icon(Icons.timer_outlined,
+                        const Icon(Icons.timer_outlined,
                             size: 12, color: Colors.orangeAccent),
                         const SizedBox(width: 3),
                         Text(listing.timeRemainingDisplay,
@@ -972,7 +971,7 @@ class _BidTile extends StatelessWidget {
                           fontWeight: FontWeight.bold, fontSize: 15)),
                   const SizedBox(height: 3),
                   Row(children: [
-                    Icon(Icons.monetization_on, size: 13, color: AppTheme.cardGold),
+                    const Icon(Icons.monetization_on, size: 13, color: AppTheme.cardGold),
                     const SizedBox(width: 3),
                     Text('Your bid: ${bid.bidAmount}',
                         style: const TextStyle(color: Colors.white70, fontSize: 12)),

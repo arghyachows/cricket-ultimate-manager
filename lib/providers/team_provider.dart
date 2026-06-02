@@ -331,51 +331,47 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
     reordered.insert(newIndex, item);
 
     // Optimistically update local state
-    if (team != null) {
-      if (squad != null) {
-        final updatedLineup = <LineupPlayer>[];
-        for (int i = 0; i < reordered.length; i++) {
-          final lp = reordered[i];
-          updatedLineup.add(LineupPlayer(
-            id: lp.id,
-            squadId: lp.squadId,
-            userCardId: lp.userCardId,
-            battingOrder: i + 1,
-            isCaptain: lp.isCaptain,
-            isViceCaptain: lp.isViceCaptain,
-            isWicketKeeper: lp.isWicketKeeper,
-            isBowler1: lp.isBowler1,
-            isBowler2: lp.isBowler2,
-            userCard: lp.userCard,
-          ));
-        }
-        final updatedSquads = team.squads.map((s) {
-          if (s.id == squad.id) {
-            return Squad(
-              id: s.id,
-              teamId: s.teamId,
-              squadName: s.squadName,
-              formation: s.formation,
-              isActive: s.isActive,
-              players: s.players,
-              lineup: updatedLineup,
-            );
-          }
-          return s;
-        }).toList();
-        state = AsyncValue.data(Team(
-          id: team.id,
-          userId: team.userId,
-          teamName: team.teamName,
-          logoUrl: team.logoUrl,
-          chemistry: team.chemistry,
-          overallRating: team.overallRating,
-          isActive: team.isActive,
-          squads: updatedSquads,
-        ));
-      }
+    final updatedLineup = <LineupPlayer>[];
+    for (int i = 0; i < reordered.length; i++) {
+      final lp = reordered[i];
+      updatedLineup.add(LineupPlayer(
+        id: lp.id,
+        squadId: lp.squadId,
+        userCardId: lp.userCardId,
+        battingOrder: i + 1,
+        isCaptain: lp.isCaptain,
+        isViceCaptain: lp.isViceCaptain,
+        isWicketKeeper: lp.isWicketKeeper,
+        isBowler1: lp.isBowler1,
+        isBowler2: lp.isBowler2,
+        userCard: lp.userCard,
+      ));
     }
-
+    final updatedSquads = team.squads.map((s) {
+      if (s.id == squad.id) {
+        return Squad(
+          id: s.id,
+          teamId: s.teamId,
+          squadName: s.squadName,
+          formation: s.formation,
+          isActive: s.isActive,
+          players: s.players,
+          lineup: updatedLineup,
+        );
+      }
+      return s;
+    }).toList();
+    state = AsyncValue.data(Team(
+      id: team.id,
+      userId: team.userId,
+      teamName: team.teamName,
+      logoUrl: team.logoUrl,
+      chemistry: team.chemistry,
+      overallRating: team.overallRating,
+      isActive: team.isActive,
+      squads: updatedSquads,
+    ));
+    
     // Persist via RPC — single atomic UPDATE avoids unique constraint conflicts
     // and SECURITY DEFINER bypasses RLS restrictions on batting_order updates.
     _pauseLineupUpdates = true;

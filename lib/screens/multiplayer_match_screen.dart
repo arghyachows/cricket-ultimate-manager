@@ -441,10 +441,9 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
               tossWinner: tossWinner,
               tossDecision: '',
               tossComplete: false,
-              currentCommentary: (tossWinner == 'home'
+              currentCommentary: '${tossWinner == 'home'
                       ? _state.homeTeamName
-                      : _state.awayTeamName) +
-                  ' won the toss',
+                      : _state.awayTeamName} won the toss',
             ));
         _scheduleTossDecisionFallback();
         return;
@@ -1043,9 +1042,17 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
         String homeOvers = _state.homeOvers;
         String awayOvers = _state.awayOvers;
         if (polledInnings == 1) {
-          if (hbf) homeOvers = oversStr; else awayOvers = oversStr;
+          if (hbf) {
+            homeOvers = oversStr;
+          } else {
+            awayOvers = oversStr;
+          }
         } else {
-          if (hbf) awayOvers = oversStr; else homeOvers = oversStr;
+          if (hbf) {
+            awayOvers = oversStr;
+          } else {
+            homeOvers = oversStr;
+          }
         }
 
         // Deserialize scorecard
@@ -1853,8 +1860,8 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: const [
+          const Row(
+            children: [
               Icon(Icons.sports_cricket, size: 16, color: AppTheme.accent),
               SizedBox(width: 8),
               Text(
@@ -1866,7 +1873,7 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
           const SizedBox(height: 6),
           if (hasPrimaryNames) ...[
             Text(
-              '${strikerName}* ${strikerStats == null ? '' : '${strikerStats.runs} (${strikerStats.balls})'}',
+              '$strikerName* ${strikerStats == null ? '' : '${strikerStats.runs} (${strikerStats.balls})'}',
               style: const TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
@@ -1876,7 +1883,7 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
             ),
             const SizedBox(height: 2),
             Text(
-              '${nonStrikerName} ${nonStrikerStats == null ? '' : '${nonStrikerStats.runs} (${nonStrikerStats.balls})'}',
+              '$nonStrikerName ${nonStrikerStats == null ? '' : '${nonStrikerStats.runs} (${nonStrikerStats.balls})'}',
               style: const TextStyle(
                 fontSize: 13,
                 color: Colors.white70,

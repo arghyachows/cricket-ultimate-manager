@@ -2,15 +2,14 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
-import 'package:socket_io_client/socket_io_client.dart' as IO;
+import 'package:socket_io_client/socket_io_client.dart' as io;
 import 'app_config.dart';
 
 /// Service to interact with Node.js backend for match simulation
 class NodeBackendService {
   static String get baseUrl => AppConfig.backendUrl;
   
-  static IO.Socket? _socket;
-  static bool _isInitialized = false;
+  static io.Socket? _socket;
 
   // Broadcast streams for passive subscribers (dashboard banners, etc.)
   static final _ballUpdateController = StreamController<Map<String, dynamic>>.broadcast();
@@ -46,15 +45,14 @@ class NodeBackendService {
       _socket!.disconnect();
       _socket!.dispose();
       _socket = null;
-      _isInitialized = false;
     }
 
     _registerLifecycleObserver();
     print('🔌 Initializing Socket.IO connection to $baseUrl');
     
-    _socket = IO.io(
+    _socket = io.io(
       baseUrl,
-      IO.OptionBuilder()
+      io.OptionBuilder()
         .setTransports(['websocket', 'polling'])
         .disableAutoConnect()
         .enableReconnection()
@@ -67,7 +65,6 @@ class NodeBackendService {
 
     _socket!.onConnect((_) {
       print('✅ Connected to Node.js backend');
-      _isInitialized = true;
       if (_currentJoinedMatchId != null) {
         print('🔄 Re-joining match room on connect: $_currentJoinedMatchId');
         _socket!.emit('joinMatch', _currentJoinedMatchId);
@@ -76,7 +73,6 @@ class NodeBackendService {
 
     _socket!.onDisconnect((_) {
       print('❌ Disconnected from Node.js backend');
-      _isInitialized = false;
     });
 
     _socket!.onConnectError((error) {
@@ -89,7 +85,6 @@ class NodeBackendService {
 
     _socket!.onReconnect((attempt) {
       print('🔄 Reconnected after $attempt attempts');
-      _isInitialized = true;
       if (_currentJoinedMatchId != null) {
         print('🔄 Re-joining match room on reconnect: $_currentJoinedMatchId');
         _socket!.emit('joinMatch', _currentJoinedMatchId);
@@ -102,7 +97,6 @@ class NodeBackendService {
 
     _socket!.onReconnectFailed((_) {
       print('❌ Reconnection failed after all attempts');
-      _isInitialized = false;
     });
 
     print('🚀 Attempting to connect...');
@@ -662,7 +656,6 @@ class NodeBackendService {
       _socket!.disconnect();
       _socket!.dispose();
       _socket = null;
-      _isInitialized = false;
     }
   }
 

@@ -346,9 +346,9 @@ class _ScorecardSheet extends StatelessWidget {
           ),
         ),
         // Title
-        Text(
+        const Text(
           'SCORECARD',
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
             letterSpacing: 2,
@@ -432,7 +432,7 @@ class _ScorecardSheet extends StatelessWidget {
           ),
           ...batsmen.map((b) => Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               border: Border(bottom: BorderSide(color: Colors.white10)),
             ),
             child: Row(
@@ -494,7 +494,7 @@ class _ScorecardSheet extends StatelessWidget {
           ),
           ...bowlers.map((b) => Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               border: Border(bottom: BorderSide(color: Colors.white10)),
             ),
             child: Row(

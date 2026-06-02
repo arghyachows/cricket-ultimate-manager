@@ -5,7 +5,6 @@ import '../core/profanity_filter.dart';
 import '../core/theme.dart';
 import '../models/models.dart';
 import '../providers/providers.dart';
-import '../providers/cards_provider.dart' show listedCardIdsProvider;
 
 class SquadBuilderScreen extends ConsumerStatefulWidget {
   const SquadBuilderScreen({super.key});
@@ -155,11 +154,10 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
                 final name = _teamNameController.text.trim();
                 final error = await ProfanityFilter.validateTeamName(name);
                 if (error != null) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(error)),
-                    );
-                  }
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(error)),
+                  );
                   return;
                 }
                 if (name.isNotEmpty) {
@@ -785,7 +783,7 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
                             ),
                           ),
                           const SizedBox(height: 4),
-                          Text(
+                          const Text(
                             'Choose a replacement player',
                             style: TextStyle(
                               fontSize: 12,
@@ -1004,9 +1002,9 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
                       padding: const EdgeInsets.all(12),
                       child: Column(
                         children: [
-                          Text(
+                          const Text(
                             'SELECT PLAYER FOR LINEUP',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
                             ),

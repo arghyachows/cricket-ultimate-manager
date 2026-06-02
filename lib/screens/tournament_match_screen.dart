@@ -251,9 +251,17 @@ class _TournamentMatchScreenState
       String homeOvers = _homeOvers;
       String awayOvers = _awayOvers;
       if (innings == 1) {
-        if (hbf) homeOvers = oversStr; else awayOvers = oversStr;
+        if (hbf) {
+          homeOvers = oversStr;
+        } else {
+          awayOvers = oversStr;
+        }
       } else {
-        if (hbf) awayOvers = oversStr; else homeOvers = oversStr;
+        if (hbf) {
+          awayOvers = oversStr;
+        } else {
+          homeOvers = oversStr;
+        }
       }
 
       // Scorecard stats
@@ -397,9 +405,17 @@ class _TournamentMatchScreenState
       String homeOvers = _homeOvers;
       String awayOvers = _awayOvers;
       if (innings == 1) {
-        if (hbf) homeOvers = oversStr; else awayOvers = oversStr;
+        if (hbf) {
+          homeOvers = oversStr;
+        } else {
+          awayOvers = oversStr;
+        }
       } else {
-        if (hbf) awayOvers = oversStr; else homeOvers = oversStr;
+        if (hbf) {
+          awayOvers = oversStr;
+        } else {
+          homeOvers = oversStr;
+        }
       }
 
       // Update batsman/bowler names
@@ -874,7 +890,7 @@ class _TournamentMatchScreenState
           ]),
           const SizedBox(height: 6),
           Text(
-            '${_homeBatsman}* ${strikerStats != null ? '${strikerStats.runs} (${strikerStats.balls})' : ''}',
+            '$_homeBatsman* ${strikerStats != null ? '${strikerStats.runs} (${strikerStats.balls})' : ''}',
             style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.white),
             overflow: TextOverflow.ellipsis,
           ),

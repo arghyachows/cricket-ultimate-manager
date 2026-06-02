@@ -1,5 +1,6 @@
 /// State machine for match lifecycle management.
 /// Defines valid state transitions and enforces match flow rules.
+library;
 
 enum MatchPhase {
   notStarted,
