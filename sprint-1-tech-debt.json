@@ -1,7 +1,8 @@
 {
   "sprint": "Sprint 1 — Tech Debt Cleanup",
   "totalPoints": 21,
-  "completedPoints": 19,
+  "completedPoints": 21,
+  "status": "completed",
   "duration": "1 sprint (1-2 weeks)",
   "goals": [
     "Zero warnings on flutter analyze",
