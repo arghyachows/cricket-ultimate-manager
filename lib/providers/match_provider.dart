@@ -1,395 +1,54 @@
 import 'dart:async';
-import 'dart:math' show min;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:uuid/uuid.dart';
 import '../core/supabase_service.dart';
 import '../core/constants.dart';
-import '../core/node_backend_service.dart';
 import '../models/models.dart';
-import '../engine/match_engine.dart';
-import '../core/notification_service.dart';
 import 'auth_provider.dart';
 import 'card_packs_provider.dart';
 import 'career_stats_provider.dart';
 import 'challenge_provider.dart';
+import 'match/match_state.dart';
+import 'match/match_node_backend.dart';
+import 'match/match_local_engine.dart';
+import 'match/match_completion_handler.dart';
+import 'match_helpers.dart';
 
-// Match state
-final matchProvider =
-    StateNotifierProvider<MatchNotifier, MatchState>((ref) {
+final matchProvider = StateNotifierProvider<MatchNotifier, MatchState>((ref) {
   return MatchNotifier(ref);
 });
 
-class MatchState {
-  final MatchModel? match;
-  final List<MatchEvent> events;
-  final bool isSimulating;
-  final bool isMatchComplete;
-  final String? currentCommentary;
-  final int currentInnings;
-  final Map<String, BatsmanStats> batsmanStats;
-  final Map<String, BowlerStats> bowlerStats;
-  final String homeTeamName;
-  final String awayTeamName;
-  final String matchFormat;
-  final int matchOvers;
-  final String matchDifficulty;
-  /// true = home won, false = away won, null = tie or not finished
-  final bool? homeWon;
-  final int coinsAwarded;
-  final int xpAwarded;
-  final String pitchCondition;
-  final String weatherCondition;
-  final bool userWonToss;
-  final String tossDecision; // 'bat' or 'bowl'
-  final bool homeBatsFirst;
-  final int target;
-  final List<String> xiOrder1;
-  final List<String> xiOrder2;
-  /// Non-null when the user levelled up and earned a card pack this match.
-  final String? levelUpPackAwarded;
-  final int? newLevel;
-  /// Card ID of the batsman on strike (for AT CREASE display).
-  final String strikerCardId;
-  /// Card ID of the non-striker (for AT CREASE display).
-  final String nonStrikerCardId;
-  final bool challengeMode;
-
-  const MatchState({
-    this.match,
-    this.events = const [],
-    this.isSimulating = false,
-    this.isMatchComplete = false,
-    this.currentCommentary,
-    this.currentInnings = 1,
-    this.batsmanStats = const {},
-    this.bowlerStats = const {},
-    this.homeTeamName = '',
-    this.awayTeamName = '',
-    this.matchFormat = 't20',
-    this.matchOvers = 20,
-    this.matchDifficulty = 'Village',
-    this.homeWon,
-    this.coinsAwarded = 0,
-    this.xpAwarded = 0,
-    this.pitchCondition = 'balanced',
-    this.weatherCondition = 'clear',
-    this.userWonToss = true,
-    this.tossDecision = 'bat',
-    this.homeBatsFirst = true,
-    this.target = 0,
-    this.xiOrder1 = const [],
-    this.xiOrder2 = const [],
-    this.levelUpPackAwarded,
-    this.newLevel,
-    this.strikerCardId = '',
-    this.nonStrikerCardId = '',
-    this.challengeMode = false,
-  });
-
-  bool get hasActiveMatch => isSimulating || isMatchComplete;
-
-  /// Helper to get score for a specific innings
-  int _inningsScore(int inn) {
-    if (events.isEmpty) return 0;
-    final inns = events.where((e) => e.innings == inn);
-    return inns.isEmpty ? 0 : inns.last.scoreAfter;
-  }
-
-  int _inningsWickets(int inn) {
-    if (events.isEmpty) return 0;
-    final inns = events.where((e) => e.innings == inn);
-    return inns.isEmpty ? 0 : inns.last.wicketsAfter;
-  }
-
-  String _inningsOvers(int inn) {
-    final inns = events.where((e) => e.innings == inn && e.eventType != 'innings_break');
-    if (inns.isEmpty) return '0.0';
-    // Count legal deliveries (exclude wides and no-balls)
-    final legalBalls = inns.where((e) => e.eventType != 'wide' && e.eventType != 'no_ball').length;
-    final overs = legalBalls ~/ 6;
-    final balls = legalBalls % 6;
-    return '$overs.$balls';
-  }
-
-  /// Home team's score (accounts for batting order)
-  int get homeScore => homeBatsFirst ? _inningsScore(1) : _inningsScore(2);
-  int get homeWickets => homeBatsFirst ? _inningsWickets(1) : _inningsWickets(2);
-  String get homeOvers => homeBatsFirst ? _inningsOvers(1) : _inningsOvers(2);
-
-  /// Away team's score (accounts for batting order)
-  int get awayScore => homeBatsFirst ? _inningsScore(2) : _inningsScore(1);
-  int get awayWickets => homeBatsFirst ? _inningsWickets(2) : _inningsWickets(1);
-  String get awayOvers => homeBatsFirst ? _inningsOvers(2) : _inningsOvers(1);
-
-  String get currentOvers {
-    return _inningsOvers(currentInnings);
-  }
-
-  List<BatsmanStats> _orderedBatsmenForInnings(int innings, List<String> xiOrder) {
-    final batsmen = batsmanStats.values.where((b) => b.innings == innings).toList();
-    if (xiOrder.isEmpty) return batsmen;
-
-    final statsMap = {for (final b in batsmen) b.name: b};
-    final ordered = <BatsmanStats>[];
-
-    for (final name in xiOrder) {
-      ordered.add(statsMap[name] ?? BatsmanStats(name: name, innings: innings));
-    }
-    for (final b in batsmen) {
-      if (!xiOrder.contains(b.name)) ordered.add(b);
-    }
-    return ordered;
-  }
-
-  /// Batting card for innings 1 (full XI in batting order)
-  List<BatsmanStats> get innings1Batsmen => _orderedBatsmenForInnings(1, xiOrder1);
-
-  /// Batting card for innings 2 (full XI in batting order)
-  List<BatsmanStats> get innings2Batsmen => _orderedBatsmenForInnings(2, xiOrder2);
-
-  /// Bowlers who bowled in innings 1 (away team bowled)
-  List<BowlerStats> get innings1Bowlers =>
-      bowlerStats.values.where((b) => b.innings == 1).toList();
-
-  /// Bowlers who bowled in innings 2 (home team bowled)
-  List<BowlerStats> get innings2Bowlers =>
-      bowlerStats.values.where((b) => b.innings == 2).toList();
-
-  /// Currently batting batsmen (current innings, not out)
-  List<BatsmanStats> get currentBatsmen =>
-      batsmanStats.values
-          .where((b) => b.innings == currentInnings && !b.isOut)
-          .toList();
-
-  /// Current bowler stats (current innings bowlers)
-  List<BowlerStats> get currentBowlers =>
-      bowlerStats.values.where((b) => b.innings == currentInnings).toList();
-
-  /// Runs needed to win (only valid in 2nd innings)
-  int get runsNeeded {
-    if (currentInnings < 2 || target == 0) return 0;
-    // The chasing team's score is always innings 2
-    final chasingScore = _inningsScore(2);
-    final needed = target + 1 - chasingScore;
-    return needed > 0 ? needed : 0;
-  }
-
-  /// Balls remaining in current innings
-  int get ballsRemaining {
-    if (events.isEmpty) return matchOvers * 6;
-    final inningsEvents = events.where((e) => e.innings == currentInnings);
-    if (inningsEvents.isEmpty) return matchOvers * 6;
-    final last = inningsEvents.last;
-    final ballsBowled = last.overNumber * 6 + last.ballNumber;
-    return (matchOvers * 6) - ballsBowled;
-  }
-
-  int get maxOversForFormat => matchFormat == 'odi' ? 50 : 20;
-
-  /// Required run rate (only in 2nd innings)
-  double get requiredRunRate {
-    if (currentInnings < 2 || ballsRemaining <= 0) return 0;
-    return (runsNeeded / ballsRemaining) * 6;
-  }
-
-  MatchState copyWith({
-    MatchModel? match,
-    List<MatchEvent>? events,
-    bool? isSimulating,
-    bool? isMatchComplete,
-    String? currentCommentary,
-    int? currentInnings,
-    Map<String, BatsmanStats>? batsmanStats,
-    Map<String, BowlerStats>? bowlerStats,
-    String? homeTeamName,
-    String? awayTeamName,
-    String? matchFormat,
-    int? matchOvers,
-    String? matchDifficulty,
-    bool? homeWon,
-    int? coinsAwarded,
-    int? xpAwarded,
-    String? pitchCondition,
-    String? weatherCondition,
-    bool? userWonToss,
-    String? tossDecision,
-    bool? homeBatsFirst,
-    int? target,
-    List<String>? xiOrder1,
-    List<String>? xiOrder2,
-    String? levelUpPackAwarded,
-    int? newLevel,
-    String? strikerCardId,
-    String? nonStrikerCardId,
-    bool? challengeMode,
-    bool clearLevelUpPack = false,
-  }) {
-    return MatchState(
-      match: match ?? this.match,
-      events: events ?? this.events,
-      isSimulating: isSimulating ?? this.isSimulating,
-      isMatchComplete: isMatchComplete ?? this.isMatchComplete,
-      currentCommentary: currentCommentary ?? this.currentCommentary,
-      currentInnings: currentInnings ?? this.currentInnings,
-      batsmanStats: batsmanStats ?? this.batsmanStats,
-      bowlerStats: bowlerStats ?? this.bowlerStats,
-      homeTeamName: homeTeamName ?? this.homeTeamName,
-      awayTeamName: awayTeamName ?? this.awayTeamName,
-      matchFormat: matchFormat ?? this.matchFormat,
-      matchOvers: matchOvers ?? this.matchOvers,
-      matchDifficulty: matchDifficulty ?? this.matchDifficulty,
-      homeWon: homeWon ?? this.homeWon,
-      coinsAwarded: coinsAwarded ?? this.coinsAwarded,
-      xpAwarded: xpAwarded ?? this.xpAwarded,
-      pitchCondition: pitchCondition ?? this.pitchCondition,
-      weatherCondition: weatherCondition ?? this.weatherCondition,
-      userWonToss: userWonToss ?? this.userWonToss,
-      tossDecision: tossDecision ?? this.tossDecision,
-      homeBatsFirst: homeBatsFirst ?? this.homeBatsFirst,
-      target: target ?? this.target,
-      xiOrder1: xiOrder1 ?? this.xiOrder1,
-      xiOrder2: xiOrder2 ?? this.xiOrder2,
-      levelUpPackAwarded: clearLevelUpPack ? null : (levelUpPackAwarded ?? this.levelUpPackAwarded),
-      newLevel: clearLevelUpPack ? null : (newLevel ?? this.newLevel),
-      strikerCardId: strikerCardId ?? this.strikerCardId,
-      nonStrikerCardId: nonStrikerCardId ?? this.nonStrikerCardId,
-      challengeMode: challengeMode ?? this.challengeMode,
-    );
-  }
-}
-
-class BatsmanStats {
-  final String name;
-  final int innings;
-  final int battingOrder;
-  int runs;
-  int balls;
-  int fours;
-  int sixes;
-  bool isOut;
-  String? dismissalType;
-
-  BatsmanStats({required this.name, required this.innings, this.battingOrder = 99, this.runs = 0, this.balls = 0, this.fours = 0, this.sixes = 0, this.isOut = false, this.dismissalType});
-
-  double get strikeRate => balls > 0 ? (runs / balls) * 100 : 0;
-}
-
-class BowlerStats {
-  final String name;
-  final int innings;
-  int overs;
-  int balls;
-  int runs;
-  int wickets;
-  int maidens;
-  int dotBalls;
-
-  BowlerStats({required this.name, required this.innings, this.overs = 0, this.balls = 0, this.runs = 0, this.wickets = 0, this.maidens = 0, this.dotBalls = 0});
-
-  double get economy {
-    final fullOvers = balls ~/ 6;
-    final remainingBalls = balls % 6;
-    final totalOvers = fullOvers + (remainingBalls / 6);
-    return totalOvers > 0 ? runs / totalOvers : 0;
-  }
-
-  String get oversDisplay {
-    final fullOvers = balls ~/ 6;
-    final remainingBalls = balls % 6;
-    return '$fullOvers.$remainingBalls';
-  }
-}
-
-/// Summary of a completed match for history
-class MatchSummary {
-  final String homeTeamName;
-  final String awayTeamName;
-  final String format;
-  final int homeScore;
-  final int homeWickets;
-  final String homeOvers;
-  final int awayScore;
-  final int awayWickets;
-  final String awayOvers;
-  final bool? homeWon;
-  final int coinsAwarded;
-  final int xpAwarded;
-  final DateTime playedAt;
-  final Map<String, BatsmanStats> batsmanStats;
-  final Map<String, BowlerStats> bowlerStats;
-  final List<MatchEvent> events;
-  final bool homeBatsFirst;
-
-  final List<String> xiOrder1;
-  final List<String> xiOrder2;
-  const MatchSummary({
-    required this.homeTeamName,
-    required this.awayTeamName,
-    required this.format,
-    required this.homeScore,
-    required this.homeWickets,
-    required this.homeOvers,
-    required this.awayScore,
-    required this.awayWickets,
-    required this.awayOvers,
-    required this.homeWon,
-    required this.coinsAwarded,
-    required this.xpAwarded,
-    required this.playedAt,
-    required this.batsmanStats,
-    required this.bowlerStats,
-    required this.events,
-    this.homeBatsFirst = true,
-    this.xiOrder1 = const [],
-    this.xiOrder2 = const [],
-  });
-
-  /// Team that batted first
-  String get battingFirstName => homeBatsFirst ? homeTeamName : awayTeamName;
-  /// Team that batted second
-  String get battingSecondName => homeBatsFirst ? awayTeamName : homeTeamName;
-  /// Innings 1 score (batting-first team)
-  int get inn1Score => homeBatsFirst ? homeScore : awayScore;
-  int get inn1Wickets => homeBatsFirst ? homeWickets : awayWickets;
-  String get inn1Overs => homeBatsFirst ? homeOvers : awayOvers;
-  /// Innings 2 score (batting-second team)
-  int get inn2Score => homeBatsFirst ? awayScore : homeScore;
-  int get inn2Wickets => homeBatsFirst ? awayWickets : homeWickets;
-  String get inn2Overs => homeBatsFirst ? awayOvers : homeOvers;
-
-  String get resultText {
-    if (homeWon == true) {
-      final wicketsRemaining = 10 - awayWickets;
-      return '$awayTeamName won by $wicketsRemaining wickets' == ''
-          ? '$homeTeamName won!'
-          : '$homeTeamName won!';
-    } else if (homeWon == false) {
-      return '$awayTeamName won!';
-    }
-    return 'Match Drawn';
-  }
-}
-
 class MatchNotifier extends StateNotifier<MatchState> {
   final Ref ref;
-  Timer? _simulationTimer;
-  Timer? _pollingTimer;
-  MatchEngine? _engine;
-  String? _remoteMatchId;
+  MatchNodeBackend? _nodeBackend;
+  MatchLocalEngine? _localEngine;
   bool _matchCompleteFired = false;
-  // Always use Node.js backend
   static const bool _nodeBackendEnabled = true;
+
+  final List<MatchSummary> _matchHistory = [];
+  List<MatchSummary> get matchHistory => List.unmodifiable(_matchHistory);
 
   MatchNotifier(this.ref) : super(const MatchState());
 
-  static int _inningsScoreFromEvents(List<MatchEvent> events, int inn) {
-    final inns = events.where((e) => e.innings == inn);
-    return inns.isEmpty ? 0 : inns.last.scoreAfter;
+  @override
+  void dispose() {
+    _nodeBackend?.cancel();
+    _localEngine?.cancel();
+    super.dispose();
   }
 
-  /// In-memory match history
-  final List<MatchSummary> _matchHistory = [];
-  List<MatchSummary> get matchHistory => List.unmodifiable(_matchHistory);
+  void reset() {
+    _nodeBackend?.cancel();
+    _localEngine?.cancel();
+    _nodeBackend = null;
+    _localEngine = null;
+    _matchCompleteFired = false;
+    state = const MatchState();
+  }
+
+  String _playerName(LineupPlayer p) =>
+      p.userCard?.playerCard?.playerName ?? 'Unknown';
+
+  // ── Match Start ──
 
   Future<void> startMatch({
     required List<LineupPlayer> homeXI,
@@ -409,14 +68,11 @@ class MatchNotifier extends StateNotifier<MatchState> {
     bool homeBatsFirst = true,
     bool challengeMode = false,
   }) async {
-    // Clean up any previous match
-    _simulationTimer?.cancel();
-    _pollingTimer?.cancel();
-    _engine = null;
-    _remoteMatchId = null;
+    _nodeBackend?.cancel();
+    _localEngine?.cancel();
     _matchCompleteFired = false;
-    
-    // Initialize fresh state
+
+    final isHomeBatFirst = homeBatsFirst;
     state = MatchState(
       isSimulating: true,
       homeTeamName: homeTeamName,
@@ -428,20 +84,20 @@ class MatchNotifier extends StateNotifier<MatchState> {
       weatherCondition: weatherCondition,
       userWonToss: userWonToss,
       tossDecision: tossDecision,
-      homeBatsFirst: homeBatsFirst,
+      homeBatsFirst: isHomeBatFirst,
       challengeMode: challengeMode,
-      xiOrder1: (homeBatsFirst ? homeXI : awayXI)
-          .map<String>((p) => p.userCard?.playerCard?.playerName ?? 'Unknown')
-          .toList(),
-      xiOrder2: (homeBatsFirst ? awayXI : homeXI)
-          .map<String>((p) => p.userCard?.playerCard?.playerName ?? 'Unknown')
-          .toList(),
+      xiOrder1: (isHomeBatFirst ? homeXI : awayXI).map<String>(_playerName).toList(),
+      xiOrder2: (isHomeBatFirst ? awayXI : homeXI).map<String>(_playerName).toList(),
     );
 
-    // Try Node.js backend first (retry each match)
     if (_nodeBackendEnabled) {
       print('🎯 PRIMARY: Trying Node.js backend...');
-      final success = await _startNodeBackendMatch(
+      _nodeBackend = MatchNodeBackend(
+        state: state,
+        onBallUpdate: _onNodeBallUpdate,
+        onMatchComplete: () => _onRemoteMatchComplete(),
+      );
+      final success = await _nodeBackend!.startMatch(
         homeXI: homeXI,
         awayXI: awayXI,
         homeChemistry: homeChemistry,
@@ -450,227 +106,41 @@ class MatchNotifier extends StateNotifier<MatchState> {
         awayTeamName: awayTeamName,
         overs: overs,
         pitchCondition: pitchCondition,
-        homeBatsFirst: homeBatsFirst,
+        homeBatsFirst: isHomeBatFirst,
       );
 
       if (success) {
-        print('✅ SUCCESS: Using Node.js backend for match simulation');
+        print('✅ SUCCESS: Using Node.js backend');
         return;
       }
-
-      print('⚠️ FALLBACK: Node.js backend failed, falling back to local engine...');
+      print('⚠️ FALLBACK: Node.js backend failed, using local engine...');
+      _nodeBackend = null;
     }
 
-    // Local engine fallback
-    _startLocalMatch(
-      homeXI: homeXI,
-      awayXI: awayXI,
-      homeChemistry: homeChemistry,
-      awayChemistry: awayChemistry,
-      homeTeamName: homeTeamName,
-      awayTeamName: awayTeamName,
-      overs: overs,
-      pitchCondition: pitchCondition,
-      homeBatsFirst: homeBatsFirst,
+    _startLocalEngine(
+      homeXI: homeXI, awayXI: awayXI,
+      homeChemistry: homeChemistry, awayChemistry: awayChemistry,
+      homeTeamName: homeTeamName, awayTeamName: awayTeamName,
+      overs: overs, pitchCondition: pitchCondition, homeBatsFirst: isHomeBatFirst,
     );
   }
 
-  Future<bool> _startNodeBackendMatch({
-    required List<LineupPlayer> homeXI,
-    required List<LineupPlayer> awayXI,
-    required int homeChemistry,
-    required int awayChemistry,
-    required String homeTeamName,
-    required String awayTeamName,
-    required int overs,
-    required String pitchCondition,
-    required bool homeBatsFirst,
-  }) async {
-    try {
-      print('🚀 Attempting Node.js backend match simulation...');
-      _remoteMatchId = const Uuid().v4();
-      print('📝 Match ID: $_remoteMatchId');
-
-      // Convert LineupPlayer to simple map format
-      final homeXIData = homeXI.map((p) => {
-        'userCardId': p.userCardId,
-        'name': p.userCard?.playerCard?.playerName ?? 'Unknown',
-        'role': p.userCard?.playerCard?.role ?? 'batsman',
-        'batting': p.userCard?.effectiveBatting ?? 50,
-        'bowling': p.userCard?.effectiveBowling ?? 50,
-        'fielding': p.userCard?.playerCard?.fielding ?? 50,
-        'aggression': p.userCard?.effectiveBatting ?? 50,
-        'technique': p.userCard?.effectiveBatting ?? 50,
-        'power': p.userCard?.effectiveBatting ?? 50,
-        'consistency': p.userCard?.effectiveBatting ?? 50,
-        'pace': p.userCard?.effectiveBowling ?? 50,
-        'swing': p.userCard?.effectiveBowling ?? 50,
-        'accuracy': p.userCard?.effectiveBowling ?? 50,
-        'variations': p.userCard?.effectiveBowling ?? 50,
-        'isWicketKeeper': p.isWicketKeeper,
-        'isBowler1': p.isBowler1,
-        'isBowler2': p.isBowler2,
-        'isCaptain': p.isCaptain,
-        'isViceCaptain': p.isViceCaptain,
-      }).toList();
-
-      final awayXIData = awayXI.map((p) => {
-        'userCardId': p.userCardId,
-        'name': p.userCard?.playerCard?.playerName ?? 'Unknown',
-        'role': p.userCard?.playerCard?.role ?? 'batsman',
-        'batting': p.userCard?.effectiveBatting ?? 50,
-        'bowling': p.userCard?.effectiveBowling ?? 50,
-        'fielding': p.userCard?.playerCard?.fielding ?? 50,
-        'aggression': p.userCard?.effectiveBatting ?? 50,
-        'technique': p.userCard?.effectiveBatting ?? 50,
-        'power': p.userCard?.effectiveBatting ?? 50,
-        'consistency': p.userCard?.effectiveBatting ?? 50,
-        'pace': p.userCard?.effectiveBowling ?? 50,
-        'swing': p.userCard?.effectiveBowling ?? 50,
-        'accuracy': p.userCard?.effectiveBowling ?? 50,
-        'variations': p.userCard?.effectiveBowling ?? 50,
-        'isWicketKeeper': p.isWicketKeeper,
-        'isBowler1': p.isBowler1,
-        'isBowler2': p.isBowler2,
-        'isCaptain': p.isCaptain,
-        'isViceCaptain': p.isViceCaptain,
-      }).toList();
-
-      print('👥 Home XI: ${homeXIData.length} players');
-      print('👥 Away XI: ${awayXIData.length} players');
-
-      final config = {
-        'homeXI': homeXIData,
-        'awayXI': awayXIData,
-        'homeChemistry': homeChemistry,
-        'awayChemistry': awayChemistry,
-        'maxOvers': overs,
-        'pitchCondition': pitchCondition,
-        'homeTeamName': homeTeamName,
-        'awayTeamName': awayTeamName,
-        'homeBatsFirst': homeBatsFirst,
-        'useAICommentary': false,
-      };
-
-      // Step 1: Connect Socket.IO FIRST and wait for connection
-      print('🔌 Connecting Socket.IO before starting match...');
-      NodeBackendService.initSocket();
-      final connected = await NodeBackendService.waitForConnection(
-        timeout: const Duration(seconds: 10),
-      );
-
-      if (!connected) {
-        print('❌ Socket.IO failed to connect — cannot use Node backend');
-        return false;
-      }
-
-      // Step 2: Join match room and wait for confirmation
-      print('👤 Joining match room...');
-      final joined = await NodeBackendService.joinMatch(
-        _remoteMatchId!,
-        _onNodeBallUpdate,
-        _onNodeMatchComplete,
-        onRoomJoined: _onNodeRoomJoined,
-      );
-
-      if (!joined) {
-        print('❌ Failed to join match room');
-        return false;
-      }
-
-      // Small delay to ensure room join propagates on server
-      await Future.delayed(const Duration(milliseconds: 500));
-
-      // Step 3: NOW start the match (backend starts emitting events)
-      print('⚙️ Config prepared, calling Node.js backend...');
-      final started = await NodeBackendService.startMatch(
-        matchId: _remoteMatchId!,
-        config: config,
-      );
-
-      if (started) {
-        print('✅ Node.js backend match started successfully!');
-        // Start polling fallback in case Socket.IO events are missed
-        _startNodePollingFallback();
-        return true;
-      }
-
-      print('❌ Node.js backend returned false');
-      NodeBackendService.leaveMatch(_remoteMatchId!);
-      return false;
-    } catch (e, stackTrace) {
-      print('❌ Node.js backend match start exception: $e');
-      print('Stack trace: $stackTrace');
-      return false;
-    }
-  }
-
-  /// Polling fallback for Node.js backend matches.
-  /// DISABLED: Polling was creating synthetic events that corrupted AI commentary.
-  /// Socket.IO delivers the real Watson-generated commentary reliably.
-  void _startNodePollingFallback() {
-    // Polling disabled — Socket.IO handles all real-time updates.
-    // Only poll for match completion detection (every 10s as safety net).
-    _pollingTimer?.cancel();
-    _pollingTimer = Timer.periodic(
-      const Duration(seconds: 10),
-      (_) => _pollNodeMatchCompletion(),
-    );
-  }
-
-  /// Lightweight poll — only checks if match completed (no event/commentary updates).
-  Future<void> _pollNodeMatchCompletion() async {
-    if (_remoteMatchId == null) return;
-    try {
-      final stateData = await NodeBackendService.getMatchState(_remoteMatchId!);
-      if (stateData == null) return;
-      final matchState = stateData['state'] as Map<String, dynamic>?;
-      if (matchState == null) return;
-      final matchComplete = matchState['matchComplete'] as bool? ?? false;
-      if (matchComplete && state.isSimulating) {
-        print('🏁 Match complete detected via completion poll');
-        _pollingTimer?.cancel();
-        final matchResult = matchState['matchResult'] as String? ?? 'Match completed';
-        state = state.copyWith(
-          isSimulating: false,
-          isMatchComplete: true,
-          currentCommentary: matchResult,
-        );
-        NodeBackendService.leaveMatch(_remoteMatchId!);
-        _onMatchComplete();
-      }
-    } catch (e) {
-      // Non-fatal
-    }
-  }
-
+  // ── Node.js Backend Callbacks ──
 
   void _onNodeBallUpdate(Map<String, dynamic> data) {
     try {
-      print('⚡ Ball update received from Node.js');
       final result = data['result'] as Map<String, dynamic>?;
       final stateData = data['state'] as Map<String, dynamic>?;
-      final commentaryLog = data['commentaryLog'] as List?;
+      if (result == null || stateData == null) return;
 
-      if (result == null || stateData == null) {
-        print('❌ Missing result or state data');
-        return;
-      }
-
-      print('📝 Commentary: ${result['commentary']}');
-      print('📊 Score: ${result['scoreAfter']}/${result['wicketsAfter']}');
-
-      // Build event from result
       final event = MatchEvent(
         id: 'node_${DateTime.now().millisecondsSinceEpoch}',
-        matchId: _remoteMatchId!,
+        matchId: _nodeBackend?.hashCode.toString() ?? '',
         innings: result['innings'] ?? 1,
         overNumber: result['overNumber'] ?? 0,
         ballNumber: result['ballNumber'] ?? 0,
-        battingTeamId: '',
-        bowlingTeamId: '',
-        batsmanCardId: '',
-        bowlerCardId: '',
+        battingTeamId: '', bowlingTeamId: '',
+        batsmanCardId: '', bowlerCardId: '',
         eventType: result['eventType'] ?? 'dot_ball',
         runs: result['runs'] ?? 0,
         commentary: result['commentary'] ?? '',
@@ -678,235 +148,27 @@ class MatchNotifier extends StateNotifier<MatchState> {
         wicketsAfter: result['wicketsAfter'] ?? 0,
       );
 
-      final events = [...state.events, event];
-      print('📋 Total events: ${events.length}');
-
-      // Update batsman stats from state
-      final batsmanStatsData = stateData['batsmanStats'] as Map<String, dynamic>? ?? {};
-      final batsmanStats = <String, BatsmanStats>{};
-      
-      batsmanStatsData.forEach((key, value) {
-        final stats = value as Map<String, dynamic>;
-        batsmanStats[key] = BatsmanStats(
-          name: stats['name'] ?? '',
-          innings: stats['innings'] ?? 1,
-          battingOrder: stats['battingOrder'] ?? 99,
-          runs: stats['runs'] ?? 0,
-          balls: stats['balls'] ?? 0,
-          fours: stats['fours'] ?? 0,
-          sixes: stats['sixes'] ?? 0,
-          isOut: stats['isOut'] ?? false,
-          dismissalType: stats['dismissalType'],
-        );
-      });
-
-      // Update bowler stats from state
-      final bowlerStatsData = stateData['bowlerStats'] as Map<String, dynamic>? ?? {};
-      final bowlerStats = <String, BowlerStats>{};
-      
-      bowlerStatsData.forEach((key, value) {
-        final stats = value as Map<String, dynamic>;
-        bowlerStats[key] = BowlerStats(
-          name: stats['name'] ?? '',
-          innings: stats['innings'] ?? 1,
-          balls: stats['balls'] ?? 0,
-          runs: stats['runs'] ?? 0,
-          wickets: stats['wickets'] ?? 0,
-          maidens: stats['maidens'] ?? 0,
-          dotBalls: stats['dotBalls'] ?? 0,
-        );
-      });
-
-      print('✅ Updating state with new event');
       state = state.copyWith(
-        events: events,
+        events: [...state.events, event],
         currentCommentary: result['commentary'],
         currentInnings: stateData['innings'] ?? 1,
-        batsmanStats: batsmanStats,
-        bowlerStats: bowlerStats,
+        batsmanStats: MatchHelpers.parseBatsmanStats(stateData['batsmanStats']),
+        bowlerStats: MatchHelpers.parseBowlerStats(stateData['bowlerStats']),
         target: stateData['target'] ?? 0,
       );
-      print('✅ State updated successfully');
-    } catch (e, stack) {
-      print('❌ Error processing Node.js ball update: $e');
-      print('Stack trace: $stack');
-    }
+    } catch (_) {}
   }
 
-  void _onNodeRoomJoined(Map<String, dynamic> data) {
-    try {
-      print('👤 Node match: Room joined callback received. Syncing state...');
-      final stateData = data['state'] as Map<String, dynamic>?;
-      final commentaryLogRaw = data['commentaryLog'] as List?;
-
-      if (stateData == null) return;
-
-      final innings = stateData['innings'] as int? ?? 1;
-      final overNumber = stateData['overNumber'] as int? ?? 0;
-      final ballNumber = stateData['ballNumber'] as int? ?? 0;
-
-      final score1 = stateData['score1'] as int? ?? 0;
-      final score2 = stateData['score2'] as int? ?? 0;
-      final wickets1 = stateData['wickets1'] as int? ?? 0;
-      final wickets2 = stateData['wickets2'] as int? ?? 0;
-      final target = stateData['target'] as int? ?? 0;
-      final matchComplete = stateData['matchComplete'] as bool? ?? false;
-      final matchResult = stateData['matchResult'] as String?;
-
-      bool hbf = state.homeBatsFirst;
-      if (stateData.containsKey('homeBatsFirst')) {
-        hbf = stateData['homeBatsFirst'] as bool? ?? hbf;
-      }
-
-      final homeScore = hbf ? score1 : score2;
-      final homeWickets = hbf ? wickets1 : wickets2;
-      final awayScore = hbf ? score2 : score1;
-      final awayWickets = hbf ? wickets2 : wickets1;
-
-      // Update batsman stats from state
-      final batsmanStatsData = stateData['batsmanStats'] as Map<String, dynamic>? ?? {};
-      final batsmanStats = <String, BatsmanStats>{};
-      batsmanStatsData.forEach((key, value) {
-        final stats = value as Map<String, dynamic>;
-        batsmanStats[key] = BatsmanStats(
-          name: stats['name'] ?? '',
-          innings: stats['innings'] ?? 1,
-          battingOrder: stats['battingOrder'] ?? 99,
-          runs: stats['runs'] ?? 0,
-          balls: stats['balls'] ?? 0,
-          fours: stats['fours'] ?? 0,
-          sixes: stats['sixes'] ?? 0,
-          isOut: stats['isOut'] ?? false,
-          dismissalType: stats['dismissalType'],
-        );
-      });
-
-      // Update bowler stats from state
-      final bowlerStatsData = stateData['bowlerStats'] as Map<String, dynamic>? ?? {};
-      final bowlerStats = <String, BowlerStats>{};
-      bowlerStatsData.forEach((key, value) {
-        final stats = value as Map<String, dynamic>;
-        bowlerStats[key] = BowlerStats(
-          name: stats['name'] ?? '',
-          innings: stats['innings'] ?? 1,
-          balls: stats['balls'] ?? 0,
-          runs: stats['runs'] ?? 0,
-          wickets: stats['wickets'] ?? 0,
-          maidens: stats['maidens'] ?? 0,
-          dotBalls: stats['dotBalls'] ?? 0,
-        );
-      });
-
-      // Reconstruct events from commentaryLog
-      final newEvents = <MatchEvent>[];
-      if (commentaryLogRaw != null) {
-        for (var i = 0; i < commentaryLogRaw.length; i++) {
-          final entry = Map<String, dynamic>.from(commentaryLogRaw[i] as Map);
-          newEvents.add(MatchEvent(
-            id: 'node_joined_${i}_${DateTime.now().millisecondsSinceEpoch}',
-            matchId: _remoteMatchId!,
-            innings: entry['innings'] ?? innings,
-            overNumber: entry['overNumber'] ?? 0,
-            ballNumber: entry['ballNumber'] ?? 0,
-            battingTeamId: '',
-            bowlingTeamId: '',
-            batsmanCardId: '',
-            bowlerCardId: '',
-            eventType: entry['eventType'] ?? 'dot_ball',
-            runs: entry['runs'] ?? 0,
-            commentary: entry['commentary'] ?? '',
-            scoreAfter: innings == 1 ? homeScore : awayScore,
-            wicketsAfter: innings == 1 ? homeWickets : awayWickets,
-          ));
-        }
-      }
-
-      state = state.copyWith(
-        events: newEvents.isNotEmpty ? newEvents : state.events,
-        currentCommentary: newEvents.isNotEmpty ? newEvents.last.commentary : state.currentCommentary,
-        currentInnings: innings,
-        batsmanStats: batsmanStats,
-        bowlerStats: bowlerStats,
-        target: target,
-        homeBatsFirst: hbf,
-      );
-
-      print('✅ State synced successfully via room join callback');
-
-      if (matchComplete) {
-        _onNodeMatchComplete({
-          'result': matchResult ?? 'Match completed',
-          'state': stateData,
-        });
-      }
-    } catch (e) {
-      print('❌ Node match: Error handling room join sync: $e');
-    }
+  void _onRemoteMatchComplete() {
+    _nodeBackend?.cancel();
+    _nodeBackend = null;
+    state = state.copyWith(isSimulating: false, isMatchComplete: true);
+    _onMatchComplete();
   }
 
-  void _onNodeMatchComplete(Map<String, dynamic> data) {
-    try {
-      print('🏁 Match complete received from Node.js');
-      _pollingTimer?.cancel();
-      final matchResult = data['result'] as String?;
-      final stateData = data['state'] as Map<String, dynamic>?;
+  // ── Local Engine ──
 
-      if (stateData != null) {
-        // Update final state
-        final batsmanStatsData = stateData['batsmanStats'] as Map<String, dynamic>? ?? {};
-        final batsmanStats = <String, BatsmanStats>{};
-        
-        batsmanStatsData.forEach((key, value) {
-          final stats = value as Map<String, dynamic>;
-          batsmanStats[key] = BatsmanStats(
-            name: stats['name'] ?? '',
-            innings: stats['innings'] ?? 1,
-            battingOrder: stats['battingOrder'] ?? 99,
-            runs: stats['runs'] ?? 0,
-            balls: stats['balls'] ?? 0,
-            fours: stats['fours'] ?? 0,
-            sixes: stats['sixes'] ?? 0,
-            isOut: stats['isOut'] ?? false,
-            dismissalType: stats['dismissalType'],
-          );
-        });
-
-        final bowlerStatsData = stateData['bowlerStats'] as Map<String, dynamic>? ?? {};
-        final bowlerStats = <String, BowlerStats>{};
-        
-        bowlerStatsData.forEach((key, value) {
-          final stats = value as Map<String, dynamic>;
-          bowlerStats[key] = BowlerStats(
-            name: stats['name'] ?? '',
-            innings: stats['innings'] ?? 1,
-            balls: stats['balls'] ?? 0,
-            runs: stats['runs'] ?? 0,
-            wickets: stats['wickets'] ?? 0,
-            maidens: stats['maidens'] ?? 0,
-            dotBalls: stats['dotBalls'] ?? 0,
-          );
-        });
-
-        state = state.copyWith(
-          batsmanStats: batsmanStats,
-          bowlerStats: bowlerStats,
-          currentCommentary: matchResult,
-          isSimulating: false,
-          isMatchComplete: true,
-        );
-      }
-
-      // Leave WebSocket room
-      NodeBackendService.leaveMatch(_remoteMatchId!);
-
-      // Trigger match completion logic
-      _onMatchComplete();
-    } catch (e) {
-      print('❌ Error processing Node.js match complete: $e');
-    }
-  }
-
-  void _startLocalMatch({
+  void _startLocalEngine({
     required List<LineupPlayer> homeXI,
     required List<LineupPlayer> awayXI,
     required int homeChemistry,
@@ -917,431 +179,125 @@ class MatchNotifier extends StateNotifier<MatchState> {
     required String pitchCondition,
     required bool homeBatsFirst,
   }) {
-    _engine = MatchEngine(
-      homeXI: homeXI,
-      awayXI: awayXI,
-      homeChemistry: homeChemistry,
-      awayChemistry: awayChemistry,
-      overs: overs,
-      pitchCondition: pitchCondition,
-      homeTeamName: homeTeamName,
-      awayTeamName: awayTeamName,
-      homeBatsFirst: homeBatsFirst,
+    _localEngine = MatchLocalEngine(
+      onBallSimulated: _onLocalBallSimulated,
+      onMatchComplete: _onLocalMatchComplete,
     );
-
-    // Simulate ball by ball with delay for UX
-    _simulationTimer = Timer.periodic(
-      const Duration(milliseconds: 2000),
-      (_) => _simulateNextBall(),
+    _localEngine!.start(
+      homeXI: homeXI, awayXI: awayXI,
+      homeChemistry: homeChemistry, awayChemistry: awayChemistry,
+      homeTeamName: homeTeamName, awayTeamName: awayTeamName,
+      overs: overs, pitchCondition: pitchCondition, homeBatsFirst: homeBatsFirst,
     );
   }
 
-  String _formatDismissal(String wicketType, String bowlerName, String? fielderName) {
-    switch (wicketType) {
-      case 'bowled':
-        return 'b $bowlerName';
-      case 'caught':
-        return 'c ${fielderName ?? "fielder"} b $bowlerName';
-      case 'caught_behind':
-        return 'c ${fielderName ?? "†keeper"} b $bowlerName';
-      case 'lbw':
-        return 'lbw b $bowlerName';
-      case 'run_out':
-        return 'run out (${fielderName ?? "fielder"})';
-      case 'stumped':
-        return 'st ${fielderName ?? "†keeper"} b $bowlerName';
-      default:
-        return 'b $bowlerName';
-    }
+  void _onLocalBallSimulated() {
+    final result = _localEngine?.simulateNextBall();
+    if (result == null) return;
+    _applyEngineResult(result);
   }
 
-  void _simulateNextBall() {
-    if (_engine == null) return;
-
-    final result = _engine!.simulateNextBall();
-    if (result == null) {
-      // Match complete
-      _simulationTimer?.cancel();
-      state = state.copyWith(
-        isSimulating: false,
-        currentCommentary: _engine!.getMatchResult(),
-      );
-      _onMatchComplete();
-      return;
-    }
-
-    final events = [...state.events, result];
-    final batsmanStats = Map<String, BatsmanStats>.from(state.batsmanStats);
-    final bowlerStats = Map<String, BowlerStats>.from(state.bowlerStats);
-
-    // Skip stats processing for innings-break synthetic events
-    if (result.eventType != 'innings_break') {
-      final isExtra = result.eventType == 'wide' || result.eventType == 'no_ball';
-
-      // Use compound key: innings_cardId to separate per-innings stats
-      final batKey = '${result.innings}_${result.batsmanCardId}';
-      final bowlKey = '${result.innings}_${result.bowlerCardId}';
-
-      // Update batsman stats
-      final batsmanName =
-          _engine!.getBatsmanName(result.batsmanCardId);
-      batsmanStats.putIfAbsent(
-          batKey, () => BatsmanStats(name: batsmanName, innings: result.innings));
-      final batStats = batsmanStats[batKey]!;
-      if (result.eventType != 'wide') batStats.balls++; // wides don't count as balls faced
-      batStats.runs += result.runs;
-      if (result.runs == 4) batStats.fours++;
-      if (result.runs == 6) batStats.sixes++;
-      if (result.isWicket) {
-        batStats.isOut = true;
-        final bowlerNameForDismissal = _engine!.getBowlerName(result.bowlerCardId);
-        final fielderNameForDismissal = result.fielderCardId != null
-            ? _engine!.getBatsmanName(result.fielderCardId!)
-            : null;
-        batStats.dismissalType = _formatDismissal(
-          result.wicketType ?? 'bowled',
-          bowlerNameForDismissal,
-          fielderNameForDismissal,
-        );
-      }
-
-      // Ensure both current batsmen (striker + non-striker) have stats entries
-      final sId = _engine!.currentStrikerCardId;
-      final nsId = _engine!.currentNonStrikerCardId;
-      if (sId != null) {
-        final sKey = '${result.innings}_$sId';
-        final sName = _engine!.getBatsmanName(sId);
-        batsmanStats.putIfAbsent(sKey, () => BatsmanStats(name: sName, innings: result.innings));
-      }
-      if (nsId != null) {
-        final nsKey = '${result.innings}_$nsId';
-        final nsName = _engine!.getBatsmanName(nsId);
-        batsmanStats.putIfAbsent(nsKey, () => BatsmanStats(name: nsName, innings: result.innings));
-      }
-
-      // Update bowler stats
-      final bowlerName = _engine!.getBowlerName(result.bowlerCardId);
-      bowlerStats.putIfAbsent(
-          bowlKey, () => BowlerStats(name: bowlerName, innings: result.innings));
-      final bowlStats = bowlerStats[bowlKey]!;
-      if (!isExtra) bowlStats.balls++; // wides/no-balls are not legal deliveries
-      bowlStats.runs += result.runs;
-      if (result.isWicket) bowlStats.wickets++;
-      if (result.runs == 0 && !result.isWicket && !isExtra) {
-        bowlStats.dotBalls++;
-      }
-    }
-
-    // Track target when innings changes to 2nd (target = innings 1 score)
-    final newTarget = (result.innings == 2 && state.target == 0)
-        ? _inningsScoreFromEvents([...state.events, result], 1)
-        : null;
-
-    // Track which batsmen are currently at the crease
-    final newStrikerId = result.eventType != 'innings_break'
-        ? (_engine!.currentStrikerCardId ?? '')
-        : '';
-    final newNonStrikerId = result.eventType != 'innings_break'
-        ? (_engine!.currentNonStrikerCardId ?? '')
-        : '';
-
-    state = state.copyWith(
-      events: events,
-      currentCommentary: result.commentary,
-      currentInnings: result.innings,
-      batsmanStats: batsmanStats,
-      bowlerStats: bowlerStats,
-      target: newTarget,
-      strikerCardId: newStrikerId,
-      nonStrikerCardId: newNonStrikerId,
-    );
+  void _onLocalMatchComplete() {
+    final result = _localEngine?.engine?.getMatchResult();
+    state = state.copyWith(isSimulating: false, currentCommentary: result);
+    _onMatchComplete();
   }
+
+  void _applyEngineResult(MatchEvent result) {
+    final engine = _localEngine?.engine;
+    if (engine == null) return;
+    state = MatchLocalEngine.applyBallResult(state, result, engine);
+  }
+
+  void skipToEnd() {
+    _localEngine?.cancel();
+    final engine = _localEngine?.engine;
+    if (engine == null) return;
+    state = MatchLocalEngine.computeSkipToEndResult(state, engine);
+    _onMatchComplete();
+  }
+
+  // ── Match Completion ──
 
   void _onMatchComplete() {
     if (_matchCompleteFired) return;
     _matchCompleteFired = true;
 
-    // For remote matches, we need to get scores from state, not engine
-    final score1 = state.homeBatsFirst ? state.homeScore : state.awayScore;
-    final score2 = state.homeBatsFirst ? state.awayScore : state.homeScore;
-    final homeBatsFirst = state.homeBatsFirst;
-
-    // Home score depends on batting order
     final homeTotal = state.homeScore;
     final awayTotal = state.awayScore;
-
-    bool? homeWon;
-    int coins;
-    int xp;
-
-    // Coin multipliers based on difficulty and overs
-    double diffMultiplier;
-    switch (state.matchDifficulty) {
-      case 'Village': diffMultiplier = 0.5; break;
-      case 'Domestic': diffMultiplier = 1.0; break;
-      case 'International': diffMultiplier = 2.0; break;
-      default: diffMultiplier = 1.0;
-    }
-    double oversMultiplier;
-    switch (state.matchOvers) {
-      case 5: oversMultiplier = 0.25; break;
-      case 10: oversMultiplier = 0.5; break;
-      case 20: oversMultiplier = 1.0; break;
-      case 50: oversMultiplier = 2.0; break;
-      default: oversMultiplier = 1.0;
-    }
-
-    if (homeTotal > awayTotal) {
-      homeWon = true;
-      coins = (AppConstants.matchWinCoins * diffMultiplier * oversMultiplier).round();
-      xp = AppConstants.matchWinXP;
-    } else if (awayTotal > homeTotal) {
-      homeWon = false;
-      coins = (AppConstants.matchLoseCoins * diffMultiplier * oversMultiplier).round();
-      xp = AppConstants.matchPlayXP;
-    } else {
-      homeWon = null;
-      coins = (AppConstants.matchDrawCoins * diffMultiplier * oversMultiplier).round();
-      xp = AppConstants.matchPlayXP + 20;
-    }
+    final rewards = MatchCompletionHandler.calculateRewards(homeTotal, awayTotal, state.matchDifficulty, state.matchOvers);
 
     state = state.copyWith(
-      homeWon: homeWon,
-      coinsAwarded: coins,
-      xpAwarded: xp,
+      homeWon: rewards.homeWon,
+      coinsAwarded: rewards.coins,
+      xpAwarded: rewards.xp,
       isMatchComplete: true,
     );
 
-    // Send local notification
-    final resultLabel = homeWon == true
-        ? 'Victory!'
-        : homeWon == false
-            ? 'Defeat'
-            : 'Draw';
-    NotificationService.instance.showMatchResult(
-      title: 'Quick Match $resultLabel',
-      body:
-          '${state.homeTeamName} ${state.homeScore}/${state.homeWickets} vs ${state.awayTeamName} ${state.awayScore}/${state.awayWickets} — +$coins coins, +$xp XP',
-    );
+    MatchCompletionHandler.showNotification(state, rewards.homeWon, rewards.coins, rewards.xp);
 
     // Save to match history
     _matchHistory.insert(0, MatchSummary(
-      homeTeamName: state.homeTeamName,
-      awayTeamName: state.awayTeamName,
+      homeTeamName: state.homeTeamName, awayTeamName: state.awayTeamName,
       format: state.matchFormat,
-      homeScore: state.homeScore,
-      homeWickets: state.homeWickets,
-      homeOvers: state.homeOvers,
-      awayScore: state.awayScore,
-      awayWickets: state.awayWickets,
-      awayOvers: state.awayOvers,
-      homeWon: homeWon,
-      coinsAwarded: coins,
-      xpAwarded: xp,
+      homeScore: state.homeScore, homeWickets: state.homeWickets, homeOvers: state.homeOvers,
+      awayScore: state.awayScore, awayWickets: state.awayWickets, awayOvers: state.awayOvers,
+      homeWon: rewards.homeWon, coinsAwarded: rewards.coins, xpAwarded: rewards.xp,
       playedAt: DateTime.now(),
-      batsmanStats: Map.from(state.batsmanStats),
-      bowlerStats: Map.from(state.bowlerStats),
-      events: List.from(state.events),
-      homeBatsFirst: state.homeBatsFirst,
-      xiOrder1: state.xiOrder1,
-      xiOrder2: state.xiOrder2,
+      batsmanStats: Map.from(state.batsmanStats), bowlerStats: Map.from(state.bowlerStats),
+      events: List.from(state.events), homeBatsFirst: state.homeBatsFirst,
+      xiOrder1: state.xiOrder1, xiOrder2: state.xiOrder2,
     ));
 
-    // Update local user state immediately
+    // Update local state
     final userNotifier = ref.read(currentUserProvider.notifier);
     final oldUser = ref.read(currentUserProvider).valueOrNull;
     final oldLevel = oldUser?.level ?? 1;
-    userNotifier.updateCoins(coins);
-    userNotifier.updateXpAndLevel(xp);
-    userNotifier.updateMatchStats(won: homeWon == true);
+    userNotifier.updateCoins(rewards.coins);
+    userNotifier.updateXpAndLevel(rewards.xp);
+    userNotifier.updateMatchStats(won: rewards.homeWon == true);
     final updatedUser = ref.read(currentUserProvider).valueOrNull;
     final newLevel = updatedUser?.level ?? oldLevel;
 
-    // Detect level-up → pack reward
     if (newLevel > oldLevel) {
-      final packName = AppConstants.packNameForLevel(newLevel);
       state = state.copyWith(
-        levelUpPackAwarded: packName,
+        levelUpPackAwarded: AppConstants.packNameForLevel(newLevel),
         newLevel: newLevel,
       );
     }
 
-    // Persist to database (also grants pack server-side on level-up)
-    _persistMatchRewards(coins, xp, homeWon == true);
+    // Persist to DB
+    final userId = SupabaseService.currentUserId;
+    if (userId != null) {
+      MatchCompletionHandler.persistRewards(
+        userId: userId, coins: rewards.coins, xp: rewards.xp, won: rewards.homeWon == true,
+      ).then((_) {
+        ref.read(currentUserProvider.notifier).silentRefresh();
+        ref.read(userCardPacksProvider.notifier).refresh();
+      });
+    }
 
-    // Persist player career stats
+    // Persist career stats
     ref.read(careerStatsNotifierProvider.notifier).persistMatchStats(_matchHistory.first);
 
-    // Challenge mode win recording & unlocking
-    if (state.challengeMode && homeWon == true) {
+    // Challenge mode
+    if (state.challengeMode && rewards.homeWon == true) {
       final challengeState = ref.read(challengeProvider);
       if (challengeState.isLoaded && !challengeState.allCompleted) {
         final current = challengeState.currentOpponent;
         if (current != null) {
-          Future.microtask(() {
-            ref.read(challengeProvider.notifier).markCurrentAsDefeated(current);
-          });
+          Future.microtask(() => ref.read(challengeProvider.notifier).markCurrentAsDefeated(current));
         }
       }
     }
   }
 
-  /// Inserts a level-up pack row into user_card_packs if the user crossed a level boundary.
-  /// [oldLevel] is the level before XP was applied, [newLevel] is after.
-  static Future<void> _grantLevelUpPackIfNeeded(
-    String userId,
-    int oldLevel,
-    int newLevel,
-  ) async {
-    await SupabaseService.grantLevelUpPack(userId, oldLevel, newLevel);
-  }
-
-  Future<void> _persistMatchRewards(int coins, int xp, bool won) async {
-    final userId = SupabaseService.currentUserId;
-    if (userId == null) return;
-
-    // Capture old level from DB before applying rewards
-    int oldDbLevel = 1;
-    int newDbLevel = 1;
-    try {
-      // RPC returns jsonb: { old_level, new_level, pack_awarded }
-      final result = await SupabaseService.client.rpc('award_match_rewards', params: {
-        'p_user_id': userId,
-        'p_coins': coins,
-        'p_xp': xp,
-        'p_won': won,
-      });
-      // RPC already inserts the pack atomically — no need to call grantLevelUpPack
-      oldDbLevel = (result?['old_level'] as int? ?? 1);
-      newDbLevel = (result?['new_level'] as int? ?? 1);
-    } catch (_) {
-      // Fallback: direct update using fresh DB values to avoid double-counting
-      try {
-        final data = await SupabaseService.getCurrentUser();
-        if (data == null) return;
-        final dbCoins = (data['coins'] as int? ?? 0);
-        final dbXp = (data['xp'] as int? ?? 0);
-        final dbMatchesPlayed = (data['matches_played'] as int? ?? 0);
-        final dbMatchesWon = (data['matches_won'] as int? ?? 0);
-        final dbSeasonPoints = (data['season_points'] as int? ?? 0);
-        oldDbLevel = (dbXp ~/ AppConstants.xpPerLevel) + 1;
-        final newXp = dbXp + xp;
-        newDbLevel = (newXp ~/ AppConstants.xpPerLevel) + 1;
-        final clampedLevel = newDbLevel > AppConstants.maxLevel ? AppConstants.maxLevel : newDbLevel;
-        await SupabaseService.client.from('users').update({
-          'coins': dbCoins + coins,
-          'xp': newXp,
-          'level': clampedLevel,
-          'matches_played': dbMatchesPlayed + 1,
-          if (won) 'matches_won': dbMatchesWon + 1,
-          'season_points': dbSeasonPoints + (won ? 100 + min(clampedLevel * 5, 200) : 10 + min(clampedLevel, 50)),
-        }).eq('id', userId);
-        // Fallback path: manually grant pack since RPC didn't run
-        try {
-          await _grantLevelUpPackIfNeeded(userId, oldDbLevel, newDbLevel);
-        } catch (_) {}
-      } catch (_) {}
-    }
-
-    // Refresh AFTER DB writes complete so we read the updated values
-    // Delay ensures the RPC transaction has committed before reading back
-    await Future.delayed(const Duration(milliseconds: 800));
-    await ref.read(currentUserProvider.notifier).silentRefresh();
-    ref.read(userCardPacksProvider.notifier).refresh();
-  }
-
-  void skipToEnd() {
-    _simulationTimer?.cancel();
-    if (_engine == null) return;
-
-    final allEvents = <MatchEvent>[...state.events];
-    final batsmanStats = Map<String, BatsmanStats>.from(state.batsmanStats);
-    final bowlerStats = Map<String, BowlerStats>.from(state.bowlerStats);
-
-    while (true) {
-      final result = _engine!.simulateNextBall();
-      if (result == null) break;
-      allEvents.add(result);
-
-      // Skip stats processing for innings-break synthetic events
-      if (result.eventType != 'innings_break') {
-        final isExtra = result.eventType == 'wide' || result.eventType == 'no_ball';
-
-        final batKey = '${result.innings}_${result.batsmanCardId}';
-        final bowlKey = '${result.innings}_${result.bowlerCardId}';
-
-        final batsmanName = _engine!.getBatsmanName(result.batsmanCardId);
-        batsmanStats.putIfAbsent(
-            batKey, () => BatsmanStats(name: batsmanName, innings: result.innings));
-        final batStats = batsmanStats[batKey]!;
-        if (result.eventType != 'wide') batStats.balls++;
-        batStats.runs += result.runs;
-        if (result.runs == 4) batStats.fours++;
-        if (result.runs == 6) batStats.sixes++;
-        if (result.isWicket) {
-          batStats.isOut = true;
-          final bowlerNameForDismissal = _engine!.getBowlerName(result.bowlerCardId);
-          final fielderNameForDismissal = result.fielderCardId != null
-              ? _engine!.getBatsmanName(result.fielderCardId!)
-              : null;
-          batStats.dismissalType = _formatDismissal(
-            result.wicketType ?? 'bowled',
-            bowlerNameForDismissal,
-            fielderNameForDismissal,
-          );
-        }
-
-        final bowlerName = _engine!.getBowlerName(result.bowlerCardId);
-        bowlerStats.putIfAbsent(
-            bowlKey, () => BowlerStats(name: bowlerName, innings: result.innings));
-        final bowlStats = bowlerStats[bowlKey]!;
-        if (!isExtra) bowlStats.balls++;
-        bowlStats.runs += result.runs;
-        if (result.isWicket) bowlStats.wickets++;
-        if (result.runs == 0 && !result.isWicket && !isExtra) {
-          bowlStats.dotBalls++;
-        }
-      }
-    }
-
-    state = state.copyWith(
-      events: allEvents,
-      isSimulating: false,
-      currentCommentary: _engine!.getMatchResult(),
-      currentInnings: allEvents.isNotEmpty ? allEvents.last.innings : state.currentInnings,
-      batsmanStats: batsmanStats,
-      bowlerStats: bowlerStats,
-    );
-    _onMatchComplete();
-  }
-
-  void reset() {
-    _simulationTimer?.cancel();
-    _pollingTimer?.cancel();
-    if (_remoteMatchId != null && _nodeBackendEnabled) {
-      NodeBackendService.leaveMatch(_remoteMatchId!);
-    }
-    _remoteMatchId = null;
-    _matchCompleteFired = false;
-    state = const MatchState();
-  }
-
-  @override
-  void dispose() {
-    _simulationTimer?.cancel();
-    _pollingTimer?.cancel();
-    if (_remoteMatchId != null && _nodeBackendEnabled) {
-      NodeBackendService.leaveMatch(_remoteMatchId!);
-    }
-    super.dispose();
-  }
+  // ── Helpers ──
 }
 
-// Match history provider (reads from in-memory notifier)
+// Match history provider
 final matchHistoryProvider = Provider<List<MatchSummary>>((ref) {
-  // Access the notifier to get match history
   final notifier = ref.watch(matchProvider.notifier);
-  // Re-read when match state changes (so history updates after match completes)
   ref.watch(matchProvider);
   return notifier.matchHistory;
 });
