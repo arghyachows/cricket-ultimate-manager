@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:cricket_ultimate_manager/providers/match_provider.dart';
+import 'package:cricket_ultimate_manager/providers/match/match_state.dart';
 import 'package:cricket_ultimate_manager/models/models.dart';
 
 void main() {
@@ -22,7 +22,7 @@ void main() {
     test('homeScore uses first innings score when homeBatsFirst', () {
       // Build events: innings 1 with score 150
       final events = [
-        MatchEvent(
+        const MatchEvent(
           id: '1',
           matchId: 'm1',
           innings: 1,
@@ -38,7 +38,7 @@ void main() {
           scoreAfter: 4,
           wicketsAfter: 0,
         ),
-        MatchEvent(
+        const MatchEvent(
           id: '2',
           matchId: 'm1',
           innings: 1,
@@ -85,7 +85,7 @@ void main() {
     });
 
     test('copyWith clearLevelUpPack removes level up', () {
-      final state = MatchState(
+      const state = MatchState(
         levelUpPackAwarded: 'pack_123',
         newLevel: 5,
       );
@@ -97,7 +97,7 @@ void main() {
 
     test('ballsRemaining calculates correctly', () {
       final events = [
-        MatchEvent(
+        const MatchEvent(
           id: '1',
           matchId: 'm1',
           innings: 1,
@@ -312,7 +312,7 @@ void main() {
   group('MatchState — innings ordering', () {
     test('homeScore uses second innings when away bats first', () {
       final events = [
-        MatchEvent(
+        const MatchEvent(
           id: 'e1',
           matchId: 'm1',
           innings: 2, // Second innings

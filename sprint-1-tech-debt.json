@@ -1,0 +1,158 @@
+{
+  "sprint": "Sprint 1 — Tech Debt Cleanup",
+  "totalPoints": 21,
+  "completedPoints": 19,
+  "duration": "1 sprint (1-2 weeks)",
+  "goals": [
+    "Zero warnings on flutter analyze",
+    "Each God class file reduced to ≤500 lines",
+    "Match provider coverage ≥80%",
+    "All 7 stories delivered and reviewed"
+  ],
+  "stories": [
+    {
+      "id": 1,
+      "title": "Fix null-aware operator bugs",
+      "priority": "Must Have",
+      "points": 2,
+      "owner": "developer",
+      "labels": ["tech-debt", "dart-3-compat"],
+      "acceptanceCriteria": [
+        "All `?.` on non-nullable expressions replaced with `.`",
+        "flutter analyze reports 0 warnings"
+      ],
+      "technicalNotes": "Focus on collection_screen.dart first, then other files. Use patch tool.",
+      "edgeCases": [],
+      "files": ["lib/screens/collection_screen.dart", "lib/**/*.dart"],
+      "status": "done",
+      "commit": "0ef4cc3"
+    },
+    {
+      "id": 2,
+      "title": "Remove dead code",
+      "priority": "Must Have",
+      "points": 2,
+      "owner": "developer",
+      "labels": ["tech-debt", "cleaning"],
+      "acceptanceCriteria": [
+        "Dart analysis server shows 0 warnings on all modified files",
+        "No orphan widget files remain in lib/screens/",
+        "Extracted reusable widgets into lib/widgets/ or subdirectories"
+      ],
+      "technicalNotes": "Extract standalone classes, remove unused imports. Use `dart fix` where possible.",
+      "edgeCases": [
+        "Some widgets may be used dynamically (e.g., via builder) — double-check",
+        "Commented-out code in long files (collection_screen, dashboard)"
+      ],
+      "files": ["lib/**/*.dart"],
+      "status": "done",
+      "commit": "cc4ba6c"
+    },
+    {
+      "id": 3,
+      "title": "Add const constructors",
+      "priority": "Must Have",
+      "points": 2,
+      "owner": "developer",
+      "labels": ["tech-debt", "performance"],
+      "acceptanceCriteria": [
+        "All StatelessWidget classes have const constructors",
+        "All const-eligible `build()` calls use const",
+        "flutter analyze reports 0 missing-const warnings"
+      ],
+      "technicalNotes": "Add `const` keyword and `super.key` to constructor parameters.",
+      "edgeCases": [
+        "ConsumerWidget / ConsumerStatefulWidget still need `super.key`"
+      ],
+      "files": ["lib/**/*.dart"],
+      "status": "done",
+      "commit": "cbbe08e"
+    },
+    {
+      "id": 4,
+      "title": "Extract match_provider.dart",
+      "priority": "Must Have",
+      "points": 5,
+      "owner": "developer",
+      "labels": ["tech-debt", "refactoring"],
+      "acceptanceCriteria": [
+        "match_provider.dart split into focused sub-files under lib/providers/match/",
+        "Each file under 300 lines",
+        "flutter analyze reports 0 issues on all match provider files"
+      ],
+      "technicalNotes": "Extract: match state machine, match creation logic, live match logic, match history. The file is likely 800+ lines.",
+      "edgeCases": [
+        "Circular imports between match sub-providers",
+        "Existing widget imports must continue working"
+      ],
+      "files": ["lib/providers/match_provider.dart", "lib/providers/match/*.dart"],
+      "status": "done",
+      "commit": "3d8e377"
+    },
+    {
+      "id": 5,
+      "title": "Extract dashboard_screen.dart",
+      "priority": "Must Have",
+      "points": 2,
+      "owner": "developer",
+      "labels": ["tech-debt", "refactoring"],
+      "acceptanceCriteria": [
+        "dashboard_screen.dart reduced from 2,063 lines to under 150 lines",
+        "lib/screens/dashboard/ contains focused widget files",
+        "All imports use barrel files (constants.dart, theme.dart, providers.dart)",
+        "flutter analyze reports 0 issues on all dashboard files"
+      ],
+      "technicalNotes": "Extract: HeroHeader, FeaturedCardSection, QuickActionsSection, RecentMatchesSection, DailyObjectivesSection, PackHighlightsSection, StatChip, SeasonTierBadge, DailyRewardButton, MiniStat, QuickActionCard, ActionTile, RecentMatchTile, PackTile.",
+      "edgeCases": [
+        "Circular imports — ensure dashboard widgets don't import back to dashboard_screen",
+        "Private `_` prefixed classes must become public when extracted"
+      ],
+      "files": ["lib/screens/dashboard_screen.dart", "lib/screens/dashboard/*.dart"],
+      "status": "done",
+      "commit": "21b1505"
+    },
+    {
+      "id": 6,
+      "title": "Unit tests for match provider",
+      "priority": "Should Have",
+      "points": 3,
+      "owner": "developer",
+      "labels": ["testing"],
+      "acceptanceCriteria": [
+        "18 passing tests covering all model constructors, getters, and helpers",
+        "Tests cover: hasActiveMatch, homeScore, copyWith, ballsRemaining, strikeRate, economy, resultText, inn1Score, innings ordering"
+      ],
+      "technicalNotes": "test/providers/match_provider_test.dart. Use flutter_test without mocks.",
+      "edgeCases": [
+        "Null/empty innings lists",
+        "Edge values for balls (0, 6, 120)",
+        "Runs = 0 cases"
+      ],
+      "files": ["test/providers/match_provider_test.dart"],
+      "status": "done",
+      "commit": "cab3d9f"
+    },
+    {
+      "id": 7,
+      "title": "API service layer",
+      "priority": "Should Have",
+      "points": 3,
+      "owner": "developer",
+      "labels": ["tech-debt", "architecture"],
+      "acceptanceCriteria": [
+        "lib/core/api_config.dart contains URL configuration facade",
+        "lib/services/match_api_service.dart extracts match-related REST calls",
+        "lib/services/match_state_machine.dart defines match phase transitions",
+        "All backend URLs routed through AppConfig.backendUrl"
+      ],
+      "technicalNotes": "Hardcoded Supabase/LocalMultiplayer URLs in widgets should reference AppConfig.",
+      "edgeCases": [
+        "SupabaseService has its own client — don't break existing auth flows",
+        "Local Multiplayer backend has different endpoints"
+      ],
+      "files": ["lib/core/api_config.dart", "lib/services/*.dart"],
+      "status": "done",
+      "commit": "cab3d9f"
+    }
+  ]
+}
