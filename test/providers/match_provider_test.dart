@@ -341,5 +341,78 @@ void main() {
       expect(state.homeScore, equals(100));
       expect(state.awayScore, equals(0)); // No first innings events
     });
+
+    test('homeOvers/awayOvers return correct format', () {
+      final events = [
+        const MatchEvent(id: 'e1', matchId: 'm1', innings: 1, overNumber: 4,
+            ballNumber: 0, battingTeamId: 'home', bowlingTeamId: 'away',
+            batsmanCardId: 'b1', bowlerCardId: 'bo1', eventType: 'run',
+            runs: 1, commentary: 'x', scoreAfter: 1, wicketsAfter: 0),
+      ];
+      final state = MatchState(
+        events: events, currentInnings: 1, matchOvers: 20, homeBatsFirst: true);
+      // 1 legal ball = 0 overs + 1 ball = '0.1'
+      expect(state.homeOvers, equals('0.1'));
+      expect(state.awayOvers, equals('0.0'));
+      expect(state.currentOvers, equals('0.1'));
+    });
+
+    test('innings1Batsmen / innings2Batsmen ordered correctly', () {
+      final bs = <String, BatsmanStats>{
+        '1_b1': BatsmanStats(name: 'Player2', innings: 1),
+        '1_b2': BatsmanStats(name: 'Player1', innings: 1),
+        '2_b3': BatsmanStats(name: 'Player3', innings: 2),
+      };
+      final state = MatchState(events: const [], batsmanStats: bs,
+          currentInnings: 1, matchOvers: 20, xiOrder1: ['Player1', 'Player2'],
+          xiOrder2: ['Player3']);
+      // Player1 (in xiOrder) should come first, then Player2, then any remaining
+      expect(state.innings1Batsmen.map((b) => b.name).toList(),
+          equals(['Player1', 'Player2']));
+      expect(state.innings2Batsmen.map((b) => b.name).toList(),
+          equals(['Player3']));
+    });
+
+    test('innings1Bowlers / innings2Bowlers filtered by innings', () {
+      final bs = <String, BowlerStats>{
+        '1_bo1': BowlerStats(name: 'Bowler1', innings: 1, balls: 12),
+        '2_bo2': BowlerStats(name: 'Bowler2', innings: 2, balls: 6),
+        '1_bo3': BowlerStats(name: 'Bowler3', innings: 1, balls: 18),
+      };
+      final state = MatchState(events: const [], bowlerStats: bs,
+          currentInnings: 2, matchOvers: 20);
+      expect(state.innings1Bowlers.map((b) => b.name).toList(),
+          equals(['Bowler1', 'Bowler3']));
+      expect(state.innings2Bowlers.map((b) => b.name).toList(),
+          equals(['Bowler2']));
+    });
+
+    test('runsNeeded returns correct chasing target', () {
+      final events = [
+        const MatchEvent(id: 'e1', matchId: 'm1', innings: 2, overNumber: 0,
+            ballNumber: 0, battingTeamId: 'away', bowlingTeamId: 'home',
+            batsmanCardId: 'b1', bowlerCardId: 'bo1', eventType: 'run',
+            runs: 50, commentary: 'x', scoreAfter: 50, wicketsAfter: 0),
+      ];
+      // Target for chasing team = 201 (first innings 200 + 1)
+      final state = MatchState(events: events, currentInnings: 2,
+          target: 201, matchOvers: 20, homeBatsFirst: false,
+          batsmanStats: {}, bowlerStats: {});
+      // Chasing: 50 runs. Needed = 201 + 1 - 50 = 152
+      expect(state.runsNeeded, equals(152));
+    });
+
+    test('runsNeeded returns 0 when already passed target', () {
+      final events = [
+        const MatchEvent(id: 'e1', matchId: 'm1', innings: 2, overNumber: 0,
+            ballNumber: 0, battingTeamId: 'away', bowlingTeamId: 'home',
+            batsmanCardId: 'b1', bowlerCardId: 'bo1', eventType: 'run',
+            runs: 250, commentary: 'x', scoreAfter: 250, wicketsAfter: 0),
+                  ];
+                  final state = MatchState(events: events, currentInnings: 2,
+                      target: 100, matchOvers: 20, homeBatsFirst: false,
+                      batsmanStats: {}, bowlerStats: {});
+                  expect(state.runsNeeded, equals(0));
+    });
   });
 }
