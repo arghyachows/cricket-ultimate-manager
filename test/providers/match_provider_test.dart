@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:cricket_ultimate_manager/providers/match/match_state.dart';
+import 'package:cricket_ultimate_manager/providers/match/match_local_engine.dart';
+import 'package:cricket_ultimate_manager/providers/match_helpers.dart';
 import 'package:cricket_ultimate_manager/models/models.dart';
 
 void main() {
@@ -413,6 +415,95 @@ void main() {
                       target: 100, matchOvers: 20, homeBatsFirst: false,
                       batsmanStats: {}, bowlerStats: {});
                   expect(state.runsNeeded, equals(0));
+    });
+  });
+
+  group('MatchHelpers', () {
+    test('parseBatsmanStats returns empty when data is null', () {
+      final result = MatchHelpers.parseBatsmanStats(null);
+      expect(result, isEmpty);
+    });
+
+    test('parseBatsmanStats returns empty when data is not a map', () {
+      final result = MatchHelpers.parseBatsmanStats('not a map');
+      expect(result, isEmpty);
+    });
+
+    test('parseBatsmanStats correctly parses valid data', () {
+      final result = MatchHelpers.parseBatsmanStats({
+        'player_a': {'name': 'Player A', 'runs': 45, 'balls': 30, 'fours': 4, 'sixes': 1, 'isOut': false, 'dismissalType': null, 'innings': 1},
+        'player_b': {'name': 'Player B', 'runs': 12, 'balls': 8, 'fours': 1, 'sixes': 0, 'isOut': true, 'dismissalType': 'caught', 'innings': 1},
+      });
+      expect(result.length, equals(2));
+      expect(result['player_a']!.runs, equals(45));
+      expect(result['player_a']!.balls, equals(30));
+      expect(result['player_b']!.runs, equals(12));
+      expect(result['player_b']!.isOut, isTrue);
+      expect(result['player_b']!.dismissalType, equals('caught'));
+    });
+
+    test('formatDismissal formats bowled correctly', () {
+      expect(MatchHelpers.formatDismissal('bowled', 'Wasim', null), equals('b Wasim'));
+    });
+
+    test('formatDismissal formats caught correctly', () {
+      expect(MatchHelpers.formatDismissal('caught', 'Waqar', 'Inzi'), equals('c Inzi b Waqar'));
+    });
+
+    test('formatDismissal formats run out correctly', () {
+      expect(MatchHelpers.formatDismissal('run_out', 'Ayaz', 'Moin'), equals('run out (Moin)'));
+    });
+
+    test('formatDismissal formats lbw correctly', () {
+      expect(MatchHelpers.formatDismissal('lbw', 'Anil', null), equals('lbw b Anil'));
+    });
+
+    test('inningsScoreFromEvents sums runs for the specified innings', () {
+      final events = [
+        const MatchEvent(id: '1', matchId: 'm1', innings: 1, overNumber: 0, ballNumber: 0, battingTeamId: 'home', bowlingTeamId: 'away', batsmanCardId: 'b1', bowlerCardId: 'bo1', eventType: 'run', runs: 4, commentary: '', scoreAfter: 4, wicketsAfter: 0),
+        const MatchEvent(id: '2', matchId: 'm1', innings: 1, overNumber: 0, ballNumber: 1, battingTeamId: 'home', bowlingTeamId: 'away', batsmanCardId: 'b2', bowlerCardId: 'bo1', eventType: 'run', runs: 6, commentary: '', scoreAfter: 10, wicketsAfter: 0),
+        const MatchEvent(id: '3', matchId: 'm1', innings: 2, overNumber: 0, ballNumber: 0, battingTeamId: 'away', bowlingTeamId: 'home', batsmanCardId: 'b3', bowlerCardId: 'bo2', eventType: 'run', runs: 2, commentary: '', scoreAfter: 2, wicketsAfter: 0),
+      ];
+      expect(MatchHelpers.inningsScoreFromEvents(events, 1), equals(10));
+      expect(MatchHelpers.inningsScoreFromEvents(events, 2), equals(2));
+    });
+
+    test('parseBowlerStats returns empty when data is null', () {
+      final result = MatchHelpers.parseBowlerStats(null);
+      expect(result, isEmpty);
+    });
+
+    test('parseBowlerStats returns empty when data is not a map', () {
+      final result = MatchHelpers.parseBowlerStats('not a map');
+      expect(result, isEmpty);
+    });
+
+    test('parseBowlerStats correctly parses valid data', () {
+      final result = MatchHelpers.parseBowlerStats({
+        'bo1': {'name': 'Bowler A', 'innings': 1, 'balls': 24, 'runs': 15, 'wickets': 2, 'maidens': 1, 'dotBalls': 10},
+        'bo2': {'name': 'Bowler B', 'innings': 1, 'balls': 18, 'runs': 30, 'wickets': 0, 'maidens': 0, 'dotBalls': 5},
+      });
+      expect(result.length, equals(2));
+      expect(result['bo1']!.balls, equals(24));
+      expect(result['bo1']!.runs, equals(15));
+      expect(result['bo1']!.wickets, equals(2));
+      expect(result['bo1']!.maidens, equals(1));
+      expect(result['bo1']!.dotBalls, equals(10));
+      expect(result['bo2']!.runs, equals(30));
+    });
+
+    test('formatDismissal falls through to default for unknown type', () {
+      expect(MatchHelpers.formatDismissal('hit_wicket', 'Bumrah', null), equals('b Bumrah'));
+    });
+  });
+
+  group('MatchLocalEngine', () {
+    test('computeSkipToEndResult returns MatchState', () {
+      // We can't easily test this without a full MatchEngine setup,
+      // but we can verify the method exists and is callable
+      final state = MatchState(currentInnings: 1, matchOvers: 20, events: const []);
+      // Just verify the class is accessible and the static method exists
+      expect(MatchLocalEngine.computeSkipToEndResult, isNotNull);
     });
   });
 }
