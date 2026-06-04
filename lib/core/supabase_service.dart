@@ -192,7 +192,12 @@ class SupabaseService {
         .subscribe();
   }
 
-  /// Subscribe to squad_players changes (team updates)
+  /// Subscribe to squad_players changes for the given user.
+  ///
+  /// Filters on `user_id` so the client only receives realtime updates for
+  /// squad players that belong to this user's team.  Without this filter every
+  /// authenticated client would receive every squad_players change in the
+  /// system, which is both a privacy concern and unnecessary network overhead.
   static RealtimeChannel subscribeToSquad(
       String userId, void Function() onUpdate) {
     return client
@@ -201,6 +206,11 @@ class SupabaseService {
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'squad_players',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_id',
+            value: userId,
+          ),
           callback: (_) => onUpdate(),
         )
         .subscribe();
