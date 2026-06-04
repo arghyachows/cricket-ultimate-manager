@@ -20,10 +20,11 @@ void main() {
       return null;
     });
 
-    // Initialize Supabase with dummy credentials
+    // Initialize Supabase with dummy credentials for tests
+    // Tests don't hit the real backend — these are only to satisfy SDK init
     await Supabase.initialize(
-      url: 'https://kollxlzqqgznfiutpqjz.supabase.co',
-      anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtvbGx4bHpxcWd6bmZpdXRwcWp6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzMzY4MDUsImV4cCI6MjA4ODkxMjgwNX0.0Dn1J-j5INjGwd6oDDYTJUFSvSIRxknJ5nORbYUj8kY',
+      url: 'https://test.supabase.co',
+      anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test-signature',
     );
   });
 

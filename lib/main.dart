@@ -10,11 +10,20 @@ void main() async {
 
   await NotificationService.instance.init();
 
+  final supabaseUrl = const String.fromEnvironment('SUPABASE_URL');
+  final supabaseAnonKey = const String.fromEnvironment('SUPABASE_ANON_KEY');
+
+  if (supabaseUrl.isEmpty || supabaseAnonKey.isEmpty) {
+    throw StateError(
+      'SUPABASE_URL and SUPABASE_ANON_KEY must be provided via --dart-define. '
+      'Example: flutter run --dart-define=SUPABASE_URL=https://your-project.supabase.co '
+      '--dart-define=SUPABASE_ANON_KEY=your-anon-key',
+    );
+  }
+
   await Supabase.initialize(
-    url: const String.fromEnvironment('SUPABASE_URL',
-        defaultValue: 'https://kollxlzqqgznfiutpqjz.supabase.co'),
-    anonKey: const String.fromEnvironment('SUPABASE_ANON_KEY',
-        defaultValue: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtvbGx4bHpxcWd6bmZpdXRwcWp6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzMzY4MDUsImV4cCI6MjA4ODkxMjgwNX0.0Dn1J-j5INjGwd6oDDYTJUFSvSIRxknJ5nORbYUj8kY'),
+    url: supabaseUrl,
+    anonKey: supabaseAnonKey,
   );
 
   runApp(const ProviderScope(child: CricketUltimateManager()));

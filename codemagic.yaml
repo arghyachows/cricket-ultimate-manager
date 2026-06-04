@@ -38,7 +38,7 @@ workflows:
         script: xcode-project use-profiles
 
       - name: Build IPA
-        script: flutter build ipa --release --export-method ad-hoc
+        script: flutter build ipa --release --export-method ad-hoc --dart-define=SUPABASE_URL=$SUPABASE_URL --dart-define=SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY --dart-define=SUPABASE_STORAGE_URL=$SUPABASE_STORAGE_URL --dart-define=BACKEND_URL=$BACKEND_URL
 
     artifacts:
       - build/ios/ipa/*.ipa

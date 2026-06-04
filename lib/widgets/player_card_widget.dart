@@ -45,8 +45,9 @@ String _imageRolePrefix(String role) {
 }
 
 /// Supabase public storage URL for the images bucket.
-const _storageBucket =
-    'https://kollxlzqqgznfiutpqjz.supabase.co/storage/v1/object/public/images';
+/// Reads from --dart-define=SUPABASE_STORAGE_URL at build time.
+String get _storageBucket =>
+    const String.fromEnvironment('SUPABASE_STORAGE_URL');
 
 /// Builds the image URL for a player card.
 /// Prioritizes the imageUrl from database, falls back to generic images.
