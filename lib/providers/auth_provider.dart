@@ -28,6 +28,18 @@ class CurrentUserNotifier extends StateNotifier<AsyncValue<UserModel?>> {
   final Ref ref;
   RealtimeChannel? _channel;
 
+  /// Pending rewards that failed to persist, stored for retry.
+  ({int coins, int xp, bool? homeWon})? _pendingRewards;
+
+  /// Error message from the last persistence failure, if any.
+  String? _persistenceError;
+
+  /// Returns the pending rewards tuple if a persistence failure occurred.
+  ({int coins, int xp, bool? homeWon})? get pendingRewards => _pendingRewards;
+
+  /// Returns the last persistence error message, or null if none.
+  String? get persistenceError => _persistenceError;
+
   CurrentUserNotifier(this.ref) : super(const AsyncValue.loading()) {
     // Listen to auth state changes
     ref.listen(authStateProvider, (previous, next) {
@@ -42,8 +54,11 @@ class CurrentUserNotifier extends StateNotifier<AsyncValue<UserModel?>> {
         }
       });
     });
-    loadUser();
-    _subscribeToUpdates();
+    // Only load/subscribe if already authenticated
+    if (SupabaseService.isAuthenticated) {
+      loadUser();
+      _subscribeToUpdates();
+    }
   }
 
   void _subscribeToUpdates() {
@@ -78,6 +93,18 @@ class CurrentUserNotifier extends StateNotifier<AsyncValue<UserModel?>> {
         state = AsyncValue.data(UserModel.fromJson(data));
       }
     } catch (_) {}
+  }
+
+  /// Set a persistence error with pending rewards for retry.
+  void setPersistenceError(String message, {required int pendingCoins, required int pendingXp, required bool pendingHomeWon}) {
+    _persistenceError = message;
+    _pendingRewards = (coins: pendingCoins, xp: pendingXp, homeWon: pendingHomeWon);
+  }
+
+  /// Clear the persistence error and pending rewards (e.g. after successful retry).
+  void clearPersistenceError() {
+    _persistenceError = null;
+    _pendingRewards = null;
   }
 
   void updateCoins(int delta) {
@@ -115,6 +142,13 @@ class CurrentUserNotifier extends StateNotifier<AsyncValue<UserModel?>> {
       state = AsyncValue.data(
           user.copyWith(premiumTokens: user.premiumTokens + delta));
     }
+  }
+
+  @override
+  void dispose() {
+    _channel?.unsubscribe();
+    _channel = null;
+    super.dispose();
   }
 }
 

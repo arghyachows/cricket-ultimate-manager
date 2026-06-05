@@ -2,21 +2,38 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/supabase_service.dart';
 import '../models/models.dart';
+import 'auth_provider.dart';
 
 // Active team
 final teamProvider =
     StateNotifierProvider<TeamNotifier, AsyncValue<Team?>>((ref) {
-  return TeamNotifier();
+  return TeamNotifier(ref);
 });
 
 class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
+  final Ref ref;
   RealtimeChannel? _squadChannel;
   RealtimeChannel? _lineupChannel;
   bool _pauseLineupUpdates = false;
 
-  TeamNotifier() : super(const AsyncValue.loading()) {
+  TeamNotifier(this.ref) : super(const AsyncValue.loading()) {
     loadTeam();
     _subscribeToUpdates();
+    // Listen to auth state changes to clean up on logout
+    ref.listen(authStateProvider, (previous, next) {
+      next.whenData((authState) {
+        if (authState.session == null) {
+          _squadChannel?.unsubscribe();
+          _squadChannel = null;
+          _lineupChannel?.unsubscribe();
+          _lineupChannel = null;
+          state = const AsyncValue.data(null);
+        } else {
+          loadTeam();
+          _subscribeToUpdates();
+        }
+      });
+    });
   }
 
   void _subscribeToUpdates() {

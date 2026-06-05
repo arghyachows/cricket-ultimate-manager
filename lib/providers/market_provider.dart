@@ -18,6 +18,19 @@ class MarketNotifier extends StateNotifier<AsyncValue<List<MarketListing>>> {
   MarketNotifier(this.ref) : super(const AsyncValue.loading()) {
     loadListings();
     _subscribeToUpdates();
+    // Listen to auth state changes to clean up on logout
+    ref.listen(authStateProvider, (previous, next) {
+      next.whenData((authState) {
+        if (authState.session == null) {
+          _channel?.unsubscribe();
+          _channel = null;
+          state = const AsyncValue.data([]);
+        } else {
+          loadListings();
+          _subscribeToUpdates();
+        }
+      });
+    });
   }
 
   Future<void> loadListings() async {

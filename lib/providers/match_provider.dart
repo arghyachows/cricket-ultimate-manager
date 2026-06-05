@@ -8,6 +8,7 @@ import 'card_packs_provider.dart';
 import 'career_stats_provider.dart';
 import 'challenge_provider.dart';
 import 'match/match_state.dart';
+import 'match/match_phase.dart';
 export 'match/match_state.dart';
 import 'match/match_node_backend.dart';
 import 'match/match_local_engine.dart';
@@ -28,7 +29,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
   final List<MatchSummary> _matchHistory = [];
   List<MatchSummary> get matchHistory => List.unmodifiable(_matchHistory);
 
-  MatchNotifier(this.ref) : super(const MatchState());
+  MatchNotifier(this.ref) : super(const MatchState(phase: MatchPhase.notStarted));
 
   @override
   void dispose() {
@@ -43,7 +44,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
     _nodeBackend = null;
     _localEngine = null;
     _matchCompleteFired = false;
-    state = const MatchState();
+    state = const MatchState(phase: MatchPhase.notStarted);
   }
 
   String _playerName(LineupPlayer p) =>
@@ -75,6 +76,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
 
     final isHomeBatFirst = homeBatsFirst;
     state = MatchState(
+      phase: MatchPhase.notStarted,
       isSimulating: true,
       homeTeamName: homeTeamName,
       awayTeamName: awayTeamName,
@@ -250,32 +252,10 @@ class MatchNotifier extends StateNotifier<MatchState> {
       xiOrder1: state.xiOrder1, xiOrder2: state.xiOrder2,
     ));
 
-    // Update local state
-    final userNotifier = ref.read(currentUserProvider.notifier);
-    final oldUser = ref.read(currentUserProvider).valueOrNull;
-    final oldLevel = oldUser?.level ?? 1;
-    userNotifier.updateCoins(rewards.coins);
-    userNotifier.updateXpAndLevel(rewards.xp);
-    userNotifier.updateMatchStats(won: rewards.homeWon == true);
-    final updatedUser = ref.read(currentUserProvider).valueOrNull;
-    final newLevel = updatedUser?.level ?? oldLevel;
-
-    if (newLevel > oldLevel) {
-      state = state.copyWith(
-        levelUpPackAwarded: AppConstants.packNameForLevel(newLevel),
-        newLevel: newLevel,
-      );
-    }
-
-    // Persist to DB
+    // Persist to DB — local state (coins/XP) only updated on success
     final userId = SupabaseService.currentUserId;
     if (userId != null) {
-      MatchCompletionHandler.persistRewards(
-        userId: userId, coins: rewards.coins, xp: rewards.xp, won: rewards.homeWon == true,
-      ).then((_) {
-        ref.read(currentUserProvider.notifier).silentRefresh();
-        ref.read(userCardPacksProvider.notifier).refresh();
-      });
+      _persistAndApplyRewards(userId, rewards);
     }
 
     // Persist career stats
@@ -291,6 +271,60 @@ class MatchNotifier extends StateNotifier<MatchState> {
         }
       }
     }
+  }
+
+  /// Persist rewards to the database. On success, applies local state (coins/XP/level).
+  /// On failure, surfaces the error via [currentUserProvider] and stores pending rewards for retry.
+  Future<void> _persistAndApplyRewards(String userId, ({int coins, int xp, bool? homeWon}) rewards) async {
+    final result = await MatchCompletionHandler.persistRewards(
+      userId: userId, coins: rewards.coins, xp: rewards.xp, won: rewards.homeWon == true,
+    );
+
+    if (!result.success) {
+      // Surface error via currentUserProvider so the UI can show a snackbar/retry
+      final userNotifier = ref.read(currentUserProvider.notifier);
+      userNotifier.setPersistenceError(
+        'Failed to save rewards: ${result.error}. Your coins and XP have not been updated.',
+        pendingCoins: rewards.coins,
+        pendingXp: rewards.xp,
+        pendingHomeWon: rewards.homeWon == true,
+      );
+      // Refresh from DB to ensure we show the last known good state
+      ref.read(currentUserProvider.notifier).silentRefresh();
+      ref.read(userCardPacksProvider.notifier).refresh();
+      return;
+    }
+
+    // Success — safe to update local state
+    final userNotifier = ref.read(currentUserProvider.notifier);
+    final oldUser = ref.read(currentUserProvider).valueOrNull;
+    final oldLevel = oldUser?.level ?? 1;
+    userNotifier.updateCoins(rewards.coins);
+    userNotifier.updateXpAndLevel(rewards.xp);
+    userNotifier.updateMatchStats(won: rewards.homeWon == true);
+    userNotifier.clearPersistenceError();
+    final updatedUser = ref.read(currentUserProvider).valueOrNull;
+    final newLevel = updatedUser?.level ?? oldLevel;
+
+    if (newLevel > oldLevel) {
+      state = state.copyWith(
+        levelUpPackAwarded: AppConstants.packNameForLevel(newLevel),
+        newLevel: newLevel,
+      );
+    }
+
+    ref.read(currentUserProvider.notifier).silentRefresh();
+    ref.read(userCardPacksProvider.notifier).refresh();
+  }
+
+  /// Retry persisting rewards after a previous failure.
+  /// Called by the UI when the user taps "Retry".
+  Future<void> retryPersistRewards() async {
+    final pending = ref.read(currentUserProvider.notifier).pendingRewards;
+    if (pending == null) return;
+    final userId = SupabaseService.currentUserId;
+    if (userId == null) return;
+    await _persistAndApplyRewards(userId, pending);
   }
 
   // ── Helpers ──

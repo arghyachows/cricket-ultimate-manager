@@ -97,7 +97,7 @@ class MatchNodeBackend {
         config: config,
       );
 
-      if (started) {
+      if (started.success) {
         print('✅ Node.js backend match started successfully!');
         _startPollingFallback();
         return true;

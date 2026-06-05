@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:cricket_ultimate_manager/providers/match/match_state.dart';
+import 'package:cricket_ultimate_manager/providers/match/match_phase.dart';
 import 'package:cricket_ultimate_manager/providers/match/match_local_engine.dart';
 import 'package:cricket_ultimate_manager/providers/match_helpers.dart';
 import 'package:cricket_ultimate_manager/models/models.dart';
@@ -7,17 +8,17 @@ import 'package:cricket_ultimate_manager/models/models.dart';
 void main() {
   group('MatchState', () {
     test('hasActiveMatch returns true when simulating', () {
-      const state = MatchState(isSimulating: true);
+      const state = MatchState(phase: MatchPhase.notStarted, isSimulating: true);
       expect(state.hasActiveMatch, isTrue);
     });
 
     test('hasActiveMatch returns true when match complete', () {
-      const state = MatchState(isMatchComplete: true);
+      const state = MatchState(phase: MatchPhase.notStarted, isMatchComplete: true);
       expect(state.hasActiveMatch, isTrue);
     });
 
     test('hasActiveMatch returns false when neither', () {
-      const state = MatchState();
+      const state = MatchState(phase: MatchPhase.notStarted);
       expect(state.hasActiveMatch, isFalse);
     });
 
@@ -59,6 +60,7 @@ void main() {
       ];
 
       final state = MatchState(
+        phase: MatchPhase.notStarted,
         events: events,
         homeBatsFirst: true,
         currentInnings: 1,
@@ -71,6 +73,7 @@ void main() {
 
     test('copyWith creates new state with updated fields', () {
       const original = MatchState(
+        phase: MatchPhase.notStarted,
         isSimulating: false,
         homeTeamName: 'India',
         matchOvers: 20,
@@ -88,11 +91,12 @@ void main() {
 
     test('copyWith clearLevelUpPack removes level up', () {
       const state = MatchState(
+        phase: MatchPhase.notStarted,
         levelUpPackAwarded: 'pack_123',
         newLevel: 5,
       );
 
-      final cleared = state.copyWith(clearLevelUpPack: true);
+      final cleared = state.clearLevelUpPack();
       expect(cleared.levelUpPackAwarded, isNull);
       expect(cleared.newLevel, isNull);
     });
@@ -118,17 +122,19 @@ void main() {
       ];
 
       final state = MatchState(
+        phase: MatchPhase.notStarted,
         events: events,
         currentInnings: 1,
         matchOvers: 20,
       );
 
-      // 20 overs * 6 = 120 balls. 5 overs = 30 balls bowled. Remaining = 90
-      expect(state.ballsRemaining, equals(90));
+      // 20 overs * 6 = 120 balls. 1 legal event = 1 ball. Remaining = 119
+      expect(state.ballsRemaining, equals(119));
     });
 
     test('runsNeeded returns 0 in first innings', () {
       const state = MatchState(
+        phase: MatchPhase.notStarted,
         currentInnings: 1,
         target: 0,
         matchOvers: 20,
@@ -145,6 +151,7 @@ void main() {
       };
 
       final state = MatchState(
+        phase: MatchPhase.notStarted,
         currentInnings: 1,
         batsmanStats: batsmanStats,
       );
@@ -333,6 +340,7 @@ void main() {
       ];
 
       final state = MatchState(
+        phase: MatchPhase.notStarted,
         events: events,
         homeBatsFirst: false, // Away batted first
         currentInnings: 2,
@@ -352,11 +360,12 @@ void main() {
             runs: 1, commentary: 'x', scoreAfter: 1, wicketsAfter: 0),
       ];
       final state = MatchState(
+        phase: MatchPhase.notStarted,
         events: events, currentInnings: 1, matchOvers: 20, homeBatsFirst: true);
-      // 1 legal ball = 0 overs + 1 ball = '0.1'
-      expect(state.homeOvers, equals('0.1'));
+      // 1 legal ball at over 4, ball 0 = '4.0'
+      expect(state.homeOvers, equals('4.0'));
       expect(state.awayOvers, equals('0.0'));
-      expect(state.currentOvers, equals('0.1'));
+      expect(state.currentOvers, equals('4.0'));
     });
 
     test('innings1Batsmen / innings2Batsmen ordered correctly', () {
@@ -365,7 +374,7 @@ void main() {
         '1_b2': BatsmanStats(name: 'Player1', innings: 1),
         '2_b3': BatsmanStats(name: 'Player3', innings: 2),
       };
-      final state = MatchState(events: const [], batsmanStats: bs,
+      final state = MatchState(phase: MatchPhase.notStarted, events: const [], batsmanStats: bs,
           currentInnings: 1, matchOvers: 20, xiOrder1: ['Player1', 'Player2'],
           xiOrder2: ['Player3']);
       // Player1 (in xiOrder) should come first, then Player2, then any remaining
@@ -381,7 +390,7 @@ void main() {
         '2_bo2': BowlerStats(name: 'Bowler2', innings: 2, balls: 6),
         '1_bo3': BowlerStats(name: 'Bowler3', innings: 1, balls: 18),
       };
-      final state = MatchState(events: const [], bowlerStats: bs,
+      final state = MatchState(phase: MatchPhase.notStarted, events: const [], bowlerStats: bs,
           currentInnings: 2, matchOvers: 20);
       expect(state.innings1Bowlers.map((b) => b.name).toList(),
           equals(['Bowler1', 'Bowler3']));
@@ -397,7 +406,7 @@ void main() {
             runs: 50, commentary: 'x', scoreAfter: 50, wicketsAfter: 0),
       ];
       // Target for chasing team = 201 (first innings 200 + 1)
-      final state = MatchState(events: events, currentInnings: 2,
+      final state = MatchState(phase: MatchPhase.notStarted, events: events, currentInnings: 2,
           target: 201, matchOvers: 20, homeBatsFirst: false,
           batsmanStats: {}, bowlerStats: {});
       // Chasing: 50 runs. Needed = 201 + 1 - 50 = 152
@@ -411,7 +420,7 @@ void main() {
             batsmanCardId: 'b1', bowlerCardId: 'bo1', eventType: 'run',
             runs: 250, commentary: 'x', scoreAfter: 250, wicketsAfter: 0),
                   ];
-                  final state = MatchState(events: events, currentInnings: 2,
+                  final state = MatchState(phase: MatchPhase.notStarted, events: events, currentInnings: 2,
                       target: 100, matchOvers: 20, homeBatsFirst: false,
                       batsmanStats: {}, bowlerStats: {});
                   expect(state.runsNeeded, equals(0));

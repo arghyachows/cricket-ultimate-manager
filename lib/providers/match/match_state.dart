@@ -1,215 +1,130 @@
+import 'package:freezed_annotation/freezed_annotation.dart';
 import '../../models/models.dart';
+import 'match_phase.dart';
+
+export 'match_state_computed.dart';
+
+part 'match_state.freezed.dart';
 
 /// Represents the state of a cricket match at any point.
-class MatchState {
-  final MatchModel? match;
-  final List<MatchEvent> events;
-  final bool isSimulating;
-  final bool isMatchComplete;
-  final String? currentCommentary;
-  final int currentInnings;
-  final Map<String, BatsmanStats> batsmanStats;
-  final Map<String, BowlerStats> bowlerStats;
-  final String homeTeamName;
-  final String awayTeamName;
-  final String matchFormat;
-  final int matchOvers;
-  final String matchDifficulty;
-  final bool? homeWon;
-  final int coinsAwarded;
-  final int xpAwarded;
-  final String pitchCondition;
-  final String weatherCondition;
-  final bool userWonToss;
-  final String tossDecision;
-  final bool homeBatsFirst;
-  final int target;
-  final List<String> xiOrder1;
-  final List<String> xiOrder2;
-  final String? levelUpPackAwarded;
-  final int? newLevel;
-  final String strikerCardId;
-  final String nonStrikerCardId;
-  final bool challengeMode;
-
-  const MatchState({
-    this.match,
-    this.events = const [],
-    this.isSimulating = false,
-    this.isMatchComplete = false,
-    this.currentCommentary,
-    this.currentInnings = 1,
-    this.batsmanStats = const {},
-    this.bowlerStats = const {},
-    this.homeTeamName = '',
-    this.awayTeamName = '',
-    this.matchFormat = 't20',
-    this.matchOvers = 20,
-    this.matchDifficulty = 'Village',
-    this.homeWon,
-    this.coinsAwarded = 0,
-    this.xpAwarded = 0,
-    this.pitchCondition = 'balanced',
-    this.weatherCondition = 'clear',
-    this.userWonToss = true,
-    this.tossDecision = 'bat',
-    this.homeBatsFirst = true,
-    this.target = 0,
-    this.xiOrder1 = const [],
-    this.xiOrder2 = const [],
-    this.levelUpPackAwarded,
-    this.newLevel,
-    this.strikerCardId = '',
-    this.nonStrikerCardId = '',
-    this.challengeMode = false,
-  });
-
-  bool get hasActiveMatch => isSimulating || isMatchComplete;
-
-  int _inningsScore(int inn) {
-    if (events.isEmpty) return 0;
-    final inns = events.where((e) => e.innings == inn);
-    return inns.isEmpty ? 0 : inns.last.scoreAfter;
-  }
-
-  int _inningsWickets(int inn) {
-    if (events.isEmpty) return 0;
-    final inns = events.where((e) => e.innings == inn);
-    return inns.isEmpty ? 0 : inns.last.wicketsAfter;
-  }
-
-  String _inningsOvers(int inn) {
-    final inns = events.where((e) => e.innings == inn && e.eventType != 'innings_break');
-    if (inns.isEmpty) return '0.0';
-    final legalBalls = inns.where((e) => e.eventType != 'wide' && e.eventType != 'no_ball').length;
-    final overs = legalBalls ~/ 6;
-    final balls = legalBalls % 6;
-    return '$overs.$balls';
-  }
-
-  int get homeScore => homeBatsFirst ? _inningsScore(1) : _inningsScore(2);
-  int get homeWickets => homeBatsFirst ? _inningsWickets(1) : _inningsWickets(2);
-  String get homeOvers => homeBatsFirst ? _inningsOvers(1) : _inningsOvers(2);
-
-  int get awayScore => homeBatsFirst ? _inningsScore(2) : _inningsScore(1);
-  int get awayWickets => homeBatsFirst ? _inningsWickets(2) : _inningsWickets(1);
-  String get awayOvers => homeBatsFirst ? _inningsOvers(2) : _inningsOvers(1);
-
-  String get currentOvers => _inningsOvers(currentInnings);
-
-  List<BatsmanStats> _orderedBatsmenForInnings(int innings, List<String> xiOrder) {
-    final batsmen = batsmanStats.values.where((b) => b.innings == innings).toList();
-    if (xiOrder.isEmpty) return batsmen;
-    final statsMap = {for (final b in batsmen) b.name: b};
-    final ordered = <BatsmanStats>[];
-    for (final name in xiOrder) {
-      ordered.add(statsMap[name] ?? BatsmanStats(name: name, innings: innings));
-    }
-    for (final b in batsmen) {
-      if (!xiOrder.contains(b.name)) ordered.add(b);
-    }
-    return ordered;
-  }
-
-  List<BatsmanStats> get innings1Batsmen => _orderedBatsmenForInnings(1, xiOrder1);
-  List<BatsmanStats> get innings2Batsmen => _orderedBatsmenForInnings(2, xiOrder2);
-  List<BowlerStats> get innings1Bowlers => bowlerStats.values.where((b) => b.innings == 1).toList();
-  List<BowlerStats> get innings2Bowlers => bowlerStats.values.where((b) => b.innings == 2).toList();
-  List<BatsmanStats> get currentBatsmen =>
-      batsmanStats.values.where((b) => b.innings == currentInnings && !b.isOut).toList();
-  List<BowlerStats> get currentBowlers =>
-      bowlerStats.values.where((b) => b.innings == currentInnings).toList();
-
-  int get runsNeeded {
-    if (currentInnings < 2 || target == 0) return 0;
-    final chasingScore = _inningsScore(2);
-    final needed = target + 1 - chasingScore;
-    return needed > 0 ? needed : 0;
-  }
-
-  int get ballsRemaining {
-    if (events.isEmpty) return matchOvers * 6;
-    final inningsEvents = events.where((e) => e.innings == currentInnings);
-    if (inningsEvents.isEmpty) return matchOvers * 6;
-    final last = inningsEvents.last;
-    final ballsBowled = last.overNumber * 6 + last.ballNumber;
-    return (matchOvers * 6) - ballsBowled;
-  }
-
-  int get maxOversForFormat => matchFormat == 'odi' ? 50 : 20;
-
-  double get requiredRunRate {
-    if (currentInnings < 2 || ballsRemaining <= 0) return 0;
-    return (runsNeeded / ballsRemaining) * 6;
-  }
-
-  MatchState copyWith({
+@freezed
+class MatchState with _$MatchState {
+  const factory MatchState({
     MatchModel? match,
-    List<MatchEvent>? events,
-    bool? isSimulating,
-    bool? isMatchComplete,
+    @Default([]) List<MatchEvent> events,
+    @Default(false) bool isSimulating,
+    @Default(false) bool isMatchComplete,
     String? currentCommentary,
-    int? currentInnings,
-    Map<String, BatsmanStats>? batsmanStats,
-    Map<String, BowlerStats>? bowlerStats,
-    String? homeTeamName,
-    String? awayTeamName,
-    String? matchFormat,
-    int? matchOvers,
-    String? matchDifficulty,
+    @Default(1) int currentInnings,
+    @Default({}) Map<String, BatsmanStats> batsmanStats,
+    @Default({}) Map<String, BowlerStats> bowlerStats,
+    @Default('') String homeTeamName,
+    @Default('') String awayTeamName,
+    @Default('t20') String matchFormat,
+    @Default(20) int matchOvers,
+    @Default('Village') String matchDifficulty,
     bool? homeWon,
-    int? coinsAwarded,
-    int? xpAwarded,
-    String? pitchCondition,
-    String? weatherCondition,
-    bool? userWonToss,
-    String? tossDecision,
-    bool? homeBatsFirst,
-    int? target,
-    List<String>? xiOrder1,
-    List<String>? xiOrder2,
+    @Default(0) int coinsAwarded,
+    @Default(0) int xpAwarded,
+    @Default('balanced') String pitchCondition,
+    @Default('clear') String weatherCondition,
+    @Default(true) bool userWonToss,
+    @Default('bat') String tossDecision,
+    @Default(true) bool homeBatsFirst,
+    @Default(0) int target,
+    @Default([]) List<String> xiOrder1,
+    @Default([]) List<String> xiOrder2,
     String? levelUpPackAwarded,
     int? newLevel,
-    String? strikerCardId,
-    String? nonStrikerCardId,
-    bool? challengeMode,
-    bool clearLevelUpPack = false,
-  }) {
-    return MatchState(
-      match: match ?? this.match,
-      events: events ?? this.events,
-      isSimulating: isSimulating ?? this.isSimulating,
-      isMatchComplete: isMatchComplete ?? this.isMatchComplete,
-      currentCommentary: currentCommentary ?? this.currentCommentary,
-      currentInnings: currentInnings ?? this.currentInnings,
-      batsmanStats: batsmanStats ?? this.batsmanStats,
-      bowlerStats: bowlerStats ?? this.bowlerStats,
-      homeTeamName: homeTeamName ?? this.homeTeamName,
-      awayTeamName: awayTeamName ?? this.awayTeamName,
-      matchFormat: matchFormat ?? this.matchFormat,
-      matchOvers: matchOvers ?? this.matchOvers,
-      matchDifficulty: matchDifficulty ?? this.matchDifficulty,
-      homeWon: homeWon ?? this.homeWon,
-      coinsAwarded: coinsAwarded ?? this.coinsAwarded,
-      xpAwarded: xpAwarded ?? this.xpAwarded,
-      pitchCondition: pitchCondition ?? this.pitchCondition,
-      weatherCondition: weatherCondition ?? this.weatherCondition,
-      userWonToss: userWonToss ?? this.userWonToss,
-      tossDecision: tossDecision ?? this.tossDecision,
-      homeBatsFirst: homeBatsFirst ?? this.homeBatsFirst,
-      target: target ?? this.target,
-      xiOrder1: xiOrder1 ?? this.xiOrder1,
-      xiOrder2: xiOrder2 ?? this.xiOrder2,
-      levelUpPackAwarded: clearLevelUpPack ? null : (levelUpPackAwarded ?? this.levelUpPackAwarded),
-      newLevel: clearLevelUpPack ? null : (newLevel ?? this.newLevel),
-      strikerCardId: strikerCardId ?? this.strikerCardId,
-      nonStrikerCardId: nonStrikerCardId ?? this.nonStrikerCardId,
-      challengeMode: challengeMode ?? this.challengeMode,
-    );
+    @Default('') String strikerCardId,
+    @Default('') String nonStrikerCardId,
+    @Default(false) bool challengeMode,
+    @Default(MatchPhase.notStarted) MatchPhase phase,
+  }) = _MatchState;
+
+  const MatchState._();
+
+  /// Valid phase transitions — single source of truth for match lifecycle.
+  static const Map<MatchPhase, List<MatchPhase>> validTransitions = {
+    MatchPhase.notStarted: [MatchPhase.toss],
+    MatchPhase.toss: [MatchPhase.firstInnings, MatchPhase.abandoned],
+    MatchPhase.firstInnings: [MatchPhase.inningsBreak, MatchPhase.abandoned],
+    MatchPhase.inningsBreak: [MatchPhase.secondInnings, MatchPhase.abandoned],
+    MatchPhase.secondInnings: [MatchPhase.matchComplete, MatchPhase.abandoned],
+    MatchPhase.matchComplete: [],
+    MatchPhase.abandoned: [],
+  };
+
+  /// Returns true if transitioning from [from] to [to] is valid.
+  static bool isValidTransition(MatchPhase from, MatchPhase to) {
+    return validTransitions[from]?.contains(to) ?? false;
   }
+
+  factory MatchState.initial({
+    MatchModel? match,
+    List<MatchEvent> events = const [],
+    bool isSimulating = false,
+    bool isMatchComplete = false,
+    String? currentCommentary,
+    int currentInnings = 1,
+    Map<String, BatsmanStats> batsmanStats = const {},
+    Map<String, BowlerStats> bowlerStats = const {},
+    String homeTeamName = '',
+    String awayTeamName = '',
+    String matchFormat = 't20',
+    int matchOvers = 20,
+    String matchDifficulty = 'Village',
+    bool? homeWon,
+    int coinsAwarded = 0,
+    int xpAwarded = 0,
+    String pitchCondition = 'balanced',
+    String weatherCondition = 'clear',
+    bool userWonToss = true,
+    String tossDecision = 'bat',
+    bool homeBatsFirst = true,
+    int target = 0,
+    List<String> xiOrder1 = const [],
+    List<String> xiOrder2 = const [],
+    String? levelUpPackAwarded,
+    int? newLevel,
+    String strikerCardId = '',
+    String nonStrikerCardId = '',
+    bool challengeMode = false,
+  }) => MatchState(
+    match: match,
+    events: events,
+    isSimulating: isSimulating,
+    isMatchComplete: isMatchComplete,
+    currentCommentary: currentCommentary,
+    currentInnings: currentInnings,
+    batsmanStats: batsmanStats,
+    bowlerStats: bowlerStats,
+    homeTeamName: homeTeamName,
+    awayTeamName: awayTeamName,
+    matchFormat: matchFormat,
+    matchOvers: matchOvers,
+    matchDifficulty: matchDifficulty,
+    homeWon: homeWon,
+    coinsAwarded: coinsAwarded,
+    xpAwarded: xpAwarded,
+    pitchCondition: pitchCondition,
+    weatherCondition: weatherCondition,
+    userWonToss: userWonToss,
+    tossDecision: tossDecision,
+    homeBatsFirst: homeBatsFirst,
+    target: target,
+    xiOrder1: xiOrder1,
+    xiOrder2: xiOrder2,
+    levelUpPackAwarded: levelUpPackAwarded,
+    newLevel: newLevel,
+    strikerCardId: strikerCardId,
+    nonStrikerCardId: nonStrikerCardId,
+    challengeMode: challengeMode,
+  );
 }
 
 /// Per-batsman stats for display in the scorecard.
+/// Kept mutable — updated frequently during ball-by-ball simulation.
 class BatsmanStats {
   final String name;
   final int innings;
@@ -234,9 +149,34 @@ class BatsmanStats {
   });
 
   double get strikeRate => balls > 0 ? (runs / balls) * 100 : 0;
+
+  BatsmanStats copyWith({
+    String? name,
+    int? innings,
+    int? battingOrder,
+    int? runs,
+    int? balls,
+    int? fours,
+    int? sixes,
+    bool? isOut,
+    String? dismissalType,
+  }) {
+    return BatsmanStats(
+      name: name ?? this.name,
+      innings: innings ?? this.innings,
+      battingOrder: battingOrder ?? this.battingOrder,
+      runs: runs ?? this.runs,
+      balls: balls ?? this.balls,
+      fours: fours ?? this.fours,
+      sixes: sixes ?? this.sixes,
+      isOut: isOut ?? this.isOut,
+      dismissalType: dismissalType ?? this.dismissalType,
+    );
+  }
 }
 
 /// Per-bowler stats for display in the scorecard.
+/// Kept mutable — updated frequently during ball-by-ball simulation.
 class BowlerStats {
   final String name;
   final int innings;
@@ -269,6 +209,28 @@ class BowlerStats {
     final fullOvers = balls ~/ 6;
     final remainingBalls = balls % 6;
     return '$fullOvers.$remainingBalls';
+  }
+
+  BowlerStats copyWith({
+    String? name,
+    int? innings,
+    int? overs,
+    int? balls,
+    int? runs,
+    int? wickets,
+    int? maidens,
+    int? dotBalls,
+  }) {
+    return BowlerStats(
+      name: name ?? this.name,
+      innings: innings ?? this.innings,
+      overs: overs ?? this.overs,
+      balls: balls ?? this.balls,
+      runs: runs ?? this.runs,
+      wickets: wickets ?? this.wickets,
+      maidens: maidens ?? this.maidens,
+      dotBalls: dotBalls ?? this.dotBalls,
+    );
   }
 }
 

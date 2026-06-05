@@ -188,7 +188,7 @@ class MatchLocalEngine {
 
     final newTarget = (result.innings == 2 && currentState.target == 0)
         ? MatchHelpers.inningsScoreFromEvents([...currentState.events, result], 1)
-        : null;
+        : currentState.target;
 
     return currentState.copyWith(
       events: events,

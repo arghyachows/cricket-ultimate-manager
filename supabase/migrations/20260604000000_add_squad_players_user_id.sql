@@ -4,23 +4,35 @@
 -- The squad_players table links to squads -> teams -> users.  Denormalizing user_id here
 -- so Supabase Realtime can filter on it directly (realtime filters can only reference
 -- columns on the subscribed table, not joined tables).
+--
+-- NOTE: FK constraint is added LAST (after backfill) so it doesn't fail on the
+-- initial sentinel default. This migration is designed to run cleanly on first
+-- execution in any environment.
 
+-- Step 1: Add column with a sentinel default (nullable first, FK after backfill)
 ALTER TABLE squad_players
-  ADD COLUMN user_id UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000'
-  REFERENCES auth.users(id) ON DELETE CASCADE;
+  ADD COLUMN user_id UUID DEFAULT '00000000-0000-0000-0000-000000000000';
 
--- Backfill: set user_id from the squads -> teams join
+-- Step 2: Backfill user_id from the squads -> teams join
 UPDATE squad_players sp
 SET user_id = t.user_id
 FROM squads s
 JOIN teams t ON t.id = s.team_id
-WHERE sp.squad_id = s.id
-  AND sp.user_id = '00000000-0000-0000-0000-000000000000';
+WHERE sp.squad_id = s.id;
 
--- Index for the realtime filter
-CREATE INDEX idx_squad_players_user ON squad_players(user_id);
+-- Step 3: Make the column NOT NULL now that all rows have real values
+ALTER TABLE squad_players
+  ALTER COLUMN user_id SET NOT NULL;
 
--- Trigger to auto-set user_id on insert (so app code doesn't have to pass it)
+-- Step 4: Add FK constraint (now safe because every row has a real user_id)
+ALTER TABLE squad_players
+  ADD CONSTRAINT fk_squad_players_user
+  FOREIGN KEY (user_id) REFERENCES auth.users(id) ON DELETE CASCADE;
+
+-- Step 5: Index for the realtime filter
+CREATE INDEX IF NOT EXISTS idx_squad_players_user ON squad_players(user_id);
+
+-- Step 6: Trigger to auto-set user_id on insert (so app code doesn't have to pass it)
 CREATE OR REPLACE FUNCTION set_squad_players_user_id()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -32,6 +44,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS trg_squad_players_user_id ON squad_players;
 CREATE TRIGGER trg_squad_players_user_id
   BEFORE INSERT OR UPDATE OF squad_id ON squad_players
   FOR EACH ROW

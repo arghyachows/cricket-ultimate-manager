@@ -804,12 +804,12 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
       'useAICommentary': false,
     };
 
-    final success = await NodeBackendService.startMultiplayerMatch(
+    final result = await NodeBackendService.startMultiplayerMatch(
       matchId: widget.matchId,
       config: config,
     );
 
-    if (success) {
+    if (result.success) {
       print('✅ Multiplayer match started via Node.js backend');
     } else {
       print('❌ Node.js backend failed to start multiplayer match');
