@@ -14,10 +14,10 @@ class FakeRealtimeChannel implements RealtimeChannel {
   int unsubscribeCount = 0;
 
   @override
-  Future<UnsubscribeEnum> unsubscribe([UnsubscribeEnum? unsubscribeType]) async {
+  Future<String> unsubscribe([Duration? timeout]) async {
     unsubscribed = true;
     unsubscribeCount++;
-    return UnsubscribeEnum.ok;
+    return 'ok';
   }
 
   // Stubs for the rest of the RealtimeChannel interface
@@ -31,7 +31,8 @@ class FakeSupabaseClient implements SupabaseClient {
   FakeRealtimeChannel? lastChannel;
 
   @override
-  RealtimeChannel channel(String name, {Map<String, String>? opts}) {
+  RealtimeChannel channel(String name,
+      {RealtimeChannelConfig opts = const RealtimeChannelConfig()}) {
     final ch = FakeRealtimeChannel();
     _channels[name] = ch;
     lastChannel = ch;
@@ -74,11 +75,9 @@ void main() {
     });
 
     test('dispose is safe when channel is null', () {
+      // Verify null-safe unsubscribe doesn't throw
       RealtimeChannel? channel;
-      // Should not throw
-      channel?.unsubscribe();
-      channel = null;
-      expect(channel, isNull);
+      expect(() => channel?.unsubscribe(), returnsNormally);
     });
   });
 
@@ -96,13 +95,11 @@ void main() {
     });
 
     test('dispose is safe when channels are null', () {
+      // Verify null-safe unsubscribe doesn't throw
       RealtimeChannel? squadChannel;
       RealtimeChannel? lineupChannel;
-      // Should not throw
-      squadChannel?.unsubscribe();
-      lineupChannel?.unsubscribe();
-      expect(squadChannel, isNull);
-      expect(lineupChannel, isNull);
+      expect(() => squadChannel?.unsubscribe(), returnsNormally);
+      expect(() => lineupChannel?.unsubscribe(), returnsNormally);
     });
 
     test('refresh method exists and is callable', () {
@@ -125,10 +122,9 @@ void main() {
     });
 
     test('dispose is safe when channel is null', () {
+      // Verify null-safe unsubscribe doesn't throw
       RealtimeChannel? channel;
-      // Should not throw
-      channel?.unsubscribe();
-      expect(channel, isNull);
+      expect(() => channel?.unsubscribe(), returnsNormally);
     });
 
     test('refresh method exists and is callable', () {
@@ -174,13 +170,9 @@ void main() {
       // client tries to deliver an event, the callback won't fire because
       // the channel reference is gone.
       final channel = FakeRealtimeChannel();
-      RealtimeChannel? ref = channel;
 
       // Dispose pattern
-      ref?.unsubscribe();
-      ref = null;
-
-      expect(ref, isNull);
+      channel.unsubscribe();
       expect(channel.unsubscribed, isTrue);
     });
   });

@@ -6,7 +6,6 @@ import '../core/constants.dart';
 import '../core/supabase_service.dart';
 import '../core/notification_service.dart';
 import '../providers/match/tournament_match_manager.dart';
-import '../providers/match_provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/card_packs_provider.dart';
 import '../widgets/tournament_match_widgets.dart';

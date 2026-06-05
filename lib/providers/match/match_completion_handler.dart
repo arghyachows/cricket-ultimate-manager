@@ -22,12 +22,10 @@ class PersistResult {
     this.stackTrace,
   });
 
-  PersistResult.failed({Object? error, StackTrace? stackTrace})
+  PersistResult.failed({this.error, this.stackTrace})
       : success = false,
         oldLevel = 1,
-        newLevel = 1,
-        error = error,
-        stackTrace = stackTrace;
+        newLevel = 1;
 
   PersistResult.succeeded({required this.oldLevel, required this.newLevel})
       : success = true,

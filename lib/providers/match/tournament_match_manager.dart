@@ -1,13 +1,8 @@
 import 'dart:async';
 import 'package:flutter/widgets.dart';
-import 'package:meta/meta.dart';
 import '../../core/node_backend_service.dart';
 import '../../core/supabase_service.dart';
-import '../../core/notification_service.dart';
 import '../../core/constants.dart';
-import '../../providers/auth_provider.dart';
-import '../../providers/match_provider.dart';
-import '../../providers/card_packs_provider.dart';
 import 'match_state.dart';
 
 /// A single entry in the ball-by-ball commentary timeline.
