@@ -4,12 +4,35 @@ import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 import 'package:socket_io_client/socket_io_client.dart' as io;
 import 'app_config.dart';
+import 'retry_with_backoff.dart';
 
-/// Service to interact with Node.js backend for match simulation
+/// SINGLE socket owner for the entire app.
+///
+/// ALL Socket.IO init, connect, disconnect, room-join, and event-subscription
+/// paths funnel through this class. It owns the single [io.Socket] instance
+/// and guarantees:
+///
+/// 1. **Singleton ownership** — only one socket exists at any time;
+///    `MatchWebSocketService` and every screen delegate to this class.
+/// 2. **Idempotent init** — `initSocket()` is safe to call many times;
+///    concurrent or repeated calls are silently deduplicated.
+/// 3. **No stale sockets** — a disconnected / errored socket is always
+///    disposed before a new one is created.
+/// 4. **Shared connection future** — multiple callers awaiting
+///    `waitForConnection()` share the same future; there are never two
+///    simultaneous connection timers.
+///
+/// This class is intentionally all-static — it IS the singleton.
 class NodeBackendService {
   static String get baseUrl => AppConfig.backendUrl;
   
   static io.Socket? _socket;
+
+  /// Guards against concurrent connection attempts — only one init at a time.
+  static bool _connecting = false;
+
+  /// Shared completer so multiple callers can await the same connection.
+  static Completer<bool>? _connectionCompleter;
 
   // Broadcast streams for passive subscribers (dashboard banners, etc.)
   static final _ballUpdateController = StreamController<Map<String, dynamic>>.broadcast();
@@ -30,16 +53,34 @@ class NodeBackendService {
   /// Whether the socket is currently connected
   static bool get isConnected => _socket != null && _socket!.connected;
 
-  /// Initialize Socket.IO connection
+  /// Initialize the singleton Socket.IO connection.
+  ///
+  /// **Fully idempotent** — calling this multiple times or from multiple
+  /// callers is safe:
+  /// - Already connected? → fast-path return, no new socket.
+  /// - Connection in progress? → another caller's init is silently ignored.
+  /// - Stale (disconnected) socket exists? → disposed before creating a new one.
+  ///
+  /// The singleton pattern guarantees that only one [io.Socket] is ever
+  /// alive at any point in the app's lifetime.
   static void initSocket() {
-    // If already connected, skip
+    // Already connected — fast path
     if (_socket != null && _socket!.connected) {
       print('🔌 Socket already connected');
       _registerLifecycleObserver();
       return;
     }
 
-    // Dispose old socket if it exists but isn't connected
+    // Connection already in progress — no redundant init
+    if (_connecting) {
+      print('🔌 Socket connection already in progress, skipping redundant init');
+      return;
+    }
+
+    _connecting = true;
+    _connectionCompleter = Completer<bool>();
+
+    // Dispose stale socket if it exists but isn't connected
     if (_socket != null) {
       print('🔌 Disposing stale socket before reconnecting');
       _socket!.disconnect();
@@ -49,7 +90,7 @@ class NodeBackendService {
 
     _registerLifecycleObserver();
     print('🔌 Initializing Socket.IO connection to $baseUrl');
-    
+
     _socket = io.io(
       baseUrl,
       io.OptionBuilder()
@@ -65,6 +106,11 @@ class NodeBackendService {
 
     _socket!.onConnect((_) {
       print('✅ Connected to Node.js backend');
+      _connecting = false;
+      if (_connectionCompleter != null && !_connectionCompleter!.isCompleted) {
+        _connectionCompleter!.complete(true);
+        _connectionCompleter = null;
+      }
       if (_currentJoinedMatchId != null) {
         print('🔄 Re-joining match room on connect: $_currentJoinedMatchId');
         _socket!.emit('joinMatch', _currentJoinedMatchId);
@@ -77,6 +123,11 @@ class NodeBackendService {
 
     _socket!.onConnectError((error) {
       print('❌ Socket connection error: $error');
+      _connecting = false;
+      if (_connectionCompleter != null && !_connectionCompleter!.isCompleted) {
+        _connectionCompleter!.complete(false);
+        _connectionCompleter = null;
+      }
     });
 
     _socket!.onError((error) {
@@ -104,36 +155,19 @@ class NodeBackendService {
   }
 
   /// Wait for socket to be connected. Returns true if connected within timeout.
+  /// If already connected, returns immediately with no redundant timers.
+  /// If a connection is in progress, shares the same pending future.
   static Future<bool> waitForConnection({Duration timeout = const Duration(seconds: 10)}) async {
+    // Already connected — fast path, no redundant timers
     if (_socket != null && _socket!.connected) return true;
 
-    final completer = Completer<bool>();
-    Timer? timer;
-
-    void onConnect(_) {
-      if (!completer.isCompleted) {
-        timer?.cancel();
-        completer.complete(true);
-      }
+    // Connection in progress — await the shared completer
+    if (_connectionCompleter != null) {
+      return _connectionCompleter!.future.timeout(timeout, onTimeout: () => false);
     }
 
-    void onError(_) {
-      // Don't complete on error — let timeout handle it
-      print('⚠️ Socket error while waiting for connection');
-    }
-
-    _socket?.once('connect', onConnect);
-    _socket?.once('connect_error', onError);
-
-    timer = Timer(timeout, () {
-      if (!completer.isCompleted) {
-        _socket?.off('connect', onConnect);
-        _socket?.off('connect_error', onError);
-        completer.complete(false);
-      }
-    });
-
-    return completer.future;
+    // No connection attempt was started — caller should call initSocket first
+    return false;
   }
 
   /// Join a match room and listen for updates.
@@ -300,57 +334,204 @@ class NodeBackendService {
     }
   }
 
-  /// Start a match simulation
-  static Future<bool> startMatch({
+  /// Start a match simulation with exponential-backoff retry.
+  ///
+  /// Uses [retryWithBackoff] for full jitter (±25%), configurable timeout,
+  /// and structured [RetryResult] error surfacing.
+  /// The matchId serves as an idempotency key — the backend deduplicates
+  /// start requests with the same matchId.
+  static Future<MatchStartResult> startMatch({
     required String matchId,
     required Map<String, dynamic> config,
   }) async {
-    try {
-      print('🚀 Node.js: Starting match $matchId');
-      print('🌐 Backend URL: $baseUrl/api/match/start');
-      
-      final response = await http.post(
-        Uri.parse('$baseUrl/api/match/start'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({
-          'matchId': matchId,
-          'config': config,
-        }),
-      ).timeout(const Duration(seconds: 10));
+    final result = await retryWithBackoff(
+      fn: () async {
+        print('🚀 Node.js: Starting match $matchId');
+        print('🌐 Backend URL: $baseUrl/api/match/start');
 
-      print('📡 Node.js response: ${response.statusCode}');
-      
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        print('✅ Node.js success: $data');
-        return data['success'] == true;
+        final response = await http.post(
+          Uri.parse('$baseUrl/api/match/start'),
+          headers: {'Content-Type': 'application/json'},
+          body: json.encode({
+            'matchId': matchId,
+            'config': config,
+          }),
+        ).timeout(const Duration(seconds: 10));
+
+        print('📡 Node.js response: ${response.statusCode}');
+
+        if (response.statusCode == 200) {
+          final data = json.decode(response.body);
+          print('✅ Node.js success: $data');
+          return data['success'] == true;
+        }
+
+        // Throw to trigger retry for retryable statuses
+        if (isRetryableHttpStatus(response.statusCode)) {
+          throw _RetryableHttpException(
+            'API returned ${response.statusCode}',
+            response.statusCode,
+          );
+        }
+
+        print('❌ Node.js match start failed: ${response.statusCode} ${response.body}');
+        // Non-retryable — return failure, not throw
+        return false;
+      },
+      config: const RetryConfig(
+        maxAttempts: 5,
+        baseDelayMs: 1000,
+        useJitter: true,
+      ),
+      timeout: const Duration(seconds: 12),
+    );
+
+    if (!result.succeeded) {
+      if (result.error is _RetryableHttpException) {
+        final httpErr = result.error as _RetryableHttpException;
+        print('❌ Match start failed after ${result.attemptsUsed} attempts (HTTP ${httpErr.statusCode})');
+      } else if (result.error != null) {
+        print('❌ Match start failed after ${result.attemptsUsed} attempts: ${result.error}');
+      } else {
+        print('❌ Match start returned failure after ${result.attemptsUsed} attempts');
       }
-      
-      print('❌ Node.js match start failed: ${response.statusCode} ${response.body}');
-      return false;
-    } catch (e, stackTrace) {
-      print('❌ Node.js match start error: $e');
-      print('Stack trace: $stackTrace');
-      return false;
     }
+
+    return MatchStartResult(
+      success: result.value ?? false,
+      attemptsUsed: result.attemptsUsed,
+      error: result.error?.toString(),
+    );
   }
 
-  /// Stop a running match
+  /// Stop a running match with exponential-backoff retry.
   static Future<bool> stopMatch(String matchId) async {
-    try {
-      print('⏹️ Stopping match: $matchId');
-      
-      final response = await http.post(
-        Uri.parse('$baseUrl/api/match/stop'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({'matchId': matchId}),
-      ).timeout(const Duration(seconds: 5));
+    final result = await retryWithBackoff(
+      fn: () async {
+        print('⏹️ Stopping match: $matchId');
+        
+        final response = await http.post(
+          Uri.parse('$baseUrl/api/match/stop'),
+          headers: {'Content-Type': 'application/json'},
+          body: json.encode({'matchId': matchId}),
+        ).timeout(const Duration(seconds: 10));
 
-      return response.statusCode == 200;
-    } catch (e) {
-      print('❌ Node.js match stop error: $e');
-      return false;
+        if (response.statusCode == 200) {
+          return true;
+        }
+
+        if (isRetryableHttpStatus(response.statusCode)) {
+          throw _RetryableHttpException(
+            'API returned ${response.statusCode}',
+            response.statusCode,
+          );
+        }
+
+        print('❌ Node.js match stop failed: ${response.statusCode} ${response.body}');
+        return false;
+      },
+      config: const RetryConfig(
+        maxAttempts: 3,
+        baseDelayMs: 500,
+        useJitter: true,
+      ),
+      timeout: const Duration(seconds: 15),
+    );
+
+    if (!result.succeeded && result.error != null) {
+      print('❌ Match stop failed after ${result.attemptsUsed} attempts: ${result.error}');
     }
+
+    return result.value ?? false;
+  }
+
+  /// Confirm a match result with idempotency via retryWithBackoff.
+  ///
+  /// Sends a confirmation to the backend for the given match. The operation
+  /// is idempotent — confirming the same match multiple times is safe.
+  static Future<bool> confirmMatch(String matchId) async {
+    final result = await retryWithBackoff(
+      fn: () async {
+        print('✅ Confirming match: $matchId');
+        
+        final response = await http.post(
+          Uri.parse('$baseUrl/api/match/confirm'),
+          headers: {'Content-Type': 'application/json'},
+          body: json.encode({'matchId': matchId}),
+        ).timeout(const Duration(seconds: 10));
+
+        if (response.statusCode == 200) {
+          return true;
+        }
+
+        if (isRetryableHttpStatus(response.statusCode)) {
+          throw _RetryableHttpException(
+            'API returned ${response.statusCode}',
+            response.statusCode,
+          );
+        }
+
+        print('❌ Node.js match confirm failed: ${response.statusCode} ${response.body}');
+        return false;
+      },
+      config: const RetryConfig(
+        maxAttempts: 3,
+        baseDelayMs: 500,
+        useJitter: true,
+      ),
+      timeout: const Duration(seconds: 15),
+    );
+
+    if (!result.succeeded && result.error != null) {
+      print('❌ Match confirm failed after ${result.attemptsUsed} attempts: ${result.error}');
+    }
+
+    return result.value ?? false;
+  }
+
+  /// Cancel a running match with idempotency via retryWithBackoff.
+  ///
+  /// Sends a cancellation request to the backend for the given match.
+  /// The operation is idempotent — cancelling an already-cancelled or
+  /// completed match returns success without side effects.
+  static Future<bool> cancelMatch(String matchId) async {
+    final result = await retryWithBackoff(
+      fn: () async {
+        print('❌ Cancelling match: $matchId');
+        
+        final response = await http.post(
+          Uri.parse('$baseUrl/api/match/cancel'),
+          headers: {'Content-Type': 'application/json'},
+          body: json.encode({'matchId': matchId}),
+        ).timeout(const Duration(seconds: 10));
+
+        if (response.statusCode == 200) {
+          return true;
+        }
+
+        if (isRetryableHttpStatus(response.statusCode)) {
+          throw _RetryableHttpException(
+            'API returned ${response.statusCode}',
+            response.statusCode,
+          );
+        }
+
+        print('❌ Node.js match cancel failed: ${response.statusCode} ${response.body}');
+        return false;
+      },
+      config: const RetryConfig(
+        maxAttempts: 3,
+        baseDelayMs: 500,
+        useJitter: true,
+      ),
+      timeout: const Duration(seconds: 15),
+    );
+
+    if (!result.succeeded && result.error != null) {
+      print('❌ Match cancel failed after ${result.attemptsUsed} attempts: ${result.error}');
+    }
+
+    return result.value ?? false;
   }
 
   /// Get current match state
@@ -413,39 +594,60 @@ class NodeBackendService {
 
   // ─── Multiplayer match methods (same backend, different route) ──────
 
-  /// Start a multiplayer match simulation
-  static Future<bool> startMultiplayerMatch({
+  /// Start a multiplayer match with exponential-backoff retry.
+  static Future<MatchStartResult> startMultiplayerMatch({
     required String matchId,
     required Map<String, dynamic> config,
   }) async {
-    try {
-      print('🚀 Node.js: Starting multiplayer match $matchId');
-      print('🌐 Backend URL: $baseUrl/api/multiplayer/start');
+    final result = await retryWithBackoff(
+      fn: () async {
+        print('🚀 Node.js: Starting multiplayer match $matchId');
+        print('🌐 Backend URL: $baseUrl/api/multiplayer/start');
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/api/multiplayer/start'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({
-          'matchId': matchId,
-          'config': config,
-        }),
-      ).timeout(const Duration(seconds: 10));
+        final response = await http.post(
+          Uri.parse('$baseUrl/api/multiplayer/start'),
+          headers: {'Content-Type': 'application/json'},
+          body: json.encode({
+            'matchId': matchId,
+            'config': config,
+          }),
+        ).timeout(const Duration(seconds: 10));
 
-      print('📡 Node.js multiplayer response: ${response.statusCode}');
+        print('📡 Node.js multiplayer response: ${response.statusCode}');
 
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        print('✅ Node.js multiplayer success: $data');
-        return data['success'] == true;
-      }
+        if (response.statusCode == 200) {
+          final data = json.decode(response.body);
+          print('✅ Node.js multiplayer success: $data');
+          return data['success'] == true;
+        }
 
-      print('❌ Node.js multiplayer start failed: ${response.statusCode} ${response.body}');
-      return false;
-    } catch (e, stackTrace) {
-      print('❌ Node.js multiplayer start error: $e');
-      print('Stack trace: $stackTrace');
-      return false;
+        if (isRetryableHttpStatus(response.statusCode)) {
+          throw _RetryableHttpException(
+            'API returned ${response.statusCode}',
+            response.statusCode,
+          );
+        }
+
+        print('❌ Node.js multiplayer start failed: ${response.statusCode} ${response.body}');
+        return false;
+      },
+      config: const RetryConfig(
+        maxAttempts: 5,
+        baseDelayMs: 1000,
+        useJitter: true,
+      ),
+      timeout: const Duration(seconds: 12),
+    );
+
+    if (!result.succeeded && result.error != null) {
+      print('❌ Multiplayer match start failed after ${result.attemptsUsed} attempts: ${result.error}');
     }
+
+    return MatchStartResult(
+      success: result.value ?? false,
+      attemptsUsed: result.attemptsUsed,
+      error: result.error?.toString(),
+    );
   }
 
   /// Get multiplayer match state
@@ -649,7 +851,12 @@ class NodeBackendService {
     }
   }
 
-  /// Dispose socket connection
+  /// Dispose the singleton socket and reset all internal state.
+  ///
+  /// Safe to call multiple times — second call is a no-op.
+  /// After disposal the socket is null, _connecting is false, and any
+  /// pending connection completer is cleared. Callers MUST call
+  /// initSocket() again before the next connection attempt.
   static void dispose() {
     if (_socket != null) {
       print('🔌 Disposing Socket.IO connection');
@@ -657,6 +864,8 @@ class NodeBackendService {
       _socket!.dispose();
       _socket = null;
     }
+    _connecting = false;
+    _connectionCompleter = null;
   }
 
   static bool _lifecycleObserverRegistered = false;
@@ -691,4 +900,29 @@ class _SocketLifecycleObserver extends WidgetsBindingObserver {
       NodeBackendService.handleAppResume();
     }
   }
+}
+
+/// Structured result for match start operations.
+///
+/// Provides more context than a bare bool — caller can inspect
+/// how many retry attempts were made and the last error message.
+class MatchStartResult {
+  final bool success;
+  final int attemptsUsed;
+  final String? error;
+
+  const MatchStartResult({
+    required this.success,
+    this.attemptsUsed = 1,
+    this.error,
+  });
+}
+
+/// Internal exception for retryable HTTP status codes.
+class _RetryableHttpException implements Exception {
+  final String message;
+  final int statusCode;
+  _RetryableHttpException(this.message, this.statusCode);
+  @override
+  String toString() => '_RetryableHttpException($statusCode): $message';
 }
