@@ -1,7 +1,7 @@
 class MarketListing {
   final String id;
   final String sellerId;
-  final String userCardId;
+  final String? userCardId;
   final int buyNowPrice;
   final int startingBid;
   final int currentBid;
@@ -11,11 +11,16 @@ class MarketListing {
   final DateTime? soldAt;
   final String? sellerUsername;
   final Map<String, dynamic>? userCardData;
+  // Contract listing fields
+  final String listingType; // 'card' or 'contract'
+  final String? contractTypeId;
+  final int quantity;
+  final Map<String, dynamic>? contractTypeData;
 
   const MarketListing({
     required this.id,
     required this.sellerId,
-    required this.userCardId,
+    this.userCardId,
     required this.buyNowPrice,
     required this.startingBid,
     this.currentBid = 0,
@@ -25,9 +30,14 @@ class MarketListing {
     this.soldAt,
     this.sellerUsername,
     this.userCardData,
+    this.listingType = 'card',
+    this.contractTypeId,
+    this.quantity = 1,
+    this.contractTypeData,
   });
 
   factory MarketListing.fromJson(Map<String, dynamic> json) {
+    final listingType = json['listing_type'] ?? 'card';
     return MarketListing(
       id: json['id'],
       sellerId: json['seller_id'],
@@ -42,6 +52,10 @@ class MarketListing {
           json['sold_at'] != null ? DateTime.parse(json['sold_at']) : null,
       sellerUsername: json['users']?['username'],
       userCardData: json['user_cards'],
+      listingType: listingType,
+      contractTypeId: json['contract_type_id'],
+      quantity: json['quantity'] ?? 1,
+      contractTypeData: json['contract_types'],
     );
   }
 

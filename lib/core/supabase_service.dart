@@ -126,13 +126,39 @@ class SupabaseService {
     String? rarity,
     String? role,
     String? sortBy,
+    String? listingType, // 'card', 'contract', or null for all
   }) async {
-    var query = client
-        .from('transfer_market')
-        .select('*, user_cards(*, player_cards(*)), users!seller_id(username)')
-        .eq('status', 'active');
+    final baseQuery = client.from('transfer_market').select(
+        '*, user_cards(*, player_cards(*)), users!seller_id(username), contract_types(*)').eq('status', 'active');
 
-    return await query.order('created_at', ascending: false);
+    // Apply listing type filter
+    var query = listingType != null
+        ? baseQuery.eq('listing_type', listingType)
+        : baseQuery;
+
+    // Apply sorting
+    switch (sortBy) {
+      case 'price_asc':
+        query = query.order('buy_now_price', ascending: true);
+        break;
+      case 'price_desc':
+        query = query.order('buy_now_price', ascending: false);
+        break;
+      case 'ending_soon':
+        query = query.order('expires_at', ascending: true);
+        break;
+      case 'newest':
+      default:
+        query = query.order('created_at', ascending: false);
+        break;
+    }
+
+    // Filter by rarity/role for card listings only (client-side for now)
+    if (rarity != null || role != null) {
+      // Complex query needed; filtering done client-side in provider
+    }
+
+    return await query;
   }
 
   static RealtimeChannel subscribeToMarket(
@@ -237,6 +263,19 @@ class SupabaseService {
     });
   }
 
+  static Future<void> grantLevelUpContractPack(String userId, int oldLevel, int newLevel) async {
+    if (newLevel <= oldLevel) return;
+    try {
+      await client.rpc('grant_level_up_contract_pack', params: {
+        'p_user_id': userId,
+        'p_old_level': oldLevel,
+        'p_new_level': newLevel,
+      });
+    } catch (e) {
+      print('❌ [GRANT LEVEL UP CONTRACT PACK] Error: $e');
+    }
+  }
+
   static Future<List<Map<String, dynamic>>> getMatches() async {
     final userId = currentUserId;
     if (userId == null) return [];
@@ -305,5 +344,69 @@ class SupabaseService {
         .eq('user_id', userId)
         .order('created_at', ascending: false)
         .limit(limit);
+  }
+
+  // ---- CONTRACTS ----
+  static Future<List<Map<String, dynamic>>> getContractTypes() async {
+    return await client
+        .from('contract_types')
+        .select()
+        .eq('is_available', true);
+  }
+
+  static Future<List<Map<String, dynamic>>> getUserContracts() async {
+    final userId = currentUserId;
+    if (userId == null) return [];
+    return await client
+        .from('user_contracts')
+        .select('*, contract_types:contract_type_id(*)')
+        .eq('user_id', userId)
+        .gt('quantity', 0);
+  }
+
+  static Future<List<Map<String, dynamic>>> getUserContractPacks() async {
+    final userId = currentUserId;
+    if (userId == null) return [];
+    return await client
+        .from('user_contract_packs')
+        .select()
+        .eq('user_id', userId)
+        .order('created_at', ascending: false);
+  }
+
+  static RealtimeChannel subscribeToContracts(
+      String userId, void Function() onUpdate) {
+    return client
+        .channel('user_contracts_$userId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'user_contracts',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_id',
+            value: userId,
+          ),
+          callback: (_) => onUpdate(),
+        )
+        .subscribe();
+  }
+
+  static RealtimeChannel subscribeToContractPacks(
+      String userId, void Function() onUpdate) {
+    return client
+        .channel('user_contract_packs_$userId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'user_contract_packs',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_id',
+            value: userId,
+          ),
+          callback: (_) => onUpdate(),
+        )
+        .subscribe();
   }
 }

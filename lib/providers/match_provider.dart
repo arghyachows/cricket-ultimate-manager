@@ -75,6 +75,15 @@ class MatchNotifier extends StateNotifier<MatchState> {
     _matchCompleteFired = false;
 
     final isHomeBatFirst = homeBatsFirst;
+    final userId = SupabaseService.currentUserId;
+
+    // Determine user's XI card IDs for contract consumption
+    // User is home team if homeTeamId matches their team, or in single-player (awayTeamId == 'ai')
+    final isSinglePlayer = awayTeamId == 'ai';
+    final isUserHome = isSinglePlayer || (userId != null && homeTeamId == userId);
+    final userXI = isUserHome ? homeXI : awayXI;
+    final userXiCardIds = userXI.map((p) => p.userCardId).toList();
+
     state = MatchState(
       phase: MatchPhase.notStarted,
       isSimulating: true,
@@ -91,6 +100,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
       challengeMode: challengeMode,
       xiOrder1: (isHomeBatFirst ? homeXI : awayXI).map<String>(_playerName).toList(),
       xiOrder2: (isHomeBatFirst ? awayXI : homeXI).map<String>(_playerName).toList(),
+      userXiCardIds: userXiCardIds,
     );
 
     if (_nodeBackendEnabled) {
@@ -255,7 +265,11 @@ class MatchNotifier extends StateNotifier<MatchState> {
     // Persist to DB — local state (coins/XP) only updated on success
     final userId = SupabaseService.currentUserId;
     if (userId != null) {
-      _persistAndApplyRewards(userId, rewards);
+      // Generate idempotency key for this match completion
+      final idempotencyKey = 'match_complete_${state.match?.id ?? DateTime.now().millisecondsSinceEpoch}';
+      
+      // Consume contracts AFTER simulation but BEFORE reward persistence
+      _consumeContractsAndPersistRewards(userId, rewards, state.matchDifficulty, idempotencyKey);
     }
 
     // Persist career stats
@@ -273,11 +287,51 @@ class MatchNotifier extends StateNotifier<MatchState> {
     }
   }
 
+  /// Consume contracts for user's XI, then persist rewards.
+  /// Contract consumption happens AFTER match simulation but BEFORE reward persistence.
+  Future<void> _consumeContractsAndPersistRewards(
+    String userId,
+    ({int coins, int xp, bool? homeWon}) rewards,
+    String difficulty,
+    String idempotencyKey,
+  ) async {
+    final userXiCardIds = state.userXiCardIds;
+    
+    if (userXiCardIds.isNotEmpty) {
+      final contractResult = await MatchCompletionHandler.consumeContracts(
+        userId: userId,
+        matchId: state.match?.id ?? '',
+        userXiCardIds: userXiCardIds,
+        idempotencyKey: idempotencyKey,
+      );
+
+      if (!contractResult.success) {
+        // Contract consumption failed — surface error but continue to try rewards
+        final userNotifier = ref.read(currentUserProvider.notifier);
+        userNotifier.setPersistenceError(
+          'Failed to consume contracts: ${contractResult.error}',
+          pendingCoins: rewards.coins,
+          pendingXp: rewards.xp,
+          pendingHomeWon: rewards.homeWon,
+        );
+      } else if (contractResult.totalErrors > 0) {
+        // Some players had errors (e.g., already out of contracts)
+        print('⚠️ [CONTRACTS] Some contracts could not be consumed: ${contractResult.errors}');
+      }
+      
+      // Refresh user cards to get updated contracts_remaining
+      ref.read(userCardsProvider.notifier).refresh();
+    }
+
+    // Now persist rewards (after contract consumption)
+    await _persistAndApplyRewards(userId, (coins: rewards.coins, xp: rewards.xp, homeWon: rewards.homeWon), difficulty);
+  }
+
   /// Persist rewards to the database. On success, applies local state (coins/XP/level).
   /// On failure, surfaces the error via [currentUserProvider] and stores pending rewards for retry.
-  Future<void> _persistAndApplyRewards(String userId, ({int coins, int xp, bool? homeWon}) rewards) async {
+  Future<void> _persistAndApplyRewards(String userId, ({int coins, int xp, bool? homeWon}) rewards, String difficulty) async {
     final result = await MatchCompletionHandler.persistRewards(
-      userId: userId, coins: rewards.coins, xp: rewards.xp, won: rewards.homeWon == true,
+      userId: userId, coins: rewards.coins, xp: rewards.xp, won: rewards.homeWon, difficulty: difficulty,
     );
 
     if (!result.success) {
@@ -287,7 +341,8 @@ class MatchNotifier extends StateNotifier<MatchState> {
         'Failed to save rewards: ${result.error}. Your coins and XP have not been updated.',
         pendingCoins: rewards.coins,
         pendingXp: rewards.xp,
-        pendingHomeWon: rewards.homeWon == true,
+        pendingHomeWon: rewards.homeWon,
+        pendingDifficulty: difficulty,
       );
       // Refresh from DB to ensure we show the last known good state
       ref.read(currentUserProvider.notifier).silentRefresh();
@@ -313,6 +368,13 @@ class MatchNotifier extends StateNotifier<MatchState> {
       );
     }
 
+    // Set contract pack awarded if any
+    if (result.contractPackAwarded != null && result.contractPackAwarded!.isNotEmpty) {
+      state = state.copyWith(
+        contractPackAwarded: result.contractPackAwarded,
+      );
+    }
+
     ref.read(currentUserProvider.notifier).silentRefresh();
     ref.read(userCardPacksProvider.notifier).refresh();
   }
@@ -324,7 +386,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
     if (pending == null) return;
     final userId = SupabaseService.currentUserId;
     if (userId == null) return;
-    await _persistAndApplyRewards(userId, pending);
+    await _persistAndApplyRewards(userId, (coins: pending.coins, xp: pending.xp, homeWon: pending.homeWon), pending.difficulty);
   }
 
   // ── Helpers ──

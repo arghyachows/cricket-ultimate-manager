@@ -8,6 +8,7 @@ import '../core/notification_service.dart';
 import '../providers/match/tournament_match_manager.dart';
 import '../providers/auth_provider.dart';
 import '../providers/card_packs_provider.dart';
+import '../providers/contracts_provider.dart';
 import '../widgets/tournament_match_widgets.dart';
 
 class TournamentMatchScreen extends ConsumerStatefulWidget {
@@ -86,6 +87,14 @@ class _TournamentMatchScreenState
       levelUpPack = AppConstants.packNameForLevel(newLevel);
     }
 
+    // Determine contract pack for tournament matches
+    final contractPackName = AppConstants.contractPackForDifficulty(
+      'tournament',
+      won: userWon,
+      isMultiplayer: false,
+      isRanked: false,
+    );
+
     _persistRewards(coins, xp, userWon);
 
     NotificationService.instance.showMatchResult(
@@ -93,16 +102,34 @@ class _TournamentMatchScreenState
       body: '$result — +$coins coins, +$xp XP',
     );
 
+    s.coinsAwarded = coins;
+    s.xpAwarded = xp;
     s.levelUpPackAwarded = levelUpPack;
     s.newLevel = newLevel > oldLevel ? newLevel : null;
+    s.contractPackAwarded = contractPackName.isNotEmpty ? contractPackName : null;
   }
 
-  Future<void> _persistRewards(int coins, int xp, bool won) async {
+  Future<void> _persistRewards(int coins, int xp, bool? won) async {
     final userId = SupabaseService.currentUserId;
     if (userId == null) return;
+    
+    // Determine contract pack for tournament matches
+    final contractPackName = AppConstants.contractPackForDifficulty(
+      'tournament',
+      won: won,
+      isMultiplayer: false,
+      isRanked: false,
+    );
+    
     try {
       await SupabaseService.client.rpc('award_match_rewards', params: {
-        'p_user_id': userId, 'p_coins': coins, 'p_xp': xp, 'p_won': won,
+        'p_user_id': userId,
+        'p_coins': coins,
+        'p_xp': xp,
+        'p_won': won ?? false,
+        'p_contract_pack_name': contractPackName.isNotEmpty ? contractPackName : null,
+        'p_is_multiplayer': false,
+        'p_is_ranked': false,
       });
     } catch (_) {
       try {
@@ -117,8 +144,28 @@ class _TournamentMatchScreenState
           'xp': newXp,
           'level': newDbLevel.clamp(1, AppConstants.maxLevel),
           'matches_played': (data['matches_played'] as int? ?? 0) + 1,
-          if (won) 'matches_won': (data['matches_won'] as int? ?? 0) + 1,
+          if (won == true) 'matches_won': (data['matches_won'] as int? ?? 0) + 1,
         }).eq('id', userId);
+        
+        // Fallback: manually grant contract pack if earned
+        if (contractPackName.isNotEmpty) {
+          final probs = AppConstants.contractPackProbabilities[contractPackName];
+          if (probs != null) {
+            await SupabaseService.client.from('user_contract_packs').insert({
+              'user_id': userId,
+              'pack_name': contractPackName,
+              'contract_count': 4,
+              'bronze_chance': (probs['bronze']! * 100),
+              'silver_chance': (probs['silver']! * 100),
+              'gold_chance': (probs['gold']! * 100),
+              'elite_chance': (probs['elite']! * 100),
+              'legend_chance': (probs['legend']! * 100),
+              'source': 'reward',
+              'opened': false,
+            });
+          }
+        }
+        
         try {
           await SupabaseService.grantLevelUpPack(userId, oldDbLevel, newDbLevel);
         } catch (_) {}
@@ -127,6 +174,7 @@ class _TournamentMatchScreenState
     await Future.delayed(const Duration(milliseconds: 800));
     ref.read(currentUserProvider.notifier).silentRefresh();
     ref.read(userCardPacksProvider.notifier).refresh();
+    ref.read(userContractPacksProvider.notifier).refresh();
   }
 
   @override
@@ -261,6 +309,13 @@ class _TournamentMatchScreenState
             Text('LEVEL UP! → Level ${s.newLevel} — ${s.levelUpPackAwarded} earned!',
                 style: const TextStyle(
                     color: AppTheme.accent, fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center),
+          ],
+          if (s.contractPackAwarded != null && s.contractPackAwarded!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text('CONTRACT PACK EARNED! — ${s.contractPackAwarded}',
+                style: const TextStyle(
+                    color: AppTheme.cardGold, fontWeight: FontWeight.bold),
                 textAlign: TextAlign.center),
           ],
         ],

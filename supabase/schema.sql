@@ -88,6 +88,8 @@ CREATE TABLE user_cards (
     runs_scored INTEGER NOT NULL DEFAULT 0,
     wickets_taken INTEGER NOT NULL DEFAULT 0,
     is_tradeable BOOLEAN NOT NULL DEFAULT true,
+    contracts_remaining INT NOT NULL DEFAULT 7,
+    contracts_max INT NOT NULL DEFAULT 7,
     acquired_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -265,6 +267,45 @@ CREATE TABLE pack_openings (
 );
 
 -- ============================================================
+-- CONTRACTS SYSTEM
+-- ============================================================
+
+CREATE TABLE contract_types (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name TEXT NOT NULL UNIQUE,
+    tier TEXT NOT NULL CHECK (tier IN ('bronze', 'silver', 'gold', 'elite', 'legend')),
+    matches_awarded INT NOT NULL CHECK (matches_awarded > 0),
+    image_url TEXT,
+    is_available BOOLEAN NOT NULL DEFAULT true,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE user_contracts (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    contract_type_id UUID NOT NULL REFERENCES contract_types(id) ON DELETE CASCADE,
+    quantity INT NOT NULL DEFAULT 1 CHECK (quantity >= 0),
+    source TEXT NOT NULL CHECK (source IN ('reward', 'purchase', 'tournament', 'market', 'pack')),
+    acquired_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(user_id, contract_type_id, source)
+);
+
+CREATE TABLE user_contract_packs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    pack_name TEXT NOT NULL,
+    contract_count INT NOT NULL DEFAULT 3 CHECK (contract_count > 0),
+    bronze_chance NUMERIC(5,2) NOT NULL DEFAULT 60.00 CHECK (bronze_chance >= 0 AND bronze_chance <= 100),
+    silver_chance NUMERIC(5,2) NOT NULL DEFAULT 25.00 CHECK (silver_chance >= 0 AND silver_chance <= 100),
+    gold_chance NUMERIC(5,2) NOT NULL DEFAULT 10.00 CHECK (gold_chance >= 0 AND gold_chance <= 100),
+    elite_chance NUMERIC(5,2) NOT NULL DEFAULT 4.00 CHECK (elite_chance >= 0 AND elite_chance <= 100),
+    legend_chance NUMERIC(5,2) NOT NULL DEFAULT 1.00 CHECK (legend_chance >= 0 AND legend_chance <= 100),
+    source TEXT NOT NULL CHECK (source IN ('reward', 'purchase', 'tournament', 'level_up')),
+    opened BOOLEAN NOT NULL DEFAULT false,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- ============================================================
 -- TOURNAMENTS
 -- ============================================================
 
@@ -373,12 +414,21 @@ CREATE INDEX idx_player_cards_rarity ON player_cards(rarity);
 CREATE INDEX idx_player_cards_role ON player_cards(role);
 CREATE INDEX idx_player_cards_rating ON player_cards(rating);
 
+-- Contracts indexes
+CREATE INDEX idx_user_contracts_user ON user_contracts(user_id);
+CREATE INDEX idx_user_contracts_user_type ON user_contracts(user_id, contract_type_id);
+CREATE INDEX idx_user_contract_packs_user_opened ON user_contract_packs(user_id, opened);
+CREATE INDEX idx_contract_types_available ON contract_types(is_available);
+CREATE INDEX idx_user_cards_contracts_remaining ON user_cards(user_id, contracts_remaining);
+
 -- ============================================================
 -- ROW LEVEL SECURITY
 -- ============================================================
 
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_cards ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_contracts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_contract_packs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE teams ENABLE ROW LEVEL SECURITY;
 ALTER TABLE squads ENABLE ROW LEVEL SECURITY;
 ALTER TABLE squad_players ENABLE ROW LEVEL SECURITY;
@@ -415,6 +465,14 @@ CREATE OR REPLACE TRIGGER on_auth_user_created
 -- User cards - users can only see their own
 CREATE POLICY "Users can view own cards" ON user_cards FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "Users can manage own cards" ON user_cards FOR ALL USING (auth.uid() = user_id);
+
+-- User contracts - users can only see/manage their own
+CREATE POLICY "Users can view own contracts" ON user_contracts FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can manage own contracts" ON user_contracts FOR ALL USING (auth.uid() = user_id);
+
+-- User contract packs - users can only see/manage their own
+CREATE POLICY "Users can view own contract packs" ON user_contract_packs FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can manage own contract packs" ON user_contract_packs FOR ALL USING (auth.uid() = user_id);
 
 -- Teams
 CREATE POLICY "Users can view all teams" ON teams FOR SELECT USING (true);
@@ -468,6 +526,9 @@ CREATE POLICY "Anyone can view player cards" ON player_cards FOR SELECT USING (t
 
 ALTER TABLE pack_types ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Anyone can view pack types" ON pack_types FOR SELECT USING (true);
+
+ALTER TABLE contract_types ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Anyone can view contract types" ON contract_types FOR SELECT USING (true);
 
 ALTER TABLE tournaments ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Anyone can view tournaments" ON tournaments FOR SELECT USING (true);
@@ -573,6 +634,18 @@ BEGIN
     WHERE status = 'active' AND expires_at < NOW();
 END;
 $$ LANGUAGE plpgsql;
+
+-- ============================================================
+-- SEED DATA: Contract Types
+-- ============================================================
+
+INSERT INTO contract_types (name, tier, matches_awarded, is_available) VALUES
+    ('Bronze Contract', 'bronze', 3, true),
+    ('Silver Contract', 'silver', 7, true),
+    ('Gold Contract', 'gold', 15, true),
+    ('Elite Contract', 'elite', 30, true),
+    ('Legend Contract', 'legend', 50, true)
+ON CONFLICT (name) DO NOTHING;
 
 -- ============================================================
 -- SEED DATA: Pack Types

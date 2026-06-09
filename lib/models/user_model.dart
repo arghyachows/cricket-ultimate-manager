@@ -12,6 +12,7 @@ class UserModel {
   final int matchesPlayed;
   final int matchesWon;
   final DateTime? lastDailyReward;
+  final int dailyStreak;
   final DateTime createdAt;
 
   const UserModel({
@@ -28,6 +29,7 @@ class UserModel {
     this.matchesPlayed = 0,
     this.matchesWon = 0,
     this.lastDailyReward,
+    this.dailyStreak = 0,
     required this.createdAt,
   });
 
@@ -48,6 +50,7 @@ class UserModel {
       lastDailyReward: json['last_daily_reward'] != null
           ? DateTime.parse(json['last_daily_reward'])
           : null,
+      dailyStreak: json['daily_streak'] ?? 0,
       createdAt: DateTime.parse(json['created_at']),
     );
   }
@@ -78,6 +81,7 @@ class UserModel {
     int? seasonPoints,
     int? matchesPlayed,
     int? matchesWon,
+    int? dailyStreak,
   }) {
     return UserModel(
       id: id,
@@ -93,6 +97,7 @@ class UserModel {
       matchesPlayed: matchesPlayed ?? this.matchesPlayed,
       matchesWon: matchesWon ?? this.matchesWon,
       lastDailyReward: lastDailyReward,
+      dailyStreak: dailyStreak ?? this.dailyStreak,
       createdAt: createdAt,
     );
   }

@@ -588,6 +588,50 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen>
             ),
             const SizedBox(height: 12),
           ],
+          // Contract pack reward
+          if (state.contractPackAwarded != null && state.contractPackAwarded!.isNotEmpty) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    AppTheme.cardGold.withValues(alpha: 0.15),
+                    Colors.transparent,
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppTheme.cardGold.withValues(alpha: 0.4)),
+              ),
+              child: Column(
+                children: [
+                  const Icon(Icons.card_giftcard, color: AppTheme.cardGold, size: 28),
+                  const SizedBox(height: 4),
+                  Text(
+                    'CONTRACT PACK EARNED!',
+                    style: const TextStyle(
+                      color: AppTheme.cardGold,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.assignment, color: Colors.white70, size: 18),
+                      const SizedBox(width: 6),
+                      Text(
+                        '${state.contractPackAwarded} earned!',
+                        style: const TextStyle(color: Colors.white70, fontSize: 14),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
           // Action buttons
           Row(
             mainAxisSize: MainAxisSize.min,

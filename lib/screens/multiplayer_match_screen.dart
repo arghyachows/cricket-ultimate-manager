@@ -9,6 +9,7 @@ import '../core/constants.dart';
 import '../core/supabase_service.dart';
 import '../core/node_backend_service.dart';
 import '../models/models.dart';
+import '../providers/providers.dart';
 import '../providers/match_provider.dart';
 import '../providers/multiplayer_provider.dart';
 import '../providers/auth_provider.dart';
@@ -268,6 +269,7 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
   _MultiplayerMatchState _state = const _MultiplayerMatchState();
 
   StreamSubscription? _realtimeSub;
+  RealtimeChannel? _realtimeChannel;
   final _rng = Random();
 
   // Match DB data
@@ -276,6 +278,7 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
 
   // Socket.IO state for real-time ball updates (same approach as quick match)
   bool _socketIOActive = false;
+  bool _mpMatchCompleteFired = false;
   Timer? _pollingTimer;
 
   String _normalizeTossWinner(dynamic rawWinner, Map<String, dynamic> data) {
@@ -344,8 +347,11 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
       NodeBackendService.leaveMatch(widget.matchId);
       _socketIOActive = false;
     }
-    // Unsubscribe from realtime channel
-    SupabaseService.client.channel('mp_match_${widget.matchId}').unsubscribe();
+    // Unsubscribe from realtime channel that was actually subscribed
+    if (_realtimeChannel != null) {
+      SupabaseService.client.removeChannel(_realtimeChannel!);
+      _realtimeChannel = null;
+    }
     super.dispose();
   }
 
@@ -355,9 +361,18 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
 
   // ─── Load match data from DB ──────────────────────────────────────
 
-  Future<void> _persistMultiplayerRewards(int coins, int xp, bool won) async {
+  Future<void> _persistMultiplayerRewards(int coins, int xp, bool won, {bool isRanked = false}) async {
     final userId = SupabaseService.currentUserId;
     if (userId == null) return;
+    
+    // Determine contract pack for multiplayer matches
+    final contractPackName = AppConstants.contractPackForDifficulty(
+      'multiplayer',
+      won: won,
+      isMultiplayer: true,
+      isRanked: isRanked,
+    );
+
     try {
       // RPC atomically updates stats, season_points, and grants level-up pack
       await SupabaseService.client.rpc('award_match_rewards', params: {
@@ -365,6 +380,9 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
         'p_coins': coins,
         'p_xp': xp,
         'p_won': won,
+        'p_contract_pack_name': contractPackName.isNotEmpty ? contractPackName : null,
+        'p_is_multiplayer': true,
+        'p_is_ranked': isRanked,
       });
     } catch (_) {
       try {
@@ -381,14 +399,109 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
           'matches_played': (data['matches_played'] as int? ?? 0) + 1,
           if (won) 'matches_won': (data['matches_won'] as int? ?? 0) + 1,
         }).eq('id', userId);
+        
+        // Fallback: manually grant contract pack if earned
+        if (contractPackName.isNotEmpty) {
+          final probs = AppConstants.contractPackProbabilities[contractPackName];
+          if (probs != null) {
+            await SupabaseService.client.from('user_contract_packs').insert({
+              'user_id': userId,
+              'pack_name': contractPackName,
+              'contract_count': 4,
+              'bronze_chance': (probs['bronze']! * 100),
+              'silver_chance': (probs['silver']! * 100),
+              'gold_chance': (probs['gold']! * 100),
+              'elite_chance': (probs['elite']! * 100),
+              'legend_chance': (probs['legend']! * 100),
+              'source': 'reward',
+              'opened': false,
+            });
+          }
+        }
+        
         try {
           await SupabaseService.grantLevelUpPack(userId, oldDbLevel, newDbLevel);
+          await SupabaseService.grantLevelUpContractPack(userId, oldDbLevel, newDbLevel);
         } catch (_) {}
       } catch (_) {}
     }
     await Future.delayed(const Duration(milliseconds: 800));
     await ref.read(currentUserProvider.notifier).silentRefresh();
     ref.read(userCardPacksProvider.notifier).refresh();
+    ref.read(userContractPacksProvider.notifier).refresh();
+  }
+
+  /// Fetch the current user's XI card IDs for the given match.
+  /// Returns list of user_card_ids for the user's playing XI.
+  Future<List<String>> _fetchUserXiCardIds(String matchId, String userId) async {
+    try {
+      // Get the user's team ID for this match
+      final matchData = await SupabaseService.client
+          .from('multiplayer_matches')
+          .select('home_user_id, home_team_id, away_user_id, away_team_id')
+          .eq('id', matchId)
+          .single();
+
+      final isHome = matchData['home_user_id'] == userId;
+      final teamId = isHome ? matchData['home_team_id'] : matchData['away_team_id'];
+
+      if (teamId == null) return [];
+
+      // Get the active squad for this team
+      final squadData = await SupabaseService.client
+          .from('squads')
+          .select('id')
+          .eq('team_id', teamId)
+          .eq('is_active', true)
+          .maybeSingle();
+
+      if (squadData == null) return [];
+
+      // Get the lineup players for this squad
+      final lineupData = await SupabaseService.client
+          .from('lineup_players')
+          .select('user_card_id')
+          .eq('squad_id', squadData['id'])
+          .order('batting_order');
+
+      return lineupData.map<String>((e) => e['user_card_id'] as String).toList();
+    } catch (e) {
+      print('❌ [MULTIPLAYER] Failed to fetch user XI card IDs: $e');
+      return [];
+    }
+  }
+
+  /// Consume contracts for the current user's XI in a multiplayer match.
+  Future<void> _consumeMultiplayerContracts(String matchId) async {
+    final userId = SupabaseService.currentUserId;
+    if (userId == null) return;
+
+    final userXiCardIds = await _fetchUserXiCardIds(matchId, userId);
+    if (userXiCardIds.isEmpty) return;
+
+    try {
+      final result = await SupabaseService.client.rpc(
+        'consume_contracts_on_match_completion',
+        params: {
+          'p_user_id': userId,
+          'p_match_id': matchId,
+          'p_user_card_ids': userXiCardIds,
+          'p_idempotency_key': 'mp_contracts_${matchId}_$userId',
+        },
+      );
+
+      final consumed = (result?['consumed'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>().toList();
+      final errors = (result?['errors'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>().toList();
+
+      if (errors.isNotEmpty) {
+        print('⚠️ [MULTIPLAYER CONTRACTS] Some contracts could not be consumed: $errors');
+      }
+
+      // Refresh user cards to get updated contracts_remaining
+      ref.read(userCardsProvider.notifier).refresh();
+    } catch (e) {
+      print('❌ [MULTIPLAYER CONTRACTS] Failed to consume contracts: $e');
+    }
   }
 
   Future<void> _loadMatch() async {
@@ -534,8 +647,11 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
           ));
     }
 
-    // Persist rewards to DB
-    _persistMultiplayerRewards(coins, xp, userWon);
+    // Consume contracts for user's XI BEFORE reward persistence
+    _consumeMultiplayerContracts(widget.matchId);
+
+    // Persist rewards to DB (after contract consumption)
+    _persistMultiplayerRewards(coins, xp, userWon, isRanked: false);
   }
 
   void _syncFromDb(Map<String, dynamic> data) {
@@ -1159,6 +1275,7 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
 
   void _subscribeRealtime() {
     final channel = SupabaseService.client.channel('mp_match_${widget.matchId}');
+    _realtimeChannel = channel;
     channel
         .onPostgresChanges(
           event: PostgresChangeEvent.update,
@@ -1274,6 +1391,10 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
             batsmanStats: watcherBatsmanStats,
             bowlerStats: watcherBowlerStats,
           ));
+      
+      // Only fire side-effects once even if realtime delivers multiple updates
+      if (_mpMatchCompleteFired) return;
+      _mpMatchCompleteFired = true;
 
       // Server awards rewards via Edge Function
       ref.invalidate(activeMultiplayerMatchProvider);
@@ -1297,8 +1418,15 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
             ));
       }
 
-      // Persist rewards to DB
-      _persistMultiplayerRewards(coins, xp, userWon);
+      // Only fire side-effects once even if realtime delivers multiple updates
+      if (_mpMatchCompleteFired) return;
+      _mpMatchCompleteFired = true;
+
+      // Consume contracts for user's XI BEFORE reward persistence
+      _consumeMultiplayerContracts(widget.matchId);
+
+      // Persist rewards to DB (after contract consumption)
+      _persistMultiplayerRewards(coins, xp, userWon, isRanked: false);
 
       // Send local notification
       final rtResultLabel = userWon

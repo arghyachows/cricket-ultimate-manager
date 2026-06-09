@@ -189,6 +189,160 @@ void showSellOnMarketDialog(BuildContext context, WidgetRef ref, UserCard card) 
   );
 }
 
+/// Show dialog to list contracts on the market (quantity 1-10, set price per unit, 5% tax)
+/// Only Gold, Elite, and Legend tier contracts are tradeable.
+void showSellContractDialog(
+    BuildContext context, WidgetRef ref, String contractName, String contractTypeId, String tier, int matchesAwarded) {
+  // Gold+ tier restriction
+  if (tier != 'gold' && tier != 'elite' && tier != 'legend') {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Only Gold, Elite, and Legend tier contracts can be traded'),
+        backgroundColor: AppTheme.error,
+      ),
+    );
+    return;
+  }
+  final priceFloor = AppConstants.contractPriceFloors[tier] ?? 10;
+  final priceController = TextEditingController(text: '$priceFloor');
+  int quantity = 1;
+  bool listing = false;
+
+  showDialog(
+    context: context,
+    builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setDialogState) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        title: Text('Sell $contractName'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(6),
+                      color: AppTheme.getRarityColor(tier),
+                    ),
+                    child: const Center(
+                      child: Icon(Icons.assignment, size: 20, color: Colors.white),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(contractName,
+                            style: const TextStyle(fontWeight: FontWeight.bold)),
+                        Text('$tier • +$matchesAwarded matches',
+                            style: TextStyle(color: AppTheme.getRarityColor(tier), fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Text('Minimum price: $priceFloor coins per unit',
+                  style: const TextStyle(color: Colors.orangeAccent, fontSize: 12)),
+              const SizedBox(height: 12),
+              TextField(
+                controller: priceController,
+                decoration: const InputDecoration(
+                  labelText: 'Price per Contract',
+                  prefixIcon: Icon(Icons.monetization_on),
+                ),
+                keyboardType: TextInputType.number,
+              ),
+              const SizedBox(height: 16),
+              const Text('Quantity (1-10)', style: TextStyle(fontSize: 13)),
+              const SizedBox(height: 6),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.remove_circle_outline),
+                    onPressed: quantity > 1 && !listing
+                        ? () => setDialogState(() => quantity--)
+                        : null,
+                  ),
+                  Text('$quantity',
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  IconButton(
+                    icon: const Icon(Icons.add_circle_outline),
+                    onPressed: quantity < 10 && !listing
+                        ? () => setDialogState(() => quantity++)
+                        : null,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Text('5% tax on sale', style: TextStyle(color: Colors.white38, fontSize: 11)),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: listing ? null : () => Navigator.pop(ctx),
+            child: const Text('CANCEL'),
+          ),
+          ElevatedButton(
+            onPressed: listing
+                ? null
+                : () async {
+                    final price = int.tryParse(priceController.text) ?? 0;
+                    if (price < priceFloor) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Price must be at least $priceFloor coins per unit')),
+                      );
+                      return;
+                    }
+                    if (price > AppConstants.maxListingPrice) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Max price is ${AppConstants.maxListingPrice}')),
+                      );
+                      return;
+                    }
+
+                    setDialogState(() => listing = true);
+                    final result = await ref
+                        .read(marketListingsProvider.notifier)
+                        .listContract(
+                          contractTypeId: contractTypeId,
+                          quantity: quantity,
+                          pricePerUnit: price,
+                        );
+                    final success = result['success'] == true;
+                    if (ctx.mounted) Navigator.pop(ctx);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(success
+                              ? '$contractName listed for sale!'
+                              : result['error'] ?? 'Failed to list contract'),
+                          backgroundColor: success ? AppTheme.success : AppTheme.error,
+                        ),
+                      );
+                    }
+                  },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.accent,
+              foregroundColor: Colors.black,
+            ),
+            child: listing
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Text('LIST FOR SALE'),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
 class MarketScreen extends ConsumerStatefulWidget {
   const MarketScreen({super.key});
 
@@ -302,12 +456,15 @@ class _BuyTab extends ConsumerWidget {
           child: TextField(
             controller: searchController,
             decoration: const InputDecoration(
-              hintText: 'Search players...',
+              hintText: 'Search players/contracts...',
               prefixIcon: Icon(Icons.search),
             ),
             onChanged: (_) => (context as Element).markNeedsBuild(),
           ),
         ),
+
+        // Filter chips
+        _FilterChips(searchController: searchController),
 
         // Coin balance
         if (user != null)
@@ -335,9 +492,15 @@ class _BuyTab extends ConsumerWidget {
                 // Hide seller's own listings
                 if (userId != null && l.sellerId == userId) return false;
                 if (query.isNotEmpty) {
-                  final cardData = l.userCardData?['player_cards'];
-                  final name = (cardData?['player_name'] ?? '').toString().toLowerCase();
-                  if (!name.contains(query)) return false;
+                  if (l.listingType == 'card') {
+                    final cardData = l.userCardData?['player_cards'];
+                    final name = (cardData?['player_name'] ?? '').toString().toLowerCase();
+                    if (!name.contains(query)) return false;
+                  } else if (l.listingType == 'contract') {
+                    final contractData = l.contractTypeData;
+                    final name = (contractData?['name'] ?? '').toString().toLowerCase();
+                    if (!name.contains(query)) return false;
+                  }
                 }
                 return true;
               }).toList();
@@ -372,12 +535,63 @@ class _BuyTab extends ConsumerWidget {
   }
 }
 
+class _FilterChips extends ConsumerWidget {
+  final TextEditingController searchController;
+  const _FilterChips({required this.searchController});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final filter = ref.watch(marketFilterProvider);
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Row(
+        children: [
+          _buildChip('All', filter.listingType == null, () {
+            ref.read(marketFilterProvider.notifier).state = filter.copyWith(listingType: null);
+          }),
+          const SizedBox(width: 8),
+          _buildChip('Cards', filter.listingType == 'card', () {
+            ref.read(marketFilterProvider.notifier).state = filter.copyWith(listingType: 'card');
+          }),
+          const SizedBox(width: 8),
+          _buildChip('Contracts', filter.listingType == 'contract', () {
+            ref.read(marketFilterProvider.notifier).state = filter.copyWith(listingType: 'contract');
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChip(String label, bool selected, VoidCallback onTap) {
+    return FilterChip(
+      label: Text(label, style: TextStyle(color: selected ? Colors.black : Colors.white70)),
+      selected: selected,
+      onSelected: (_) => onTap(),
+      selectedColor: AppTheme.accent,
+      backgroundColor: AppTheme.surface,
+      side: BorderSide(color: selected ? AppTheme.accent : Colors.white24),
+    );
+  }
+}
+
 class _ListingCard extends ConsumerWidget {
   final MarketListing listing;
   const _ListingCard({required this.listing});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final userId = ref.watch(currentUserProvider).valueOrNull?.id;
+    final userCoins = ref.watch(currentUserProvider).valueOrNull?.coins ?? 0;
+    final isSeller = listing.sellerId == userId;
+    final isHighestBidder = listing.currentBidderId == userId;
+
+    // Contract listing
+    if (listing.listingType == 'contract') {
+      return _buildContractCard(context, ref, userId, userCoins, isSeller);
+    }
+
+    // Card listing
     final cardData = listing.userCardData?['player_cards'];
     if (cardData == null) return const SizedBox();
 
@@ -387,10 +601,6 @@ class _ListingCard extends ConsumerWidget {
     final role = cardData['role'] ?? '';
     final league = cardData['league'] ?? '';
     final rarityColor = AppTheme.getRarityColor(rarity);
-    final userId = ref.watch(currentUserProvider).valueOrNull?.id;
-    final userCoins = ref.watch(currentUserProvider).valueOrNull?.coins ?? 0;
-    final isSeller = listing.sellerId == userId;
-    final isHighestBidder = listing.currentBidderId == userId;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -525,6 +735,245 @@ class _ListingCard extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+
+  /// Build contract listing card
+  Widget _buildContractCard(
+      BuildContext context, WidgetRef ref, String? userId, int userCoins, bool isSeller) {
+    final contractData = listing.contractTypeData;
+    final contractName = contractData?['name'] ?? 'Unknown Contract';
+    final tier = contractData?['tier'] ?? 'bronze';
+    final matchesAwarded = contractData?['matches_awarded'] ?? 0;
+    final tierColor = AppTheme.getRarityColor(tier);
+    final availableQty = listing.quantity;
+    final pricePerUnit = listing.buyNowPrice;
+    final totalPrice = pricePerUnit * availableQty;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: tierColor.withValues(alpha: 0.3)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                // Tier badge
+                Container(
+                  width: 56,
+                  height: 70,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    gradient: LinearGradient(
+                      colors: [tierColor, tierColor.withValues(alpha: 0.5)],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.assignment, size: 22, color: Colors.white),
+                      const SizedBox(height: 2),
+                      Text(
+                        tier.toUpperCase().substring(0, 3),
+                        style: const TextStyle(fontSize: 9, color: Colors.white70),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                // Contract info
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(contractName,
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                      const SizedBox(height: 2),
+                      Row(children: [
+                        Text(tier.toUpperCase(),
+                            style: TextStyle(color: tierColor, fontSize: 11)),
+                        const SizedBox(width: 8),
+                        Text('+$matchesAwarded matches',
+                            style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                        const SizedBox(width: 8),
+                        Text('x$availableQty available',
+                            style: const TextStyle(color: AppTheme.accent, fontSize: 11)),
+                      ]),
+                      const SizedBox(height: 4),
+                      Row(children: [
+                        Text('Seller: ${listing.sellerUsername ?? 'Unknown'}',
+                            style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                        const Spacer(),
+                        const Icon(Icons.timer_outlined, size: 12, color: Colors.orangeAccent),
+                        const SizedBox(width: 3),
+                        Text(listing.timeRemainingDisplay,
+                            style: const TextStyle(color: Colors.orangeAccent, fontSize: 11)),
+                      ]),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            // Price row + action buttons
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                // Price per unit
+                _PriceChip(
+                  label: 'per unit',
+                  amount: pricePerUnit,
+                  color: AppTheme.cardGold,
+                ),
+                // Total price
+                _PriceChip(
+                  label: 'total',
+                  amount: totalPrice,
+                  color: AppTheme.primaryLight,
+                ),
+                if (!isSeller)
+                  // Buy contract button
+                  SizedBox(
+                    height: 32,
+                    child: ElevatedButton(
+                      onPressed: () => _showBuyContractDialog(context, ref, userCoins),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.success,
+                        foregroundColor: Colors.black,
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        textStyle: const TextStyle(fontSize: 12),
+                      ),
+                      child: const Text('BUY'),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Show buy contract dialog (quantity selector)
+  void _showBuyContractDialog(BuildContext context, WidgetRef ref, int userCoins) {
+    int buyQty = 1;
+    final maxQty = listing.quantity;
+    final pricePerUnit = listing.buyNowPrice;
+
+    if (userCoins < pricePerUnit) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Not enough coins. You have $userCoins but need at least $pricePerUnit.'),
+          backgroundColor: AppTheme.error,
+        ),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        bool buying = false;
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) => AlertDialog(
+            backgroundColor: AppTheme.surface,
+            title: Text('Buy ${listing.contractTypeData?['name'] ?? 'Contract'}'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Price per unit: $pricePerUnit coins',
+                    style: const TextStyle(color: Colors.white54, fontSize: 13)),
+                const SizedBox(height: 4),
+                Text('Available: $maxQty',
+                    style: const TextStyle(color: Colors.white54, fontSize: 13)),
+                const SizedBox(height: 4),
+                Text('Total: ${pricePerUnit * buyQty} coins',
+                    style: const TextStyle(color: AppTheme.cardGold, fontSize: 13)),
+                const SizedBox(height: 8),
+                const Text('5% market tax applies.',
+                    style: TextStyle(color: Colors.white38, fontSize: 12)),
+                const SizedBox(height: 12),
+                const Text('Quantity', style: TextStyle(fontSize: 13)),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.remove_circle_outline),
+                      onPressed: buyQty > 1 && !buying
+                          ? () => setDialogState(() => buyQty--)
+                          : null,
+                    ),
+                    Text('$buyQty', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    IconButton(
+                      icon: const Icon(Icons.add_circle_outline),
+                      onPressed: buyQty < maxQty && !buying
+                          ? () => setDialogState(() => buyQty++)
+                          : null,
+                    ),
+                  ],
+                  mainAxisAlignment: MainAxisAlignment.center,
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: buying ? null : () => Navigator.pop(ctx),
+                child: const Text('CANCEL'),
+              ),
+              ElevatedButton(
+                onPressed: buying
+                    ? null
+                    : () async {
+                        final total = pricePerUnit * buyQty;
+                        if (userCoins < total) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Not enough coins. You have $userCoins but need $total.'),
+                              backgroundColor: AppTheme.error,
+                            ),
+                          );
+                          return;
+                        }
+                        setDialogState(() => buying = true);
+                        final result = await ref
+                            .read(marketListingsProvider.notifier)
+                            .buyContract(listing.id, quantity: buyQty);
+                        final success = result['success'] == true;
+                        if (ctx.mounted) Navigator.pop(ctx);
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(success
+                                  ? 'Purchased $buyQty ${listing.contractTypeData?['name'] ?? 'contract(s)'}!'
+                                  : result['error'] ?? 'Purchase failed'),
+                              backgroundColor: success ? AppTheme.success : AppTheme.error,
+                            ),
+                          );
+                        }
+                      },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.success,
+                  foregroundColor: Colors.black,
+                ),
+                child: buying
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                    : Text('BUY ${pricePerUnit * buyQty}'),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -751,6 +1200,7 @@ class _SellTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cardsAsync = ref.watch(userCardsProvider);
+    final contractsAsync = ref.watch(userContractsProvider);
 
     return cardsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -769,18 +1219,34 @@ class _SellTab extends ConsumerWidget {
             !xiCardIds.contains(c.id) &&
             !listedIds.contains(c.id)).toList();
 
-        if (tradeable.isEmpty) {
+        // Gold+ tier contracts only (tradeable on market)
+        final tradeableContracts = contractsAsync.when(
+          loading: () => <UserContract>[],
+          error: (_, __) => <UserContract>[],
+          data: (contracts) => contracts.where((c) =>
+            c.quantity > 0 &&
+            c.contractType != null &&
+            (c.contractType!.tier == 'gold' ||
+             c.contractType!.tier == 'elite' ||
+             c.contractType!.tier == 'legend')
+          ).toList(),
+        );
+
+        if (tradeable.isEmpty && tradeableContracts.isEmpty) {
           return RefreshIndicator(
-            onRefresh: () => ref.read(userCardsProvider.notifier).loadCards(),
+            onRefresh: () {
+              ref.read(userCardsProvider.notifier).loadCards();
+              ref.read(userContractsProvider.notifier).refresh();
+            },
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
               children: const [
                 SizedBox(height: 200),
                 Center(child: Icon(Icons.sell_outlined, size: 64, color: Colors.white24)),
                 SizedBox(height: 16),
-                Center(child: Text('No tradeable cards', style: TextStyle(color: Colors.white54))),
+                Center(child: Text('No tradeable items', style: TextStyle(color: Colors.white54))),
                 SizedBox(height: 4),
-                Center(child: Text('Open packs to get cards you can sell',
+                Center(child: Text('Open packs to get cards or contracts you can sell',
                     style: TextStyle(color: Colors.white38, fontSize: 12))),
               ],
             ),
@@ -788,60 +1254,150 @@ class _SellTab extends ConsumerWidget {
         }
 
         return RefreshIndicator(
-          onRefresh: () => ref.read(userCardsProvider.notifier).loadCards(),
-          child: ListView.builder(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(12),
-          itemCount: tradeable.length,
-          itemBuilder: (context, index) {
-            final card = tradeable[index];
-            final pc = card.playerCard!;
-            final rarityColor = AppTheme.getRarityColor(pc.rarity);
-            final minBid = AppConstants.minBidByRarity[pc.rarity] ?? 50;
-
-            return Container(
-              margin: const EdgeInsets.only(bottom: 8),
-              decoration: BoxDecoration(
-                color: AppTheme.surface,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: rarityColor.withValues(alpha: 0.2)),
-              ),
-              child: ListTile(
-                leading: Container(
-                  width: 40,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(8),
-                    color: rarityColor,
-                  ),
-                  child: Center(
-                    child: Text('${pc.rating}',
-                        style: const TextStyle(
-                            fontWeight: FontWeight.bold, color: Colors.white)),
-                  ),
-                ),
-                title: Text(pc.playerName),
-                subtitle: Row(
+          onRefresh: () {
+            ref.read(userCardsProvider.notifier).loadCards();
+            ref.read(userContractsProvider.notifier).refresh();
+          },
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(12),
+            children: [
+              // ── Contracts section ──
+              if (tradeableContracts.isNotEmpty) ...[
+                Row(
                   children: [
-                    Text(pc.rarity.toUpperCase(),
-                        style: TextStyle(color: rarityColor, fontSize: 12)),
-                    const SizedBox(width: 8),
-                    Text('Min bid: $minBid',
-                        style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                    const Icon(Icons.assignment, size: 18, color: AppTheme.accent),
+                    const SizedBox(width: 6),
+                    Text('CONTRACTS (${tradeableContracts.length})',
+                        style: const TextStyle(
+                            color: Colors.white70,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                            letterSpacing: 1)),
                   ],
                 ),
-                trailing: ElevatedButton(
-                  onPressed: () => showSellOnMarketDialog(context, ref, card),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.accent,
-                    foregroundColor: Colors.black,
-                  ),
-                  child: const Text('SELL'),
+                const SizedBox(height: 8),
+                ...tradeableContracts.map((contract) {
+                  final ct = contract.contractType!;
+                  final tierColor = AppTheme.getRarityColor(ct.tier);
+                  final minPrice = AppConstants.contractPriceFloors[ct.tier] ?? 10;
+
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    decoration: BoxDecoration(
+                      color: AppTheme.surface,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: tierColor.withValues(alpha: 0.2)),
+                    ),
+                    child: ListTile(
+                      leading: Container(
+                        width: 40,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8),
+                          color: tierColor,
+                        ),
+                        child: const Center(
+                          child: Icon(Icons.assignment, size: 20, color: Colors.white),
+                        ),
+                      ),
+                      title: Text(ct.name,
+                          style: const TextStyle(fontWeight: FontWeight.bold)),
+                      subtitle: Row(
+                        children: [
+                          Text(ct.tier.toUpperCase(),
+                              style: TextStyle(color: tierColor, fontSize: 12)),
+                          const SizedBox(width: 8),
+                          Text('x${contract.quantity}',
+                              style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                          const SizedBox(width: 8),
+                          Text('Min: $minPrice/unit',
+                              style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                        ],
+                      ),
+                      trailing: ElevatedButton(
+                        onPressed: () => showSellContractDialog(
+                          context, ref, ct.name, ct.id, ct.tier, ct.matchesAwarded),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.accent,
+                          foregroundColor: Colors.black,
+                        ),
+                        child: const Text('SELL'),
+                      ),
+                    ),
+                  );
+                }),
+                if (tradeable.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  const Divider(color: Colors.white12),
+                  const SizedBox(height: 8),
+                ],
+              ],
+              // ── Cards section ──
+              if (tradeable.isNotEmpty) ...[
+                Row(
+                  children: [
+                    const Icon(Icons.style, size: 18, color: AppTheme.accent),
+                    const SizedBox(width: 6),
+                    Text('CARDS (${tradeable.length})',
+                        style: const TextStyle(
+                            color: Colors.white70,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                            letterSpacing: 1)),
+                  ],
                 ),
-              ),
-            );
-          },
-        ),
+                const SizedBox(height: 8),
+                ...tradeable.map((card) {
+                  final pc = card.playerCard!;
+                  final rarityColor = AppTheme.getRarityColor(pc.rarity);
+                  final minBid = AppConstants.minBidByRarity[pc.rarity] ?? 50;
+
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    decoration: BoxDecoration(
+                      color: AppTheme.surface,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: rarityColor.withValues(alpha: 0.2)),
+                    ),
+                    child: ListTile(
+                      leading: Container(
+                        width: 40,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8),
+                          color: rarityColor,
+                        ),
+                        child: Center(
+                          child: Text('${pc.rating}',
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.bold, color: Colors.white)),
+                        ),
+                      ),
+                      title: Text(pc.playerName),
+                      subtitle: Row(
+                        children: [
+                          Text(pc.rarity.toUpperCase(),
+                              style: TextStyle(color: rarityColor, fontSize: 12)),
+                          const SizedBox(width: 8),
+                          Text('Min bid: $minBid',
+                              style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                        ],
+                      ),
+                      trailing: ElevatedButton(
+                        onPressed: () => showSellOnMarketDialog(context, ref, card),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.accent,
+                          foregroundColor: Colors.black,
+                        ),
+                        child: const Text('SELL'),
+                      ),
+                    ),
+                  );
+                }),
+              ],
+            ],
+          ),
         );
       },
     );
@@ -1065,6 +1621,12 @@ class _MyListingTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Contract listing
+    if (listing.listingType == 'contract') {
+      return _buildContractListing(context, ref);
+    }
+
+    // Card listing
     final cardData = listing.userCardData?['player_cards'];
     final name = cardData?['player_name'] ?? 'Unknown';
     final rarity = cardData?['rarity'] ?? 'bronze';
@@ -1184,6 +1746,126 @@ class _MyListingTile extends ConsumerWidget {
     );
   }
 
+  /// Build contract listing tile for My Listings tab
+  Widget _buildContractListing(BuildContext context, WidgetRef ref) {
+    final contractData = listing.contractTypeData;
+    final contractName = contractData?['name'] ?? 'Unknown Contract';
+    final tier = contractData?['tier'] ?? 'bronze';
+    final matchesAwarded = contractData?['matches_awarded'] ?? 0;
+    final tierColor = AppTheme.getRarityColor(tier);
+    final pricePerUnit = listing.buyNowPrice / listing.quantity;
+
+    Color statusColor;
+    String statusLabel;
+    switch (listing.status) {
+      case 'active':
+        statusColor = listing.hasExpired ? Colors.orangeAccent : AppTheme.success;
+        statusLabel = listing.hasExpired ? 'ENDED' : 'ACTIVE';
+        break;
+      case 'sold':
+        statusColor = AppTheme.accent;
+        statusLabel = 'SOLD';
+        break;
+      case 'expired':
+        statusColor = Colors.white38;
+        statusLabel = 'EXPIRED';
+        break;
+      case 'cancelled':
+        statusColor = Colors.white38;
+        statusLabel = 'CANCELLED';
+        break;
+      default:
+        statusColor = Colors.white38;
+        statusLabel = listing.status.toUpperCase();
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: tierColor.withValues(alpha: 0.2)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            // Tier icon
+            Container(
+              width: 44,
+              height: 54,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                color: tierColor,
+              ),
+              child: const Center(
+                child: Icon(Icons.assignment, size: 22, color: Colors.white),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(contractName,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 15)),
+                  const SizedBox(height: 3),
+                  Row(children: [
+                    Text(tier.toUpperCase(),
+                        style: TextStyle(color: tierColor, fontSize: 12)),
+                    const SizedBox(width: 8),
+                    Text('x${listing.quantity}',
+                        style: const TextStyle(color: Colors.white54, fontSize: 12)),
+                    const SizedBox(width: 8),
+                    Text('$pricePerUnit/unit',
+                        style: const TextStyle(color: AppTheme.cardGold, fontSize: 12)),
+                  ]),
+                  if (listing.isActive && !listing.hasExpired)
+                    Text('Ends: ${listing.timeRemainingDisplay}',
+                        style: const TextStyle(color: Colors.white38, fontSize: 11)),
+                ],
+              ),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                // Status
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: statusColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(statusLabel,
+                      style: TextStyle(
+                          color: statusColor,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold)),
+                ),
+                const SizedBox(height: 6),
+                // Cancel button (only for active listings)
+                if (listing.isActive && !listing.hasExpired)
+                  SizedBox(
+                    height: 28,
+                    child: TextButton(
+                      onPressed: () => _confirmCancelContract(context, ref),
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppTheme.error,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        textStyle: const TextStyle(fontSize: 11),
+                      ),
+                      child: const Text('CANCEL'),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _confirmCancel(BuildContext context, WidgetRef ref) {
     showDialog(
       context: context,
@@ -1230,6 +1912,56 @@ class _MyListingTile extends ConsumerWidget {
           ),
         ],
       ),
+        );
+      },
+    );
+  }
+
+  /// Cancel a contract listing and return contracts to seller
+  void _confirmCancelContract(BuildContext context, WidgetRef ref) {
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        bool cancelling = false;
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) => AlertDialog(
+            backgroundColor: AppTheme.surface,
+            title: const Text('Cancel Listing'),
+            content: const Text('Cancel this contract listing? Contracts will be returned to your inventory.'),
+            actions: [
+              TextButton(
+                onPressed: cancelling ? null : () => Navigator.pop(ctx),
+                child: const Text('KEEP'),
+              ),
+              ElevatedButton(
+                onPressed: cancelling
+                    ? null
+                    : () async {
+                        setDialogState(() => cancelling = true);
+                        final result = await ref
+                            .read(marketListingsProvider.notifier)
+                            .cancelContractListing(listing.id);
+                        final success = result['success'] == true;
+                        if (ctx.mounted) Navigator.pop(ctx);
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                  success
+                                      ? 'Listing cancelled. Contracts returned.'
+                                      : result['error'] ?? 'Failed to cancel'),
+                              backgroundColor: success ? AppTheme.success : AppTheme.error,
+                            ),
+                          );
+                        }
+                      },
+                style: ElevatedButton.styleFrom(backgroundColor: AppTheme.error),
+                child: cancelling
+                    ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Text('CANCEL LISTING'),
+              ),
+            ],
+          ),
         );
       },
     );

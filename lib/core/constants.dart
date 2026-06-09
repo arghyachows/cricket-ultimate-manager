@@ -100,6 +100,118 @@ class AppConstants {
     'legend': 5000,
   };
 
+  // Contract System
+  static const int defaultContractsPerCard = 7;
+  static const int maxContractsPerCard = 99;
+
+  /// Contract matches awarded by tier
+  static const Map<String, int> contractMatchesByTier = {
+    'bronze': 3,
+    'silver': 7,
+    'gold': 15,
+    'elite': 30,
+    'legend': 50,
+  };
+
+  /// Contract pack types with probabilities (percentage values)
+  static const Map<String, Map<String, double>> contractPackProbabilities = {
+    'Bronze Contract Pack': {
+      'bronze': 0.70,
+      'silver': 0.25,
+      'gold': 0.05,
+      'elite': 0.00,
+      'legend': 0.00,
+    },
+    'Silver Contract Pack': {
+      'bronze': 0.30,
+      'silver': 0.50,
+      'gold': 0.15,
+      'elite': 0.05,
+      'legend': 0.00,
+    },
+    'Gold Contract Pack': {
+      'bronze': 0.10,
+      'silver': 0.25,
+      'gold': 0.40,
+      'elite': 0.20,
+      'legend': 0.05,
+    },
+    'Elite Contract Pack': {
+      'bronze': 0.05,
+      'silver': 0.15,
+      'gold': 0.35,
+      'elite': 0.30,
+      'legend': 0.15,
+    },
+    'Legend Contract Pack': {
+      'bronze': 0.00,
+      'silver': 0.05,
+      'gold': 0.25,
+      'elite': 0.40,
+      'legend': 0.30,
+    },
+  };
+
+  /// Minimum market price per contract tier (price floor)
+  static const Map<String, int> contractPriceFloors = {
+    'bronze': 10,
+    'silver': 50,
+    'gold': 200,
+    'elite': 1000,
+    'legend': 5000,
+  };
+
+  /// Contract pack store prices
+  static const Map<String, Map<String, int>> contractPackPrices = {
+    'Bronze Contract Pack': {'coins': 100, 'tokens': 0},
+    'Silver Contract Pack': {'coins': 500, 'tokens': 0},
+    'Gold Contract Pack': {'coins': 2500, 'tokens': 0},
+    'Elite Contract Pack': {'coins': 10000, 'tokens': 50},
+    'Legend Contract Pack': {'coins': 25000, 'tokens': 150},
+  };
+
+  /// Contract pack tier by match difficulty/mode
+  /// Returns empty string if no pack should be awarded.
+  static String contractPackForDifficulty(String difficulty, {bool? won, bool isMultiplayer = false, bool isRanked = false}) {
+    final diff = difficulty.toLowerCase();
+
+    // Draw: award Bronze Contract Pack as participation reward
+    if (won == null) {
+      return 'Bronze Contract Pack';
+    }
+
+    // Loss: harder modes have small chance of Bronze pack
+    if (!won) {
+      switch (diff) {
+        case 'international':
+        case 'tournament':
+        case 'multiplayer':
+          return 'Bronze Contract Pack';
+        default:
+          return '';
+      }
+    }
+
+    // Win: determine pack based on difficulty/mode
+    if (isMultiplayer) {
+      // Ranked multiplayer gives higher tier packs
+      return isRanked ? 'Legend Contract Pack' : 'Elite Contract Pack';
+    }
+
+    switch (diff) {
+      case 'village':
+        return 'Bronze Contract Pack';
+      case 'domestic':
+        return 'Silver Contract Pack';
+      case 'international':
+        return 'Gold Contract Pack';
+      case 'tournament':
+        return 'Elite Contract Pack';
+      default:
+        return 'Bronze Contract Pack';
+    }
+  }
+
   // Routes
   static const String loginRoute = '/login';
   static const String dashboardRoute = '/dashboard';
@@ -120,4 +232,5 @@ class AppConstants {
   static const String multiplayerRoute = '/multiplayer';
   static const String multiplayerRoomRoute = '/multiplayer/room';
   static const String challengeRoute = '/challenges';
+  static const String contractsRoute = '/contracts';
 }

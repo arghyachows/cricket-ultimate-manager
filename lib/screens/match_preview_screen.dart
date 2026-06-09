@@ -145,6 +145,20 @@ class _MatchPreviewScreenState extends ConsumerState<MatchPreviewScreen>
     final squad = team.activeSquad;
     if (squad == null) return;
 
+    // Check for players with 0 contracts in the playing XI
+    final xiWithNoContracts = squad.playingXI
+        .where((p) => p.userCard?.contractsRemaining == 0)
+        .toList();
+
+    if (xiWithNoContracts.isNotEmpty) {
+      _showContractWarningDialog(xiWithNoContracts);
+      return;
+    }
+
+    _proceedToMatch(squad, chemistry, team);
+  }
+
+  void _proceedToMatch(Squad squad, int chemistry, Team team) {
     ref.read(matchProvider.notifier).startMatch(
       homeXI: squad.playingXI,
       awayXI: _aiXI,
@@ -165,6 +179,99 @@ class _MatchPreviewScreenState extends ConsumerState<MatchPreviewScreen>
     );
 
     context.go(AppConstants.liveMatchRoute);
+  }
+
+  void _showContractWarningDialog(List<LineupPlayer> expiredPlayers) {
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        title: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: AppTheme.error, size: 28),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text(
+                'Players Out of Contracts',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${expiredPlayers.length} player(s) in your XI have 0 contracts remaining. They cannot play until contracts are applied.',
+              style: const TextStyle(fontSize: 14),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Affected players:',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white70),
+            ),
+            const SizedBox(height: 8),
+            ...expiredPlayers.map((p) => Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Row(
+                children: [
+                  Icon(Icons.person, size: 16, color: AppTheme.error),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      p.userCard?.playerCard?.playerName ?? 'Unknown',
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppTheme.error.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Text(
+                      'EXPIRED',
+                      style: TextStyle(
+                        color: AppTheme.error,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 10,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            )),
+            const SizedBox(height: 16),
+            const Text(
+              'Go to Squad Builder to apply contracts or replace these players before starting the match.',
+              style: TextStyle(fontSize: 12, color: Colors.white54),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('CANCEL'),
+          ),
+          ElevatedButton.icon(
+            onPressed: () {
+              Navigator.of(context).pop();
+              // Navigate to squad builder screen
+              context.go(AppConstants.squadBuilderRoute);
+            },
+            icon: const Icon(Icons.edit, size: 16),
+            label: const Text('FIX LINEUP'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.accent,
+              foregroundColor: Colors.black,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override

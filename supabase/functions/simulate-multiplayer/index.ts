@@ -1142,12 +1142,27 @@ serve(async (req) => {
       const coins = isWinner ? 100 : isDraw ? 50 : 30;
       const xp = isWinner ? 50 : isDraw ? 30 : 20;
 
+      // Determine contract pack for multiplayer matches
+      let contractPackName = null;
+      if (isWinner) {
+        // Multiplayer wins give higher tier packs
+        // For now, default to unranked (Elite Contract Pack)
+        contractPackName = 'Elite Contract Pack';
+      } else if (isDraw) {
+        // Draw gives Bronze Contract Pack as participation reward
+        contractPackName = 'Bronze Contract Pack';
+      }
+      // Losses in multiplayer don't give contract packs (handled by RPC)
+
       try {
         await supabase.rpc("award_match_rewards", {
           p_user_id: uid,
           p_coins: coins,
           p_xp: xp,
           p_won: isWinner,
+          p_contract_pack_name: contractPackName,
+          p_is_multiplayer: true,
+          p_is_ranked: false,
         });
       } catch (_) {
         // Fallback: direct update

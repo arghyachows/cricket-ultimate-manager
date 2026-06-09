@@ -184,6 +184,64 @@ class PackOpeningNotifier extends StateNotifier<PackOpeningState> {
     state = const PackOpeningState();
   }
 
+  /// Buy a contract pack from the store
+  Future<bool> buyContractPack({
+    required String packName,
+    required int coinCost,
+    required int premiumCost,
+    required int contractCount,
+    required Map<String, double> probabilities,
+  }) async {
+    try {
+      final user = ref.read(currentUserProvider).valueOrNull;
+      if (user == null) {
+        return false;
+      }
+
+      if (coinCost > 0 && user.coins < coinCost) {
+        return false;
+      }
+
+      if (premiumCost > 0 && user.premiumTokens < premiumCost) {
+        return false;
+      }
+
+      // Deduct cost
+      if (coinCost > 0) {
+        await SupabaseService.client
+            .from('users')
+            .update({'coins': user.coins - coinCost})
+            .eq('id', user.id);
+      } else if (premiumCost > 0) {
+        await SupabaseService.client
+            .from('users')
+            .update({'premium_tokens': user.premiumTokens - premiumCost})
+            .eq('id', user.id);
+      }
+
+      // Insert into user_contract_packs with source='purchase'
+      await SupabaseService.client.from('user_contract_packs').insert({
+        'user_id': user.id,
+        'pack_name': packName,
+        'contract_count': contractCount,
+        'bronze_chance': probabilities['bronze'] ?? 0,
+        'silver_chance': probabilities['silver'] ?? 0,
+        'gold_chance': probabilities['gold'] ?? 0,
+        'elite_chance': probabilities['elite'] ?? 0,
+        'legend_chance': probabilities['legend'] ?? 0,
+        'source': 'purchase',
+        'opened': false,
+      });
+
+      // Refresh user data
+      ref.read(currentUserProvider.notifier).refresh();
+
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   static String _pickRarity(PackType pack) {
     final rand = Random().nextDouble() * 100;
     double cumulative = 0;

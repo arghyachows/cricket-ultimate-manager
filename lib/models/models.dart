@@ -7,3 +7,4 @@ export 'match_model.dart';
 export 'market_model.dart';
 export 'multiplayer_model.dart';
 export 'challenge_model.dart';
+export 'contract_model.dart';

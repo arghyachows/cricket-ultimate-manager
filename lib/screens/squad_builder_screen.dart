@@ -399,11 +399,16 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
     Key? key,
   }) {
     final card = player.userCard?.playerCard;
+    final userCard = player.userCard;
     if (card == null) {
       return SizedBox(key: key);
     }
 
     final rarityColor = AppTheme.getRarityColor(card.rarity);
+    final contractsRemaining = userCard?.contractsRemaining ?? 7;
+    final contractsMax = userCard?.contractsMax ?? 7;
+    final contractColor = _getContractColor(contractsRemaining);
+    final contractLabel = _getContractLabel(contractsRemaining);
 
     return Container(
       key: key,
@@ -475,6 +480,24 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
                 card.playerName,
                 style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                 overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            // Contract status badge
+            Container(
+              margin: const EdgeInsets.only(left: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: contractColor.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: contractColor.withValues(alpha: 0.5)),
+              ),
+              child: Text(
+                contractLabel,
+                style: TextStyle(
+                  color: contractColor,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 10,
+                ),
               ),
             ),
             if (player.isCaptain)
@@ -914,6 +937,24 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
                                         color: Colors.redAccent,
                                       ),
                                     ),
+                                    const SizedBox(width: 8),
+                                    // Contract status badge
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                      decoration: BoxDecoration(
+                                        color: _getContractColor(userCard.contractsRemaining).withValues(alpha: 0.2),
+                                        borderRadius: BorderRadius.circular(4),
+                                        border: Border.all(color: _getContractColor(userCard.contractsRemaining).withValues(alpha: 0.5)),
+                                      ),
+                                      child: Text(
+                                        _getContractLabel(userCard.contractsRemaining),
+                                        style: TextStyle(
+                                          color: _getContractColor(userCard.contractsRemaining),
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 9,
+                                        ),
+                                      ),
+                                    ),
                                   ],
                                 ),
                                 trailing: Text(
@@ -925,6 +966,11 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
                                   ),
                                 ),
                                 onTap: () {
+                                  // Check contract status before swapping
+                                  if (userCard.contractsRemaining <= 0) {
+                                    _showContractExpiredDialog(userCard);
+                                    return;
+                                  }
                                   ref.read(teamProvider.notifier).swapLineupPlayer(
                                         currentPlayer.id,
                                         userCard.id,
@@ -1133,6 +1179,24 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
                                         color: Colors.redAccent,
                                       ),
                                     ),
+                                    const SizedBox(width: 8),
+                                    // Contract status badge
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                      decoration: BoxDecoration(
+                                        color: _getContractColor(userCard.contractsRemaining).withValues(alpha: 0.2),
+                                        borderRadius: BorderRadius.circular(4),
+                                        border: Border.all(color: _getContractColor(userCard.contractsRemaining).withValues(alpha: 0.5)),
+                                      ),
+                                      child: Text(
+                                        _getContractLabel(userCard.contractsRemaining),
+                                        style: TextStyle(
+                                          color: _getContractColor(userCard.contractsRemaining),
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 9,
+                                        ),
+                                      ),
+                                    ),
                                   ],
                                 ),
                                 trailing: Text(
@@ -1144,6 +1208,11 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
                                   ),
                                 ),
                                 onTap: () {
+                                  // Check contract status before adding
+                                  if (userCard.contractsRemaining <= 0) {
+                                    _showContractExpiredDialog(userCard);
+                                    return;
+                                  }
                                   final activeTeam = ref.read(teamProvider).valueOrNull;
                                   final activeSquad = activeTeam?.activeSquad;
                                   if (activeSquad != null) {
@@ -1437,11 +1506,153 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
     );
   }
 
+  /// Shows a dialog when a player has 0 contracts, offering to apply a contract or replace them.
+  Future<void> _showContractExpiredDialog(UserCard userCard) async {
+    if (!mounted) return;
+    final playerName = userCard.playerCard?.playerName ?? 'This player';
+    final contracts = ref.read(userContractsProvider.notifier);
+    final applicableContracts = contracts.getApplicableContracts(userCard);
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        title: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: AppTheme.error, size: 28),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text(
+                'Out of Contracts',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '$playerName has 0 contracts remaining and cannot be added to the lineup.',
+              style: const TextStyle(fontSize: 14),
+            ),
+            const SizedBox(height: 12),
+            if (applicableContracts.isNotEmpty) ...[
+              const Text(
+                'You have contracts available to apply:',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white70),
+              ),
+              const SizedBox(height: 8),
+              ...applicableContracts.map((contract) => Container(
+                margin: const EdgeInsets.only(bottom: 6),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppTheme.surfaceLight,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.white12),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 12,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        color: Color(contract.contractType?.tierColor ?? 0xFF9E9E9E),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            contract.contractType?.name ?? 'Unknown Contract',
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                          ),
+                          Text(
+                            'Tier: ${contract.contractType?.tierDisplayName ?? "—"} • +${contract.contractType?.matchesAwarded ?? 0} matches • Qty: ${contract.quantity}',
+                            style: const TextStyle(fontSize: 11, color: Colors.white54),
+                          ),
+                        ],
+                      ),
+                    ),
+                    ElevatedButton(
+                      onPressed: () async {
+                        Navigator.of(context).pop();
+                        final success = await contracts.applyContract(userCard.id, contract.contractTypeId);
+                        if (success && mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Contract applied to $playerName')),
+                          );
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.accent,
+                        foregroundColor: Colors.black,
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        minimumSize: const Size(80, 32),
+                      ),
+                      child: const Text('APPLY', style: TextStyle(fontSize: 11)),
+                    ),
+                  ],
+                ),
+              )),
+            ] else ...[
+              const Text(
+                'You have no contracts available for this player. Open contract packs or purchase contracts to replenish.',
+                style: TextStyle(fontSize: 13, color: Colors.white54),
+              ),
+              const SizedBox(height: 8),
+              TextButton.icon(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  // Could navigate to store/packs screen here
+                },
+                icon: const Icon(Icons.shop, size: 16),
+                label: const Text('GET CONTRACTS'),
+                style: TextButton.styleFrom(foregroundColor: AppTheme.accent),
+              ),
+            ],
+            const SizedBox(height: 12),
+            const Divider(color: Colors.white12),
+            const SizedBox(height: 8),
+            const Text(
+              'Alternatively, you can replace this player in the lineup with one who has contracts.',
+              style: TextStyle(fontSize: 12, color: Colors.white54),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('CANCEL'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Color _chemistryColor(int chemistry) {
     if (chemistry >= 80) return AppTheme.cardLegend;
     if (chemistry >= 60) return AppTheme.cardGold;
     if (chemistry >= 40) return AppTheme.primaryLight;
     if (chemistry >= 20) return AppTheme.cardSilver;
     return AppTheme.cardBronze;
+  }
+
+  /// Returns contract status color: green (>=5), yellow (1-4), red (0)
+  Color _getContractColor(int contractsRemaining) {
+    if (contractsRemaining >= 5) return Colors.greenAccent;
+    if (contractsRemaining >= 1) return Colors.orangeAccent;
+    return AppTheme.error;
+  }
+
+  /// Returns contract status label
+  String _getContractLabel(int contractsRemaining) {
+    if (contractsRemaining == 0) return 'EXPIRED';
+    if (contractsRemaining >= 5) return '$contractsRemaining';
+    return '$contractsRemaining';
   }
 }

@@ -13,6 +13,8 @@ class UserCard {
   final int wicketsTaken;
   final bool isTradeable;
   final DateTime acquiredAt;
+  final int contractsRemaining;
+  final int contractsMax;
   final PlayerCard? playerCard; // Joined data
 
   const UserCard({
@@ -28,6 +30,8 @@ class UserCard {
     this.wicketsTaken = 0,
     this.isTradeable = true,
     required this.acquiredAt,
+    this.contractsRemaining = 7,
+    this.contractsMax = 7,
     this.playerCard,
   });
 
@@ -45,6 +49,8 @@ class UserCard {
       wicketsTaken: json['wickets_taken'] ?? 0,
       isTradeable: json['is_tradeable'] ?? true,
       acquiredAt: DateTime.parse(json['acquired_at'] ?? json['created_at']),
+      contractsRemaining: json['contracts_remaining'] ?? 7,
+      contractsMax: json['contracts_max'] ?? 7,
       playerCard: json['player_cards'] != null
           ? PlayerCard.fromJson(json['player_cards'])
           : null,
@@ -63,6 +69,8 @@ class UserCard {
         'runs_scored': runsScored,
         'wickets_taken': wicketsTaken,
         'is_tradeable': isTradeable,
+        'contracts_remaining': contractsRemaining,
+        'contracts_max': contractsMax,
       };
 
   // Effective rating with boosts from level, form, fatigue
@@ -197,6 +205,8 @@ class UserCard {
     int? matchesPlayed,
     int? runsScored,
     int? wicketsTaken,
+    int? contractsRemaining,
+    int? contractsMax,
   }) {
     return UserCard(
       id: id,
@@ -211,7 +221,14 @@ class UserCard {
       wicketsTaken: wicketsTaken ?? this.wicketsTaken,
       isTradeable: isTradeable,
       acquiredAt: acquiredAt,
+      contractsRemaining: contractsRemaining ?? this.contractsRemaining,
+      contractsMax: contractsMax ?? this.contractsMax,
       playerCard: playerCard,
     );
   }
+
+  // Contract helpers
+  bool get hasContracts => contractsRemaining > 0;
+  bool get isOutOfContracts => contractsRemaining == 0;
+  double get contractProgress => contractsMax > 0 ? contractsRemaining / contractsMax : 0;
 }

@@ -36,7 +36,11 @@ class MarketNotifier extends StateNotifier<AsyncValue<List<MarketListing>>> {
   Future<void> loadListings() async {
     try {
       if (!state.hasValue) state = const AsyncValue.loading();
-      final data = await SupabaseService.getMarketListings();
+      final filter = ref.read(marketFilterProvider);
+      final data = await SupabaseService.getMarketListings(
+        listingType: filter.listingType,
+        sortBy: filter.sortBy,
+      );
       final listings =
           data.map((json) => MarketListing.fromJson(json)).toList();
 
@@ -183,6 +187,84 @@ class MarketNotifier extends StateNotifier<AsyncValue<List<MarketListing>>> {
     } catch (_) {}
   }
 
+  /// List a contract for sale on the market
+  Future<Map<String, dynamic>> listContract({
+    required String contractTypeId,
+    required int quantity,
+    required int pricePerUnit,
+    int durationHours = 24,
+  }) async {
+    try {
+      final userId = SupabaseService.currentUserId;
+      if (userId == null) return {'success': false, 'error': 'Not logged in'};
+
+      final result = await SupabaseService.client.rpc('list_contract_on_market', params: {
+        'p_seller_id': userId,
+        'p_contract_type_id': contractTypeId,
+        'p_quantity': quantity,
+        'p_price_per_unit': pricePerUnit,
+        'p_duration_hours': durationHours,
+      });
+
+      await loadListings();
+      ref.read(myListingsProvider.notifier).refresh();
+      ref.read(userContractsProvider.notifier).refresh();
+
+      if (result is Map) return Map<String, dynamic>.from(result);
+      return {'success': true};
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  /// Buy a contract from the market
+  Future<Map<String, dynamic>> buyContract(String listingId, {int quantity = 1}) async {
+    try {
+      final userId = SupabaseService.currentUserId;
+      if (userId == null) return {'success': false, 'error': 'Not logged in'};
+
+      final result = await SupabaseService.client.rpc('buy_contract_from_market', params: {
+        'p_listing_id': listingId,
+        'p_buyer_id': userId,
+        'p_quantity': quantity,
+      });
+
+      // Refresh user data and market
+      ref.read(currentUserProvider.notifier).silentRefresh();
+      ref.read(userContractsProvider.notifier).refresh();
+      await loadListings();
+      ref.read(myBidsProvider.notifier).load();
+      ref.read(myListingsProvider.notifier).load();
+
+      if (result is Map) return Map<String, dynamic>.from(result);
+      return {'success': true};
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
+  /// Cancel a contract listing
+  Future<Map<String, dynamic>> cancelContractListing(String listingId) async {
+    try {
+      final userId = SupabaseService.currentUserId;
+      if (userId == null) return {'success': false, 'error': 'Not logged in'};
+
+      final result = await SupabaseService.client.rpc('cancel_contract_listing', params: {
+        'p_listing_id': listingId,
+        'p_seller_id': userId,
+      });
+
+      await loadListings();
+      ref.read(myListingsProvider.notifier).load();
+      ref.read(userContractsProvider.notifier).refresh();
+
+      if (result is Map) return Map<String, dynamic>.from(result);
+      return {'success': true};
+    } catch (e) {
+      return {'success': false, 'error': e.toString()};
+    }
+  }
+
   @override
   void dispose() {
     _channel?.unsubscribe();
@@ -250,7 +332,7 @@ class MyListingsNotifier extends StateNotifier<AsyncValue<List<MarketListing>>> 
 
       final rows = await SupabaseService.client
           .from('transfer_market')
-          .select('*, user_cards(*, player_cards(*)), users!seller_id(username)')
+          .select('*, user_cards(*, player_cards(*)), contract_types(*), users!seller_id(username)')
           .eq('seller_id', userId)
           .order('created_at', ascending: false)
           .limit(50);
@@ -275,6 +357,7 @@ class MarketFilter {
   final int? minPrice;
   final int? maxPrice;
   final String sortBy;
+  final String? listingType; // 'card', 'contract', or null for all
 
   const MarketFilter({
     this.rarity,
@@ -283,5 +366,26 @@ class MarketFilter {
     this.minPrice,
     this.maxPrice,
     this.sortBy = 'newest',
+    this.listingType,
   });
+
+  MarketFilter copyWith({
+    String? rarity,
+    String? role,
+    String? country,
+    int? minPrice,
+    int? maxPrice,
+    String? sortBy,
+    String? listingType,
+  }) {
+    return MarketFilter(
+      rarity: rarity ?? this.rarity,
+      role: role ?? this.role,
+      country: country ?? this.country,
+      minPrice: minPrice ?? this.minPrice,
+      maxPrice: maxPrice ?? this.maxPrice,
+      sortBy: sortBy ?? this.sortBy,
+      listingType: listingType ?? this.listingType,
+    );
+  }
 }

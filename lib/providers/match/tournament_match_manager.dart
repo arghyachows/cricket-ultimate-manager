@@ -105,6 +105,7 @@ class TournamentMatchState {
   int coinsAwarded = 0;
   int xpAwarded = 0;
   String? levelUpPackAwarded;
+  String? contractPackAwarded;
   int? newLevel;
 }
 

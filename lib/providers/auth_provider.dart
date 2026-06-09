@@ -29,13 +29,13 @@ class CurrentUserNotifier extends StateNotifier<AsyncValue<UserModel?>> {
   RealtimeChannel? _channel;
 
   /// Pending rewards that failed to persist, stored for retry.
-  ({int coins, int xp, bool? homeWon})? _pendingRewards;
+  ({int coins, int xp, bool? homeWon, String difficulty})? _pendingRewards;
 
   /// Error message from the last persistence failure, if any.
   String? _persistenceError;
 
   /// Returns the pending rewards tuple if a persistence failure occurred.
-  ({int coins, int xp, bool? homeWon})? get pendingRewards => _pendingRewards;
+  ({int coins, int xp, bool? homeWon, String difficulty})? get pendingRewards => _pendingRewards;
 
   /// Returns the last persistence error message, or null if none.
   String? get persistenceError => _persistenceError;
@@ -96,9 +96,9 @@ class CurrentUserNotifier extends StateNotifier<AsyncValue<UserModel?>> {
   }
 
   /// Set a persistence error with pending rewards for retry.
-  void setPersistenceError(String message, {required int pendingCoins, required int pendingXp, required bool pendingHomeWon}) {
+  void setPersistenceError(String message, {required int pendingCoins, required int pendingXp, required bool? pendingHomeWon, required String pendingDifficulty}) {
     _persistenceError = message;
-    _pendingRewards = (coins: pendingCoins, xp: pendingXp, homeWon: pendingHomeWon);
+    _pendingRewards = (coins: pendingCoins, xp: pendingXp, homeWon: pendingHomeWon, difficulty: pendingDifficulty);
   }
 
   /// Clear the persistence error and pending rewards (e.g. after successful retry).
