@@ -1,5 +1,3 @@
-import 'user_card.dart';
-
 class ContractType {
   final String id;
   final String name;
@@ -78,11 +76,19 @@ class UserContract {
   });
 
   factory UserContract.fromJson(Map<String, dynamic> json) {
+    final qty = json['quantity'] ?? 1;
+    if (qty <= 0) {
+      throw ArgumentError('UserContract quantity must be > 0, got $qty');
+    }
+    final tier = json['contract_types'] != null ? json['contract_types']['tier'] as String? : null;
+    if (tier != null && !['bronze', 'silver', 'gold', 'elite', 'legend'].contains(tier)) {
+      throw ArgumentError('UserContract tier must be one of: bronze/silver/gold/elite/legend, got $tier');
+    }
     return UserContract(
       id: json['id'],
       userId: json['user_id'],
       contractTypeId: json['contract_type_id'],
-      quantity: json['quantity'] ?? 1,
+      quantity: qty,
       source: json['source'] ?? 'reward',
       acquiredAt: DateTime.parse(json['acquired_at']),
       contractType: json['contract_types'] != null
@@ -204,5 +210,35 @@ class UserContractPack {
     if (rand < cumulative) return 'silver';
 
     return 'bronze';
+  }
+
+  UserContractPack copyWith({
+    String? id,
+    String? userId,
+    String? packName,
+    int? contractCount,
+    double? bronzeChance,
+    double? silverChance,
+    double? goldChance,
+    double? eliteChance,
+    double? legendChance,
+    String? source,
+    bool? opened,
+    DateTime? createdAt,
+  }) {
+    return UserContractPack(
+      id: id ?? this.id,
+      userId: userId ?? this.userId,
+      packName: packName ?? this.packName,
+      contractCount: contractCount ?? this.contractCount,
+      bronzeChance: bronzeChance ?? this.bronzeChance,
+      silverChance: silverChance ?? this.silverChance,
+      goldChance: goldChance ?? this.goldChance,
+      eliteChance: eliteChance ?? this.eliteChance,
+      legendChance: legendChance ?? this.legendChance,
+      source: source ?? this.source,
+      opened: opened ?? this.opened,
+      createdAt: createdAt ?? this.createdAt,
+    );
   }
 }
