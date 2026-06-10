@@ -1,0 +1,272 @@
+{
+  "title": "Sprint 3 — Contract Items & Economy",
+  "sprintName": "Sprint 3 — Contract Items & Economy",
+  "totalPoints": 25,
+  "completedPoints": 0,
+  "duration": "1 sprint (1-2 weeks)",
+  "goals": [
+    "Players have limited match contracts that deplete over time",
+    "Contract items can be applied to restore match eligibility",
+    "Contracts have 5 tiers (Bronze → Legend) with increasing value",
+    "Contract packs can be earned, bought, and opened like card packs",
+    "Match wins in all modes reward contract packs",
+    "Zero-contract players are blocked from playing XI"
+  ],
+  "introduction": {
+    "concept": "Every player card in Cricket Ultimate Manager now has a match contract — a fixed number of matches they can play before needing a contract renewal. Contract items are consumables that add matches back. They come in 5 tiers, can be earned from match rewards, opened from contract packs, or bought on the market. This adds a light economy layer (like FIFA UT contracts) that drives engagement through pack opening, match replay, and inventory management.",
+    "designDecisions": [
+      "Contracts are per UserCard instance (not per PlayerCard master data)",
+      "Default contract count varies by card rarity — higher rarity = more default matches",
+      "5 tiers: Bronze (+3), Silver (+7), Gold (+15), Elite (+30), Legend (+50)",
+      "Contracts are consumed on match completion, not at lineup selection (to avoid punishing the player if the match crashes)",
+      "Contract packs are a separate table from card packs (cleaner schema, independent probability tables)",
+      "Stacking: same-tier contracts stack in inventory (quantity column) to reduce DB rows",
+      "Card packs can also contain contract items as side drops alongside player cards"
+    ]
+  },
+  "stories": [
+    {
+      "id": 1,
+      "title": "Database schema for contracts system",
+      "priority": "Must Have",
+      "points": 3,
+      "labels": ["backend", "database", "migration"],
+      "userStory": "As a developer, I want the database schema to support contracts so that the backend can store and manage contract items properly.",
+      "acceptanceCriteria": [
+        "New table `contract_types` with columns: id (UUID PK), name (TEXT), tier (TEXT), matches_awarded (INT), image_url (TEXT?), is_available (BOOLEAN), created_at (TIMESTAMPTZ)",
+        "New table `user_contracts` with columns: id (UUID PK), user_id (UUID FK → users), contract_type_id (UUID FK → contract_types), quantity (INT DEFAULT 1), source (TEXT — reward/purchase/tournament/market/pack), acquired_at (TIMESTAMPTZ)",
+        "New table `user_contract_packs` with columns: id (UUID PK), user_id (UUID FK → users), pack_name (TEXT), contract_count (INT DEFAULT 3), bronze_chance (DOUBLE), silver_chance (DOUBLE), gold_chance (DOUBLE), elite_chance (DOUBLE), legend_chance (DOUBLE), source (TEXT — reward/purchase/tournament/level_up), opened (BOOLEAN DEFAULT false), created_at (TIMESTAMPTZ)",
+        "ALTER TABLE user_cards ADD COLUMN contracts_remaining INT NOT NULL DEFAULT 7",
+        "ALTER TABLE user_cards ADD COLUMN contracts_max INT NOT NULL DEFAULT 7",
+        "INSERT seed data into `contract_types`: Bronze (+3), Silver (+7), Gold (+15), Elite (+30), Legend (+50)",
+        "INSERT seed data into `user_contract_packs`: Bronze Contract Pack (3-5 contracts, weighted to bronze/silver), Silver Contract Pack, Gold Contract Pack, Elite Contract Pack, Legend Contract Pack",
+        "Add database index on user_contracts(user_id) user_contracts(user_id, contract_type_id) user_contract_packs(user_id, opened) user_cards(user_id, contracts_remaining)",
+        "Enable RLS on all new tables with policies: users can only read/write their own rows",
+        "Follow existing migration naming: YYYYMMDDHHMMSS_contracts.sql"
+      ],
+      "technicalNotes": "Contract types are seed data (like pack_types). user_contracts uses a quantity column for stacking duplicate contracts (same tier from same source). user_contract_packs mirrors user_card_packs but for contract-specific packs.",
+      "edgeCases": [
+        "migration on existing user_cards — set contracts_remaining = 7 for all existing rows, contracts_max = 7",
+        "Quantity = 0 rows in user_contracts should be cleaned up or excluded from queries",
+        "User receives contract pack but has never played — contracts system should be invisible until the user has cards in their XI"
+      ],
+      "files": [
+        "supabase/migrations/20260609000000_contracts.sql",
+        "supabase/schema.sql"
+      ],
+      "status": "todo",
+      "commit": "",
+      "completedAt": ""
+    },
+    {
+      "id": 2,
+      "title": "Dart models for contract entities",
+      "priority": "Must Have",
+      "points": 2,
+      "labels": ["models", "dart"],
+      "userStory": "As a developer, I want Dart model classes for ContractType, UserContract, and UserContractPack so that the app can parse and display contract data.",
+      "acceptanceCriteria": [
+        "New `contract_model.dart` in lib/models/ with ContractType, UserContract, UserContractPack classes",
+        "ContractType: id (String), name (String), tier (String), matchesAwarded (int), imageUrl (String?), isAvailable (bool), fromJson(), toJson()",
+        "UserContract: id (String), userId (String), contractTypeId (String), quantity (int, default 1), source (String), acquiredAt (DateTime), contractType (ContractType?, joined), fromJson()",
+        "UserContractPack: id (String), userId (String), packName (String), contractCount (int, default 3), bronzeChance/silverChance/goldChance/eliteChance/legendChance (double), source (String), opened (bool, default false), createdAt (DateTime), fromJson()",
+        "Models exported from lib/models/models.dart",
+        "All models have const constructors, copyWith (where useful), and proper null safety"
+      ],
+      "technicalNotes": "Follow UserCard/PackType pattern exactly. UserContract.contractType joins contract_types table. UserContractPack mirrors UserCardPack but for contract-only packs.",
+      "edgeCases": [
+        "quantity should never be 0 or negative — validate in fromJson",
+        "tier is a simple string enum: 'bronze'/'silver'/'gold'/'elite'/'legend'"
+      ],
+      "files": [
+        "lib/models/contract_model.dart",
+        "lib/models/models.dart"
+      ],
+      "status": "todo",
+      "commit": "",
+      "completedAt": ""
+    },
+    {
+      "id": 3,
+      "title": "Contract inventory provider — load, apply, and manage contracts",
+      "priority": "Must Have",
+      "points": 5,
+      "labels": ["provider", "backend", "dart"],
+      "userStory": "As a player, I want to see my contract items and apply them to my players so that I can keep my squad match-ready.",
+      "acceptanceCriteria": [
+        "New `contracts_provider.dart` in lib/providers/ with ContractsNotifier (StateNotifierProvider<ContractsNotifier, AsyncValue<List<UserContract>>>)",
+        "loadContracts() fetches from user_contracts table joined with contract_types, filtered by quantity > 0",
+        "openContractPack(packId) generates random contracts based on pack probabilities, inserts into user_contracts (or increments quantity of existing same-tier contract), marks pack as opened, returns list of awarded ContractType IDs",
+        "applyContract(userCardId, contractTypeId) decrements quantity of the contract, increments userCard.contracts_remaining by contractType.matchesAwarded, caps at contracts_max or contracts_max + matchesAwarded (extendable max)",
+        "getContractCount(contractTypeId) returns total quantity across all rows for that type",
+        "getApplicableContracts(userCard) returns list of valid contract types for this card",
+        "Provider respects SupabaseService pattern — uses client.rpc for atomic applyContract operation",
+        "Real-time refresh on contract changes via subscribeToContracts channel",
+        "Export from lib/providers/providers.dart"
+      ],
+      "technicalNotes": "applyContract should be a server-side RPC for atomicity: decrement user_contracts.quantity, update user_cards.contracts_remaining, update user_cards.contracts_max if applicable. Opening a contract pack can be client-side (like card packs) — generate rarities, pick random contract_types, upsert into user_contracts. Contracts never expire — they stack infinitely.",
+      "edgeCases": [
+        "Apply contract to a card with full contracts — show warning and prevent application",
+        "Apply higher-tier contract — the contracts_max should be updated if the new max exceeds old max (e.g., Gold on a card with contracts_max=15 increases it to 15+15=30)",
+        "If quantity reaches 0 after consumption, row should be deleted from user_contracts",
+        "If user has no contracts of any tier, show 'No contracts available' empty state",
+        "Apply contract should update local state immediately (optimistic) and reconcile with DB"
+      ],
+      "files": [
+        "lib/providers/contracts_provider.dart",
+        "lib/providers/providers.dart",
+        "lib/core/supabase_service.dart"
+      ],
+      "status": "todo",
+      "commit": "",
+      "completedAt": ""
+    },
+    {
+      "id": 4,
+      "title": "Contract consumption on match completion + XI validation",
+      "priority": "Must Have",
+      "points": 5,
+      "labels": ["match-engine", "gameplay", "provider"],
+      "userStory": "As a player, I want every match to consume one contract from each XI player and be blocked from fielding expired players so that contracts matter.",
+      "acceptanceCriteria": [
+        "On match completion (in _onMatchComplete or match_completion_handler), decrement contracts_remaining by 1 for each player in the playing XI",
+        "Contract consumption happens AFTER match simulation but BEFORE reward persistence",
+        "If a player's contracts_remaining reaches 0, they are marked as 'out of contracts'",
+        "Squad builder / match preview screen shows contract status for each XI player",
+        "Players with 0 contracts_remaining cannot be placed in the starting XI (validation on lineup submit)",
+        "If XI contains zero-contract players, show a warning dialog with the option to apply contracts or replace them",
+        "Contracts are NOT consumed for AI opponent players — only the user's XI",
+        "Contract consumption is stored via server-side RPC for atomicity (prevent double-spending on retry)",
+        "UI badges on player cards in squad builder: green (>=5), yellow (1-4), red (0 — expired) indicator"
+      ],
+      "technicalNotes": "Hook into the existing match completion flow in match_completion_handler.dart. The lineup data is available via line_up table. For the RPC, pass the array of user_card_ids and decrement contracts_remaining for each. The existing `award_match_rewards` RPC is the model — but this should be a separate RPC for clarity. Squad validation happens in squad_builder_screen.dart's submit handler. The match_preview_screen.dart should check contracts before starting the match.",
+      "edgeCases": [
+        "Match retry after failure — contract should not be consumed twice. Use the existing idempotency pattern.",
+        "Multiplayer matches — only the user's XI contracts are consumed, not the opponent's",
+        "Tournament matches — same as regular matches. Contracts consumed per round.",
+        "Challenge mode — contracts consumed normally",
+        "Match simulation (skip) — contracts still consumed (player was in XI)",
+        "Match abort / forfeit — should contracts be consumed? Decision: YES (player was selected, match started)",
+        "What if all XI players are out of contracts? Prevent match start until at least 11 valid players are fielded"
+      ],
+      "files": [
+        "lib/providers/match/match_completion_handler.dart",
+        "lib/providers/match_provider.dart",
+        "lib/providers/match/match_local_engine.dart",
+        "lib/screens/squad_builder_screen.dart",
+        "lib/screens/match_preview_screen.dart",
+        "lib/screens/multiplayer_room_screen.dart"
+      ],
+      "status": "todo",
+      "commit": "",
+      "completedAt": ""
+    },
+    {
+      "id": 5,
+      "title": "Contracts UI screens — inventory, apply, and player card integration",
+      "priority": "Should Have",
+      "points": 5,
+      "labels": ["ui", "screens", "dart"],
+      "userStory": "As a player, I want a contracts inventory screen and the ability to apply contracts to my players so that I can manage my squad's match eligibility.",
+      "acceptanceCriteria": [
+        "New ContractsScreen at /contracts with tabs: 'My Contracts' and 'Contract Packs'",
+        "'My Contracts' tab: grid of contract types with quantity badges, sorted by tier (legend first)",
+        "Each contract card shows: tier badge, matches awarded (+3, +7, etc.), quantity owned",
+        "Tap a contract → show player selector (squad builder grid) filtered to players who can receive this contract",
+        "Select player → confirm dialog: 'Apply {Silver Contract} to {Player Name}? (+7 matches)'",
+        "After apply: show success animation, update inventory, update player card contract badge",
+        "'Contract Packs' tab: list of unopened contract packs with pack name, count, source badge",
+        "Tap contract pack → opening animation (similar to card pack opening but simpler)",
+        "Pack opening shows each contract type awarded with tier badge and quantity",
+        "Player card detail screen (card_detail_screen.dart) shows: contracts_remaining / contracts_max with progress bar",
+        "Squad builder shows contract chip on each player card with color coding (green/yellow/red)",
+        "New route /contracts added to GoRouter shell routes with bottom nav entry",
+        "Loading states: shimmer while inventory loads, empty state illustration when no contracts"
+      ],
+      "technicalNotes": "Reuse pack opening UI patterns from PackOpeningScreen. The player selector for contract application reuses the squad builder grid widget (extract as reusable component). Contract progress bar on card detail: green 50-100%, yellow 20-49%, red 0-19%. The apply contract flow is: select contract → select target → confirm → call RPC → refresh providers. Add route to bottom nav or under 'More' section.",
+      "edgeCases": [
+        "Player already at max contracts — contract type should be grayed out / not selectable",
+        "Player card no longer owned — exclude from selector",
+        "Contract inventory empty — show 'Earn contracts by winning matches!' CTA button",
+        "Contract packs empty — show 'Buy contract packs in the store!' CTA",
+        "Applying a contract that would overflow contracts_max — just cap at max (don't lose matches)"
+      ],
+      "files": [
+        "lib/core/constants.dart",
+        "lib/core/router.dart",
+        "lib/screens/contracts_screen.dart",
+        "lib/screens/card_detail_screen.dart",
+        "lib/screens/squad_builder_screen.dart",
+        "lib/widgets/contract_card_tile.dart"
+      ],
+      "status": "todo",
+      "commit": "",
+      "completedAt": ""
+    },
+    {
+      "id": 6,
+      "title": "Contract packs as match rewards across all modes",
+      "priority": "Should Have",
+      "points": 3,
+      "labels": ["gameplay", "economy", "backend"],
+      "userStory": "As a player, I want to earn contract packs by winning matches in any mode so that I'm incentivized to play more.",
+      "acceptanceCriteria": [
+        "Match win in any mode rewards a contract pack (alongside existing coins/XP)",
+        "Contract pack tier varies by match difficulty/mode: Village (Bronze), Domestic (Bronze/Silver), International (Silver/Gold), Tournament (Gold/Elite), Multiplayer (Elite/Legend)",
+        "Losses in easier modes give nothing; losses in harder modes have a small chance of a Bronze pack",
+        "Contract packs are awarded via the `award_match_rewards` RPC (modified to also insert into user_contract_packs)",
+        "Daily reward system can optionally include contract packs on streak milestones",
+        "Level-up rewards can optionally include contract packs (e.g., level 10 → Silver Contract Pack)",
+        "Post-match result screen shows awarded contract pack with animation alongside coins/XP (if earned)",
+        "Awarded contract packs have source='reward' (or source='level_up_X' for level-ups)"
+      ],
+      "technicalNotes": "Modify `award_match_rewards` RPC to accept a contract_pack_name parameter (nullable). Call from match_completion_handler. Use AppConstants.contractPackForDifficulty(difficulty, won) to determine the pack. This follows existing reward RPC pattern exactly. Multiplayer wins could grant cross-tier packs (e.g., 'Dynamic Contract Pack' with wider probability range).",
+      "edgeCases": [
+        "Draw result — award a Bronze Contract Pack (participation reward)",
+        "User already has the same pack type — still create a new row (packs are individual, not stackable)",
+        "Very high-level users — Legend Contract Packs should feel rare even at max difficulty",
+        "Multiplayer ranked vs unranked — ranked wins give higher tier packs"
+      ],
+      "files": [
+        "lib/core/constants.dart",
+        "lib/providers/match/match_completion_handler.dart",
+        "supabase/migrations/20260609000000_contracts.sql"
+      ],
+      "status": "todo",
+      "commit": "",
+      "completedAt": ""
+    },
+    {
+      "id": 7,
+      "title": "Contract packs in the store + market trading for contracts",
+      "priority": "Nice to Have",
+      "points": 2,
+      "labels": ["economy", "store", "market", "monetization"],
+      "userStory": "As a player, I want to buy contract packs from the store and trade extra contracts on the market so that I have multiple ways to acquire them.",
+      "acceptanceCriteria": [
+        "Store screen shows contract packs section with coin and premium token prices",
+        "Contract pack types: Bronze Pack (100 coins), Silver Pack (500 coins), Gold Pack (2500 coins), Elite Pack (10000 coins / 50 tokens), Legend Pack (25000 coins / 150 tokens)",
+        "Bought packs go to user_contract_packs with source='purchase'",
+        "Gold+ tier contracts are tradeable on the market",
+        "Market listing for contracts: select quantity (1-10), set price per unit, 5% tax applies",
+        "Market buy: purchase individual contracts (not packs), added to user_contracts",
+        "Market listing type: 'contract' in transactions table reference"
+      ],
+      "technicalNotes": "Store buying contracts follows the pack_provider.dart pattern almost exactly — check balance, deduct, insert into user_contract_packs. Market trading for contracts is simpler than card trading since contracts are stackable — just update quantity on the user_contracts row.",
+      "edgeCases": [
+        "Market listing partial quantity — user lists 5, buyer buys 3 — should decrement listing quantity and add 3 to buyer",
+        "Price floor per tier: Bronze 10, Silver 50, Gold 200, Elite 1000, Legend 5000 coins",
+        "Applied contracts lose tradeable status (consumable once applied)"
+      ],
+      "files": [
+        "lib/providers/market_provider.dart",
+        "lib/providers/pack_provider.dart",
+        "lib/screens/pack_store_screen.dart",
+        "lib/core/constants.dart"
+      ],
+      "status": "todo",
+      "commit": "",
+      "completedAt": ""
+    }
+  ]
+}

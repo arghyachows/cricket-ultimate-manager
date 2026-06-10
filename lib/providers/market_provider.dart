@@ -333,7 +333,7 @@ class MyListingsNotifier extends StateNotifier<AsyncValue<List<MarketListing>>> 
 
       final rows = await SupabaseService.client
           .from('transfer_market')
-          .select('*, user_cards(*, player_cards(*)), contract_types!contract_type_id(*), users!seller_id(username)')
+          .select('*, user_cards(*, player_cards(*)), users!seller_id(username)')
           .eq('seller_id', userId)
           .order('created_at', ascending: false)
           .limit(50);
