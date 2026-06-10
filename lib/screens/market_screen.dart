@@ -1234,7 +1234,7 @@ class _SellTab extends ConsumerWidget {
 
         if (tradeable.isEmpty && tradeableContracts.isEmpty) {
           return RefreshIndicator(
-            onRefresh: () {
+            onRefresh: () async {
               ref.read(userCardsProvider.notifier).loadCards();
               ref.read(userContractsProvider.notifier).refresh();
             },
@@ -1254,7 +1254,7 @@ class _SellTab extends ConsumerWidget {
         }
 
         return RefreshIndicator(
-          onRefresh: () {
+          onRefresh: () async {
             ref.read(userCardsProvider.notifier).loadCards();
             ref.read(userContractsProvider.notifier).refresh();
           },

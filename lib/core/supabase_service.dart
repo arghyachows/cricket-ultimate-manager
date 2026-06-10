@@ -132,7 +132,7 @@ class SupabaseService {
         '*, user_cards(*, player_cards(*)), users!seller_id(username), contract_types(*)').eq('status', 'active');
 
     // Apply listing type filter
-    var query = listingType != null
+    dynamic query = listingType != null
         ? baseQuery.eq('listing_type', listingType)
         : baseQuery;
 

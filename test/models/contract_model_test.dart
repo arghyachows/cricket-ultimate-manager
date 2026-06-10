@@ -1,5 +1,5 @@
-import 'package:test/test.dart';
-import '../lib/models/contract_model.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:cricket_ultimate_manager/models/contract_model.dart';
 
 void main() {
   group('UserContractPack copyWith', () {

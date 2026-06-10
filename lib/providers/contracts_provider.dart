@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/supabase_service.dart';
 import '../models/models.dart';
 import 'auth_provider.dart';
+import 'cards_provider.dart';
 
 // Contract Types Provider
 final contractTypesProvider = FutureProvider<List<ContractType>>((ref) async {

@@ -5,6 +5,7 @@ import '../core/constants.dart';
 import '../models/models.dart';
 import 'auth_provider.dart';
 import 'card_packs_provider.dart';
+import 'cards_provider.dart';
 import 'career_stats_provider.dart';
 import 'challenge_provider.dart';
 import 'match/match_state.dart';
@@ -313,6 +314,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
           pendingCoins: rewards.coins,
           pendingXp: rewards.xp,
           pendingHomeWon: rewards.homeWon,
+          pendingDifficulty: difficulty,
         );
       } else if (contractResult.totalErrors > 0) {
         // Some players had errors (e.g., already out of contracts)

@@ -42,7 +42,9 @@ mixin _$MatchState {
   int get target => throw _privateConstructorUsedError;
   List<String> get xiOrder1 => throw _privateConstructorUsedError;
   List<String> get xiOrder2 => throw _privateConstructorUsedError;
+  List<String> get userXiCardIds => throw _privateConstructorUsedError;
   String? get levelUpPackAwarded => throw _privateConstructorUsedError;
+  String? get contractPackAwarded => throw _privateConstructorUsedError;
   int? get newLevel => throw _privateConstructorUsedError;
   String get strikerCardId => throw _privateConstructorUsedError;
   String get nonStrikerCardId => throw _privateConstructorUsedError;
@@ -87,7 +89,9 @@ abstract class $MatchStateCopyWith<$Res> {
       int target,
       List<String> xiOrder1,
       List<String> xiOrder2,
+      List<String> userXiCardIds,
       String? levelUpPackAwarded,
+      String? contractPackAwarded,
       int? newLevel,
       String strikerCardId,
       String nonStrikerCardId,
@@ -134,7 +138,9 @@ class _$MatchStateCopyWithImpl<$Res, $Val extends MatchState>
     Object? target = null,
     Object? xiOrder1 = null,
     Object? xiOrder2 = null,
+    Object? userXiCardIds = null,
     Object? levelUpPackAwarded = freezed,
+    Object? contractPackAwarded = freezed,
     Object? newLevel = freezed,
     Object? strikerCardId = null,
     Object? nonStrikerCardId = null,
@@ -238,9 +244,17 @@ class _$MatchStateCopyWithImpl<$Res, $Val extends MatchState>
           ? _value.xiOrder2
           : xiOrder2 // ignore: cast_nullable_to_non_nullable
               as List<String>,
+      userXiCardIds: null == userXiCardIds
+          ? _value.userXiCardIds
+          : userXiCardIds // ignore: cast_nullable_to_non_nullable
+              as List<String>,
       levelUpPackAwarded: freezed == levelUpPackAwarded
           ? _value.levelUpPackAwarded
           : levelUpPackAwarded // ignore: cast_nullable_to_non_nullable
+              as String?,
+      contractPackAwarded: freezed == contractPackAwarded
+          ? _value.contractPackAwarded
+          : contractPackAwarded // ignore: cast_nullable_to_non_nullable
               as String?,
       newLevel: freezed == newLevel
           ? _value.newLevel
@@ -299,7 +313,9 @@ abstract class _$$MatchStateImplCopyWith<$Res>
       int target,
       List<String> xiOrder1,
       List<String> xiOrder2,
+      List<String> userXiCardIds,
       String? levelUpPackAwarded,
+      String? contractPackAwarded,
       int? newLevel,
       String strikerCardId,
       String nonStrikerCardId,
@@ -344,7 +360,9 @@ class __$$MatchStateImplCopyWithImpl<$Res>
     Object? target = null,
     Object? xiOrder1 = null,
     Object? xiOrder2 = null,
+    Object? userXiCardIds = null,
     Object? levelUpPackAwarded = freezed,
+    Object? contractPackAwarded = freezed,
     Object? newLevel = freezed,
     Object? strikerCardId = null,
     Object? nonStrikerCardId = null,
@@ -448,9 +466,17 @@ class __$$MatchStateImplCopyWithImpl<$Res>
           ? _value._xiOrder2
           : xiOrder2 // ignore: cast_nullable_to_non_nullable
               as List<String>,
+      userXiCardIds: null == userXiCardIds
+          ? _value._userXiCardIds
+          : userXiCardIds // ignore: cast_nullable_to_non_nullable
+              as List<String>,
       levelUpPackAwarded: freezed == levelUpPackAwarded
           ? _value.levelUpPackAwarded
           : levelUpPackAwarded // ignore: cast_nullable_to_non_nullable
+              as String?,
+      contractPackAwarded: freezed == contractPackAwarded
+          ? _value.contractPackAwarded
+          : contractPackAwarded // ignore: cast_nullable_to_non_nullable
               as String?,
       newLevel: freezed == newLevel
           ? _value.newLevel
@@ -504,7 +530,9 @@ class _$MatchStateImpl extends _MatchState {
       this.target = 0,
       final List<String> xiOrder1 = const [],
       final List<String> xiOrder2 = const [],
+      final List<String> userXiCardIds = const [],
       this.levelUpPackAwarded,
+      this.contractPackAwarded,
       this.newLevel,
       this.strikerCardId = '',
       this.nonStrikerCardId = '',
@@ -515,6 +543,7 @@ class _$MatchStateImpl extends _MatchState {
         _bowlerStats = bowlerStats,
         _xiOrder1 = xiOrder1,
         _xiOrder2 = xiOrder2,
+        _userXiCardIds = userXiCardIds,
         super._();
 
   @override
@@ -616,8 +645,19 @@ class _$MatchStateImpl extends _MatchState {
     return EqualUnmodifiableListView(_xiOrder2);
   }
 
+  final List<String> _userXiCardIds;
+  @override
+  @JsonKey()
+  List<String> get userXiCardIds {
+    if (_userXiCardIds is EqualUnmodifiableListView) return _userXiCardIds;
+    // ignore: implicit_dynamic_type
+    return EqualUnmodifiableListView(_userXiCardIds);
+  }
+
   @override
   final String? levelUpPackAwarded;
+  @override
+  final String? contractPackAwarded;
   @override
   final int? newLevel;
   @override
@@ -635,7 +675,7 @@ class _$MatchStateImpl extends _MatchState {
 
   @override
   String toString() {
-    return 'MatchState(match: $match, events: $events, isSimulating: $isSimulating, isMatchComplete: $isMatchComplete, currentCommentary: $currentCommentary, currentInnings: $currentInnings, batsmanStats: $batsmanStats, bowlerStats: $bowlerStats, homeTeamName: $homeTeamName, awayTeamName: $awayTeamName, matchFormat: $matchFormat, matchOvers: $matchOvers, matchDifficulty: $matchDifficulty, homeWon: $homeWon, coinsAwarded: $coinsAwarded, xpAwarded: $xpAwarded, pitchCondition: $pitchCondition, weatherCondition: $weatherCondition, userWonToss: $userWonToss, tossDecision: $tossDecision, homeBatsFirst: $homeBatsFirst, target: $target, xiOrder1: $xiOrder1, xiOrder2: $xiOrder2, levelUpPackAwarded: $levelUpPackAwarded, newLevel: $newLevel, strikerCardId: $strikerCardId, nonStrikerCardId: $nonStrikerCardId, challengeMode: $challengeMode, phase: $phase)';
+    return 'MatchState(match: $match, events: $events, isSimulating: $isSimulating, isMatchComplete: $isMatchComplete, currentCommentary: $currentCommentary, currentInnings: $currentInnings, batsmanStats: $batsmanStats, bowlerStats: $bowlerStats, homeTeamName: $homeTeamName, awayTeamName: $awayTeamName, matchFormat: $matchFormat, matchOvers: $matchOvers, matchDifficulty: $matchDifficulty, homeWon: $homeWon, coinsAwarded: $coinsAwarded, xpAwarded: $xpAwarded, pitchCondition: $pitchCondition, weatherCondition: $weatherCondition, userWonToss: $userWonToss, tossDecision: $tossDecision, homeBatsFirst: $homeBatsFirst, target: $target, xiOrder1: $xiOrder1, xiOrder2: $xiOrder2, userXiCardIds: $userXiCardIds, levelUpPackAwarded: $levelUpPackAwarded, contractPackAwarded: $contractPackAwarded, newLevel: $newLevel, strikerCardId: $strikerCardId, nonStrikerCardId: $nonStrikerCardId, challengeMode: $challengeMode, phase: $phase)';
   }
 
   @override
@@ -685,8 +725,12 @@ class _$MatchStateImpl extends _MatchState {
             (identical(other.target, target) || other.target == target) &&
             const DeepCollectionEquality().equals(other._xiOrder1, _xiOrder1) &&
             const DeepCollectionEquality().equals(other._xiOrder2, _xiOrder2) &&
+            const DeepCollectionEquality()
+                .equals(other._userXiCardIds, _userXiCardIds) &&
             (identical(other.levelUpPackAwarded, levelUpPackAwarded) ||
                 other.levelUpPackAwarded == levelUpPackAwarded) &&
+            (identical(other.contractPackAwarded, contractPackAwarded) ||
+                other.contractPackAwarded == contractPackAwarded) &&
             (identical(other.newLevel, newLevel) ||
                 other.newLevel == newLevel) &&
             (identical(other.strikerCardId, strikerCardId) ||
@@ -725,7 +769,9 @@ class _$MatchStateImpl extends _MatchState {
         target,
         const DeepCollectionEquality().hash(_xiOrder1),
         const DeepCollectionEquality().hash(_xiOrder2),
+        const DeepCollectionEquality().hash(_userXiCardIds),
         levelUpPackAwarded,
+        contractPackAwarded,
         newLevel,
         strikerCardId,
         nonStrikerCardId,
@@ -768,7 +814,9 @@ abstract class _MatchState extends MatchState {
       final int target,
       final List<String> xiOrder1,
       final List<String> xiOrder2,
+      final List<String> userXiCardIds,
       final String? levelUpPackAwarded,
+      final String? contractPackAwarded,
       final int? newLevel,
       final String strikerCardId,
       final String nonStrikerCardId,
@@ -825,7 +873,11 @@ abstract class _MatchState extends MatchState {
   @override
   List<String> get xiOrder2;
   @override
+  List<String> get userXiCardIds;
+  @override
   String? get levelUpPackAwarded;
+  @override
+  String? get contractPackAwarded;
   @override
   int? get newLevel;
   @override

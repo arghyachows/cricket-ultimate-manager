@@ -4,6 +4,7 @@ import '../core/supabase_service.dart';
 import '../models/models.dart';
 import 'auth_provider.dart';
 import 'cards_provider.dart';
+import 'contracts_provider.dart';
 
 // ─── Active market listings ───────────────────────────────────────
 final marketListingsProvider = StateNotifierProvider<MarketNotifier,
