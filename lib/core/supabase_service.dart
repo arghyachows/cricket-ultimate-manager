@@ -129,7 +129,7 @@ class SupabaseService {
     String? listingType, // 'card', 'contract', or null for all
   }) async {
     final baseQuery = client.from('transfer_market').select(
-        '*, user_cards(*, player_cards(*)), users!seller_id(username), contract_types(*)').eq('status', 'active');
+        '*, user_cards(*, player_cards(*)), users!seller_id(username), contract_types!contract_type_id(*)').eq('status', 'active');
 
     // Apply listing type filter
     dynamic query = listingType != null
