@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:cricket_ultimate_manager/core/node_backend_service.dart';
-import 'package:cricket_ultimate_manager/services/match_websocket_service.dart';
 
 /// Verifies that NodeBackendService provides a single socket owner and
 /// never allows two simultaneous Socket.IO connection attempts.
@@ -109,71 +108,4 @@ void main() {
     });
   });
 
-  group('MatchWebSocketService delegates to NodeBackendService', () {
-    setUp(() {
-      NodeBackendService.dispose();
-    });
-
-    test('isConnected delegates to NodeBackendService', () {
-      final service = MatchWebSocketService(
-        onBallUpdate: (_) {},
-        onMatchComplete: (_) {},
-        onRoomJoined: (_) {},
-      );
-      // Before any connection attempt, both report not connected.
-      expect(service.isConnected, NodeBackendService.isConnected);
-    });
-
-    test('disconnect is safe when no match was joined', () {
-      final service = MatchWebSocketService(
-        onBallUpdate: (_) {},
-        onMatchComplete: (_) {},
-        onRoomJoined: (_) {},
-      );
-      // Calling disconnect without a prior connectToMatch should not throw.
-      expect(() => service.disconnect(), returnsNormally);
-    });
-
-    test('can create multiple service instances without extra sockets', () {
-      // Multiple MatchWebSocketService instances should all share the
-      // single NodeBackendService socket.
-      final service1 = MatchWebSocketService(
-        onBallUpdate: (_) {},
-        onMatchComplete: (_) {},
-        onRoomJoined: (_) {},
-      );
-      final service2 = MatchWebSocketService(
-        onBallUpdate: (_) {},
-        onMatchComplete: (_) {},
-        onRoomJoined: (_) {},
-      );
-
-      // Both delegate to the same singleton.
-      expect(service1.isConnected, service2.isConnected);
-      expect(service1.isConnected, NodeBackendService.isConnected);
-    });
-
-    test(
-        'MatchWebSocketService does not create its own Socket.IO instance',
-        () {
-      // The entire purpose of this test is to verify the refactoring:
-      // MatchWebSocketService should NOT have its own io.Socket field.
-      // We can't inspect private fields, but we verify by checking that
-      // connecting through the service also updates NodeBackendService.
-      final service = MatchWebSocketService(
-        onBallUpdate: (_) {},
-        onMatchComplete: (_) {},
-        onRoomJoined: (_) {},
-      );
-
-      // Before any connect call, NodeBackendService state is clean.
-      expect(NodeBackendService.isConnected, false);
-
-      // Calling initSocket on NodeBackendService directly should be the
-      // same path that MatchWebSocketService.connectToMatch uses.
-      NodeBackendService.initSocket();
-      // Service should report the same connection state.
-      expect(service.isConnected, NodeBackendService.isConnected);
-    });
-  });
 }

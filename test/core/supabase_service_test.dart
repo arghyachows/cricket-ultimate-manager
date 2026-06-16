@@ -27,7 +27,7 @@ void main() {
       // The channel name MUST include the userId so each user gets
       // an isolated channel.  This prevents accidental cross-user
       // subscription collisions.
-      final expectedName = 'squad_$userId';
+      const expectedName = 'squad_$userId';
       expect(expectedName, 'squad_00000000-0000-0000-0000-000000000001');
     });
 
@@ -37,7 +37,7 @@ void main() {
       //   type:   eq
       //   column: user_id
       // We assert subscribeToSquad follows the same shape.
-      final filter = PostgresChangeFilter(
+      const filter = PostgresChangeFilter(
         type: PostgresChangeFilterType.eq,
         column: 'user_id',
         value: userId,

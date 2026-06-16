@@ -28,8 +28,8 @@ Future<void> _runApp() async {
   try {
     await NotificationService.instance.init();
 
-    final supabaseUrl = const String.fromEnvironment('SUPABASE_URL');
-    final supabaseAnonKey = const String.fromEnvironment('SUPABASE_ANON_KEY');
+    const supabaseUrl = String.fromEnvironment('SUPABASE_URL');
+    const supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
 
     if (supabaseUrl.isEmpty || supabaseAnonKey.isEmpty) {
       // In release builds show an error screen; in debug builds still throw

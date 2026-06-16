@@ -11,11 +11,6 @@ import '../core/supabase_service.dart';
 import '../core/node_backend_service.dart';
 import '../models/models.dart';
 import '../providers/providers.dart';
-import '../providers/match_provider.dart';
-import '../providers/multiplayer_provider.dart';
-import '../providers/auth_provider.dart';
-import '../providers/card_packs_provider.dart';
-import '../providers/career_stats_provider.dart';
 import '../core/notification_service.dart';
 
 // ─── Local state for multiplayer match ─────────────────────────────────────
@@ -496,7 +491,6 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
         },
       );
 
-      final consumed = (result?['consumed'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>().toList();
       final errors = (result?['errors'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>().toList();
 
       if (errors.isNotEmpty) {
@@ -1235,7 +1229,7 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
         _socketIOActive = false;
       }
     } catch (e) {
-      Log.w('Multiplayer polling error (non-fatal): $e', e);
+      Log.w('Multiplayer polling error (non-fatal): $e');
     }
   }
 

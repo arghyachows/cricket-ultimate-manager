@@ -1,11 +1,5 @@
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-
-import 'package:cricket_ultimate_manager/core/supabase_service.dart';
-import 'package:cricket_ultimate_manager/providers/auth_provider.dart';
-import 'package:cricket_ultimate_manager/providers/team_provider.dart';
-import 'package:cricket_ultimate_manager/providers/market_provider.dart';
 
 // ── Minimal fakes ──────────────────────────────────────────────────────────
 
@@ -68,7 +62,6 @@ void main() {
 
       // Simulate what dispose does
       fakeChannel.unsubscribe();
-      fakeChannel.unsubscribed = true;
 
       expect(fakeChannel.unsubscribed, isTrue);
       expect(fakeChannel.unsubscribeCount, equals(1));

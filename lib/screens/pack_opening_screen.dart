@@ -313,7 +313,7 @@ class _PackOpeningScreenState extends ConsumerState<PackOpeningScreen>
                             ),
                             const SizedBox(height: 12),
                             Text(
-                              card.playerCard!.rarity.toUpperCase(),
+                              card.playerCard!.rarity.value.toUpperCase(),
                               style: TextStyle(
                                 color: AppTheme.getRarityColor(card.playerCard!.rarity),
                                 fontWeight: FontWeight.bold,

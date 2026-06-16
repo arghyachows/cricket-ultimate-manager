@@ -1,3 +1,4 @@
+import 'enums.dart';
 import 'user_card.dart';
 
 class Team {

@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:cricket_ultimate_manager/providers/match/tournament_match_manager.dart';
-import 'package:cricket_ultimate_manager/providers/match/match_state.dart';
 
 void main() {
   // ──────────────────────────────────────────────────────────────

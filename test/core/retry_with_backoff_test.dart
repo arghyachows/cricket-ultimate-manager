@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:cricket_ultimate_manager/core/retry_with_backoff.dart';
@@ -71,7 +70,7 @@ void main() {
 
   group('isTransientError', () {
     test('returns true for TimeoutException', () {
-      expect(isTransientError(TimeoutException('timeout')), isTrue);
+      expect(isTransientError(const TimeoutException('timeout')), isTrue);
     });
 
     test('returns true for SocketException', () {
@@ -79,15 +78,15 @@ void main() {
     });
 
     test('returns true for HandshakeException', () {
-      expect(isTransientError(HandshakeException('handshake error')), isTrue);
+      expect(isTransientError(const HandshakeException('handshake error')), isTrue);
     });
 
     test('returns true for HttpException', () {
-      expect(isTransientError(HttpException('http error')), isTrue);
+      expect(isTransientError(const HttpException('http error')), isTrue);
     });
 
     test('returns false for generic Exception', () {
-      expect(isTransientError(Exception('generic')), isFalse);
+      expect(isTransientError(const Exception('generic')), isFalse);
     });
 
     test('returns false for ArgumentError', () {
@@ -139,7 +138,7 @@ void main() {
         fn: () async {
           callCount++;
           if (callCount < 3) {
-            throw TimeoutException('timeout');
+            throw const TimeoutException('timeout');
           }
           return 'ok';
         },

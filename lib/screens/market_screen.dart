@@ -1350,8 +1350,8 @@ class _SellTab extends ConsumerWidget {
                 const SizedBox(height: 8),
                 ...tradeable.map((card) {
                   final pc = card.playerCard!;
-                  final rarityColor = AppTheme.getRarityColor(pc.rarity);
-                  final minBid = AppConstants.minBidByRarity[pc.rarity] ?? 50;
+                  final rarityColor = AppTheme.getRarityColor(pc.rarity.value);
+                  final minBid = AppConstants.minBidByRarity[pc.rarity.value] ?? 50;
 
                   return Container(
                     margin: const EdgeInsets.only(bottom: 8),
@@ -1377,7 +1377,7 @@ class _SellTab extends ConsumerWidget {
                       title: Text(pc.playerName),
                       subtitle: Row(
                         children: [
-                          Text(pc.rarity.toUpperCase(),
+                          Text(pc.rarity.value.toUpperCase(),
                               style: TextStyle(color: rarityColor, fontSize: 12)),
                           const SizedBox(width: 8),
                           Text('Min bid: $minBid',
@@ -1464,29 +1464,29 @@ class _BidTile extends StatelessWidget {
     String statusLabel;
     IconData statusIcon;
     switch (bid.status) {
-      case 'active':
+      case BidStatus.active:
         statusColor = AppTheme.success;
         statusLabel = 'LEADING';
         statusIcon = Icons.check_circle;
         break;
-      case 'outbid':
+      case BidStatus.outbid:
         statusColor = Colors.orangeAccent;
         statusLabel = 'OUTBID';
         statusIcon = Icons.warning_amber;
         break;
-      case 'won':
+      case BidStatus.won:
         statusColor = AppTheme.accent;
         statusLabel = 'WON';
         statusIcon = Icons.emoji_events;
         break;
-      case 'lost':
+      case BidStatus.lost:
         statusColor = Colors.white38;
         statusLabel = 'LOST';
         statusIcon = Icons.cancel_outlined;
         break;
       default:
         statusColor = Colors.white38;
-        statusLabel = bid.status.toUpperCase();
+        statusLabel = bid.status.value.toUpperCase();
         statusIcon = Icons.help_outline;
     }
 
@@ -1636,25 +1636,25 @@ class _MyListingTile extends ConsumerWidget {
     Color statusColor;
     String statusLabel;
     switch (listing.status) {
-      case 'active':
+      case ListingStatus.active:
         statusColor = listing.hasExpired ? Colors.orangeAccent : AppTheme.success;
         statusLabel = listing.hasExpired ? 'ENDED' : 'ACTIVE';
         break;
-      case 'sold':
+      case ListingStatus.sold:
         statusColor = AppTheme.accent;
         statusLabel = 'SOLD';
         break;
-      case 'expired':
+      case ListingStatus.expired:
         statusColor = Colors.white38;
         statusLabel = 'EXPIRED';
         break;
-      case 'cancelled':
+      case ListingStatus.cancelled:
         statusColor = Colors.white38;
         statusLabel = 'CANCELLED';
         break;
       default:
         statusColor = Colors.white38;
-        statusLabel = listing.status.toUpperCase();
+        statusLabel = listing.status.value.toUpperCase();
     }
 
     return Container(
@@ -1758,25 +1758,25 @@ class _MyListingTile extends ConsumerWidget {
     Color statusColor;
     String statusLabel;
     switch (listing.status) {
-      case 'active':
+      case ListingStatus.active:
         statusColor = listing.hasExpired ? Colors.orangeAccent : AppTheme.success;
         statusLabel = listing.hasExpired ? 'ENDED' : 'ACTIVE';
         break;
-      case 'sold':
+      case ListingStatus.sold:
         statusColor = AppTheme.accent;
         statusLabel = 'SOLD';
         break;
-      case 'expired':
+      case ListingStatus.expired:
         statusColor = Colors.white38;
         statusLabel = 'EXPIRED';
         break;
-      case 'cancelled':
+      case ListingStatus.cancelled:
         statusColor = Colors.white38;
         statusLabel = 'CANCELLED';
         break;
       default:
         statusColor = Colors.white38;
-        statusLabel = listing.status.toUpperCase();
+        statusLabel = listing.status.value.toUpperCase();
     }
 
     return Container(

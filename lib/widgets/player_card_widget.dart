@@ -88,7 +88,7 @@ class PlayerCardWidget extends StatelessWidget {
     final card = _card;
     if (card == null) return const SizedBox();
 
-    final rarityColor = AppTheme.getRarityColor(card.rarity);
+    final rarityColor = AppTheme.getRarityColor(card.rarity.value);
     final rating = userCard?.effectiveRating ?? card.rating;
 
     final dimensions = switch (size) {
@@ -276,7 +276,7 @@ class PlayerCardWidget extends StatelessWidget {
                   if (size != CardSize.small) ...[
                     const SizedBox(height: 2),
                     Text(
-                      card.rarity.toUpperCase(),
+                      card.rarity.value.toUpperCase(),
                       style: TextStyle(
                         fontSize: dimensions.fontSize - 4,
                         color: Colors.white38,

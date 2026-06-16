@@ -1,8 +1,8 @@
-/// String-backed enums used across Cricket Ultimate Manager models.
-///
-/// Each enum has a [value] getter returning the DB/serialized string, and a
-/// static [fromValue] factory for deserialization. This lets models use
-/// type-safe enums internally while keeping DB compatibility.
+// String-backed enums used across Cricket Ultimate Manager models.
+//
+// Each enum has a [value] getter returning the DB/serialized string, and a
+// static [fromValue] factory for deserialization. This lets models use
+// type-safe enums internally while keeping DB compatibility.
 
 // ── Match Format ──────────────────────────────────────────────────
 

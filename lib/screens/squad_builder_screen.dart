@@ -191,7 +191,7 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
     final lineup = squad.playingXI;
     final roleCounts = <String, int>{};
     for (final player in lineup) {
-      final role = player.userCard?.playerCard?.role ?? 'unknown';
+      final role = player.userCard?.playerCard?.role?.value ?? 'unknown';
       roleCounts[role] = (roleCounts[role] ?? 0) + 1;
     }
 
@@ -404,7 +404,7 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
       return SizedBox(key: key);
     }
 
-    final rarityColor = AppTheme.getRarityColor(card.rarity);
+    final rarityColor = AppTheme.getRarityColor(card.rarity.value);
     final contractsRemaining = userCard?.contractsRemaining ?? 7;
     final contractsMax = userCard?.contractsMax ?? 7;
     final contractColor = _getContractColor(contractsRemaining);
@@ -781,7 +781,7 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
 
             if (selectedRole != null) {
               availableCards = availableCards
-                  .where((card) => card.playerCard?.role == selectedRole)
+                  .where((card) => card.playerCard?.role?.value == selectedRole)
                   .toList();
             }
 
@@ -859,7 +859,7 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
                             final card = userCard.playerCard;
                             if (card == null) return const SizedBox();
 
-                            final rarityColor = AppTheme.getRarityColor(card.rarity);
+                            final rarityColor = AppTheme.getRarityColor(card.rarity.value);
 
                             return Container(
                               margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
@@ -958,7 +958,7 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
                                   ],
                                 ),
                                 trailing: Text(
-                                  card.rarity.toUpperCase(),
+                                  card.rarity.value.toUpperCase(),
                                   style: TextStyle(
                                     color: rarityColor,
                                     fontSize: 10,
@@ -1031,7 +1031,7 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
 
             if (selectedRole != null) {
               availableCards = availableCards
-                  .where((card) => card.playerCard?.role == selectedRole)
+                  .where((card) => card.playerCard?.role?.value == selectedRole)
                   .toList();
             }
 
@@ -1101,7 +1101,7 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
                             final card = userCard.playerCard;
                             if (card == null) return const SizedBox();
 
-                            final rarityColor = AppTheme.getRarityColor(card.rarity);
+                            final rarityColor = AppTheme.getRarityColor(card.rarity.value);
 
                             return Container(
                               margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
@@ -1200,7 +1200,7 @@ class _SquadBuilderScreenState extends ConsumerState<SquadBuilderScreen>
                                   ],
                                 ),
                                 trailing: Text(
-                                  card.rarity.toUpperCase(),
+                                  card.rarity.value.toUpperCase(),
                                   style: TextStyle(
                                     color: rarityColor,
                                     fontSize: 10,

@@ -128,7 +128,7 @@ class MatchChallenge {
       challengerTeamId: json['challenger_team_id'],
       challengedTeamId: json['challenged_team_id'],
       status: ChallengeStatus.fromValue(json['status'] as String?),
-      matchFormat: json['match_format'],
+      matchFormat: json['match_format'] as String? ?? '',
       matchOvers: json['match_overs'],
       createdAt: DateTime.parse(json['created_at']),
       expiresAt: DateTime.parse(json['expires_at']),

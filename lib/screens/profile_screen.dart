@@ -203,8 +203,8 @@ class ProfileScreen extends ConsumerWidget {
                       _InfoCard(
                         icon: Icons.workspace_premium_rounded,
                         label: 'Season Tier',
-                        value: user.seasonTier.toUpperCase(),
-                        color: _getTierColor(user.seasonTier),
+                          value: user.seasonTier.value.toUpperCase(),
+                        color: _getTierColor(user.seasonTier.value),
                       ),
                       const SizedBox(height: 12),
 

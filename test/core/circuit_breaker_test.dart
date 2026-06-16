@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:cricket_ultimate_manager/core/circuit_breaker.dart';
 
