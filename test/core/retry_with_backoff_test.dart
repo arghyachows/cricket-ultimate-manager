@@ -71,7 +71,7 @@ void main() {
 
   group('isTransientError', () {
     test('returns true for TimeoutException', () {
-      expect(isTransientError(const TimeoutException('timeout')), isTrue);
+      expect(isTransientError(TimeoutException('timeout')), isTrue);
     });
 
     test('returns true for SocketException', () {
@@ -87,7 +87,7 @@ void main() {
     });
 
     test('returns false for generic Exception', () {
-      expect(isTransientError(const Exception('generic')), isFalse);
+      expect(isTransientError(Exception('generic')), isFalse);
     });
 
     test('returns false for ArgumentError', () {
@@ -139,7 +139,7 @@ void main() {
         fn: () async {
           callCount++;
           if (callCount < 3) {
-            throw const TimeoutException('timeout');
+            throw TimeoutException('timeout');
           }
           return 'ok';
         },

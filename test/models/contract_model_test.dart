@@ -187,7 +187,7 @@ void main() {
   group('No user_card.dart import', () {
     test('ContractType, UserContract, UserContractPack all exist', () {
       // If the unused import was removed, these classes should still be fully functional
-      final ct = ContractType(id: 'x', name: 'X', tier: ContractTier.gold.value, matchesAwarded: 5);
+      final ct = ContractType(id: 'x', name: 'X', tier: ContractTier.gold, matchesAwarded: 5);
       expect(ct.tierColor, 0xFFFFD700);
 
       final uc = UserContract(
