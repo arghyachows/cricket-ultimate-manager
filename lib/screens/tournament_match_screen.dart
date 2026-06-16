@@ -9,6 +9,7 @@ import '../core/notification_service.dart';
 import '../providers/match/tournament_match_manager.dart';
 import '../providers/auth_provider.dart';
 import '../providers/card_packs_provider.dart';
+import '../providers/cards_provider.dart';
 import '../providers/contracts_provider.dart';
 import '../widgets/tournament_match_widgets.dart';
 
@@ -97,6 +98,7 @@ class _TournamentMatchScreenState
     );
 
     _persistRewards(coins, xp, userWon);
+    _consumeTournamentContracts();
 
     NotificationService.instance.showMatchResult(
       title: 'Tournament Match ${userWon ? 'Victory!' : isDraw ? 'Draw' : 'Defeat'}',
@@ -108,6 +110,60 @@ class _TournamentMatchScreenState
     s.levelUpPackAwarded = levelUpPack;
     s.newLevel = newLevel > oldLevel ? newLevel : null;
     s.contractPackAwarded = contractPackName.isNotEmpty ? contractPackName : null;
+  }
+
+  /// Consume contracts for the user's XI in a tournament match.
+  Future<void> _consumeTournamentContracts() async {
+    final userId = SupabaseService.currentUserId;
+    if (userId == null) return;
+
+    try {
+      // Get match data to find the user's team
+      final matchData = await SupabaseService.client
+          .from('matches')
+          .select('home_user_id, home_team_id, away_user_id, away_team_id')
+          .eq('id', widget.matchId)
+          .single();
+
+      final isHome = matchData['home_user_id'] == userId;
+      final teamId = isHome ? matchData['home_team_id'] : matchData['away_team_id'];
+      if (teamId == null) return;
+
+      // Get the active squad for this team
+      final squadData = await SupabaseService.client
+          .from('squads')
+          .select('id')
+          .eq('team_id', teamId)
+          .eq('is_active', true)
+          .maybeSingle();
+
+      if (squadData == null) return;
+
+      // Get the lineup players for this squad
+      final lineupData = await SupabaseService.client
+          .from('lineup_players')
+          .select('user_card_id')
+          .eq('squad_id', squadData['id'])
+          .order('batting_order');
+
+      final userXiCardIds = lineupData.map<String>((e) => e['user_card_id'] as String).toList();
+      if (userXiCardIds.isEmpty) return;
+
+      await SupabaseService.client.rpc(
+        'consume_contracts_on_match_completion',
+        params: {
+          'p_user_id': userId,
+          'p_match_id': widget.matchId,
+          'p_user_card_ids': userXiCardIds,
+          'p_idempotency_key': 'tournament_contracts_${widget.matchId}_$userId',
+        },
+      );
+
+      // Refresh user cards to get updated contracts_remaining
+      ref.read(userCardsProvider.notifier).refresh();
+    } catch (e) {
+      Log.e('TournamentMatch: failed to consume contracts', e);
+    }
   }
 
   Future<void> _persistRewards(int coins, int xp, bool? won) async {

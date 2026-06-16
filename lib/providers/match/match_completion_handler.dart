@@ -256,46 +256,125 @@ class MatchCompletionHandler {
   /// Consume contracts for user's XI players after match completion.
   /// Called AFTER match simulation but BEFORE reward persistence.
   /// Uses idempotency key to prevent double-spending on retry.
+  /// For multiplayer/tournament matches, uses the RPC with match verification.
+  /// For single-player matches (no DB match record), falls back to direct update.
   static Future<ContractConsumeResult> consumeContracts({
     required String userId,
     required String matchId,
     required List<String> userXiCardIds,
     String? idempotencyKey,
   }) async {
-    try {
-      final result = await SupabaseService.client.rpc(
-        'consume_contracts_on_match_completion',
-        params: {
-          'p_user_id': userId,
-          'p_match_id': matchId,
-          'p_user_card_ids': userXiCardIds,
-          if (idempotencyKey != null) 'p_idempotency_key': idempotencyKey,
-        },
-      );
+    // If we have a valid match ID (multiplayer/tournament), try the RPC path
+    if (matchId.isNotEmpty) {
+      try {
+        final result = await SupabaseService.client.rpc(
+          'consume_contracts_on_match_completion',
+          params: {
+            'p_user_id': userId,
+            'p_match_id': matchId,
+            'p_user_card_ids': userXiCardIds,
+            if (idempotencyKey != null) 'p_idempotency_key': idempotencyKey,
+          },
+        );
 
-      final consumed = (result?['consumed'] as List<dynamic>? ?? [])
-          .cast<Map<String, dynamic>>()
-          .toList();
-      final errors = (result?['errors'] as List<dynamic>? ?? [])
-          .cast<Map<String, dynamic>>()
-          .toList();
+        final consumed = (result?['consumed'] as List<dynamic>? ?? [])
+            .cast<Map<String, dynamic>>()
+            .toList();
+        final errors = (result?['errors'] as List<dynamic>? ?? [])
+            .cast<Map<String, dynamic>>()
+            .toList();
 
-      return ContractConsumeResult.succeeded(
-        consumed: consumed,
-        errors: errors,
-      );
-    } on PostgrestException catch (e, st) {
-      Log.e('CONTRACTS: PostgrestException during contract consumption');
-      return ContractConsumeResult.failed(error: e, stackTrace: st);
-    } on SocketException catch (e, st) {
-      Log.e('CONTRACTS: SocketException during contract consumption');
-      return ContractConsumeResult.failed(error: e, stackTrace: st);
-    } on FormatException catch (e, st) {
-      Log.e('CONTRACTS: FormatException during contract consumption');
-      return ContractConsumeResult.failed(error: e, stackTrace: st);
-    } catch (e, st) {
-      Log.e('CONTRACTS: Unexpected error during contract consumption', e);
-      return ContractConsumeResult.failed(error: e, stackTrace: st);
+        return ContractConsumeResult.succeeded(
+          consumed: consumed,
+          errors: errors,
+        );
+      } on PostgrestException catch (e, st) {
+        Log.e('CONTRACTS: PostgrestException during contract consumption');
+        return ContractConsumeResult.failed(error: e, stackTrace: st);
+      } on SocketException catch (e, st) {
+        Log.e('CONTRACTS: SocketException during contract consumption');
+        return ContractConsumeResult.failed(error: e, stackTrace: st);
+      } on FormatException catch (e, st) {
+        Log.e('CONTRACTS: FormatException during contract consumption');
+        return ContractConsumeResult.failed(error: e, stackTrace: st);
+      } catch (e, st) {
+        Log.e('CONTRACTS: Unexpected error during contract consumption', e);
+        return ContractConsumeResult.failed(error: e, stackTrace: st);
+      }
     }
+
+    // No valid match ID (single-player quick match) — use direct table update
+    return _consumeContractsDirect(
+      userId: userId,
+      userXiCardIds: userXiCardIds,
+    );
+  }
+
+  /// Direct contract consumption for single-player matches where no
+  /// DB match record exists. Updates user_cards directly (safe via RLS).
+  static Future<ContractConsumeResult> _consumeContractsDirect({
+    required String userId,
+    required List<String> userXiCardIds,
+  }) async {
+    final consumed = <Map<String, dynamic>>[];
+    final errors = <Map<String, dynamic>>[];
+
+    for (final cardId in userXiCardIds) {
+      try {
+        // Fetch current contracts_remaining and matches_played for this card
+        final cards = await SupabaseService.client
+            .from('user_cards')
+            .select('contracts_remaining, matches_played')
+            .eq('id', cardId)
+            .eq('user_id', userId);
+
+        if (cards.isEmpty) {
+          errors.add({
+            'user_card_id': cardId,
+            'error': 'Card not found or not owned by user',
+          });
+          continue;
+        }
+
+        final currentContracts = cards[0]['contracts_remaining'] as int? ?? 0;
+        final currentMatchesPlayed = cards[0]['matches_played'] as int? ?? 0;
+
+        if (currentContracts <= 0) {
+          errors.add({
+            'user_card_id': cardId,
+            'error': 'Player already out of contracts',
+          });
+          continue;
+        }
+
+        // Decrement contracts_remaining by 1, increment matches_played
+        await SupabaseService.client
+            .from('user_cards')
+            .update({
+              'contracts_remaining': currentContracts - 1,
+              'matches_played': currentMatchesPlayed + 1,
+            })
+            .eq('id', cardId)
+            .eq('user_id', userId);
+
+        consumed.add({
+          'user_card_id': cardId,
+          'contracts_before': currentContracts,
+          'contracts_after': currentContracts - 1,
+          'is_out_of_contracts': (currentContracts - 1) == 0,
+        });
+      } catch (e) {
+        Log.e('CONTRACTS: Failed to consume contract for card $cardId', e);
+        errors.add({
+          'user_card_id': cardId,
+          'error': e.toString(),
+        });
+      }
+    }
+
+    return ContractConsumeResult.succeeded(
+      consumed: consumed,
+      errors: errors,
+    );
   }
 }
