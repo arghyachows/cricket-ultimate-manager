@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:cricket_ultimate_manager/models/contract_model.dart';
+import 'package:cricket_ultimate_manager/models/enums.dart';
 
 void main() {
   group('UserContractPack copyWith', () {

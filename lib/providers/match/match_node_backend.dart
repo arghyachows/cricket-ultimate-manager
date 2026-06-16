@@ -156,7 +156,7 @@ class MatchNodeBackend {
         NodeBackendService.leaveMatch(_remoteMatchId!);
       }
     } catch (e) {
-      Log.w('MatchNodeBackend: Polling error', e);
+      Log.w('MatchNodeBackend: Polling error $e');
     }
   }
 

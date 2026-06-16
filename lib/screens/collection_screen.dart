@@ -146,7 +146,7 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen>
                                                     itemBuilder: (context, index) {
                                                       final card = cards[index];
                                                       if (card.playerCard == null) return const SizedBox();
-                                                      final rarityColor = AppTheme.getRarityColor(card.playerCard!.rarity);
+                                                      final rarityColor = AppTheme.getRarityColor(card.playerCard!.rarity.value);
                                                       return Card(
                                                         color: AppTheme.surface,
                                                         margin: const EdgeInsets.only(bottom: 8),
@@ -163,7 +163,7 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen>
                                                           ),
                                                           title: Text(card.playerCard!.playerName, style: const TextStyle(fontWeight: FontWeight.bold)),
                                                           subtitle: Text(
-                                                            '${card.playerCard!.role.toUpperCase()} • ${card.playerCard!.rarity.toUpperCase()}',
+                                                            '${card.playerCard!.role.value.toUpperCase()} • ${card.playerCard!.rarity.value.toUpperCase()}',
                                                             style: TextStyle(color: rarityColor, fontSize: 11),
                                                           ),
                                                           trailing: Column(
@@ -264,7 +264,7 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen>
   }
 
   void _showQuickActions(BuildContext context, UserCard card) {
-    final rarityColor = AppTheme.getRarityColor(card.playerCard?.rarity ?? 'bronze');
+    final rarityColor = AppTheme.getRarityColor(card.playerCard?.rarity.value ?? 'bronze');
     showModalBottomSheet(
       context: context,
       backgroundColor: AppTheme.surface,
@@ -295,7 +295,7 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(card.playerCard?.playerName ?? 'Unknown', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                      Text('${card.playerCard!.role.toUpperCase()} • ${card.playerCard!.rarity.toUpperCase()}', style: TextStyle(color: rarityColor, fontSize: 12)),
+                      Text('${card.playerCard!.role.value.toUpperCase()} • ${card.playerCard!.rarity.value.toUpperCase()}', style: TextStyle(color: rarityColor, fontSize: 12)),
                     ],
                   ),
                 ),
@@ -324,7 +324,7 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen>
   }
 
   void _showSellDialog(BuildContext context, UserCard card) {
-    final priceController = TextEditingController(text: '${quickSellPrice(card.playerCard?.rarity ?? 'bronze') * 10}');
+    final priceController = TextEditingController(text: '${quickSellPrice(card.playerCard?.rarity.value ?? 'bronze') * 10}');
     showDialog(
       context: context,
       builder: (context) => AlertDialog(

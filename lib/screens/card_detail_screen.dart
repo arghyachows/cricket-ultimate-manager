@@ -39,7 +39,7 @@ class CardDetailScreen extends ConsumerWidget {
         }
 
         final card = userCard.playerCard!;
-        final rarityColor = AppTheme.getRarityColor(card.rarity);
+        final rarityColor = AppTheme.getRarityColor(card.rarity.value);
 
         return Scaffold(
           backgroundColor: AppTheme.background,
@@ -190,7 +190,7 @@ class CardDetailScreen extends ConsumerWidget {
                       ),
                     ),
                     Text(
-                      card.rarity.toUpperCase(),
+                      card.rarity.value.toUpperCase(),
                       style: const TextStyle(
                         fontSize: 10,
                         color: Colors.white70,
@@ -403,8 +403,8 @@ class CardDetailScreen extends ConsumerWidget {
       ),
       child: Column(
         children: [
-          _buildInfoRow('Card Type', card.cardType.toUpperCase()),
-          _buildInfoRow('Rarity', card.rarity.toUpperCase()),
+          _buildInfoRow('Card Type', card.cardType.value.toUpperCase()),
+          _buildInfoRow('Rarity', card.rarity.value.toUpperCase()),
           _buildInfoRow('League', card.league ?? '-'),
           _buildInfoRow('Acquired', userCard.acquiredAt.toString().substring(0, 10)),
           _buildInfoRow('Tradeable', userCard.isTradeable ? 'Yes' : 'No'),
@@ -449,7 +449,7 @@ class CardDetailScreen extends ConsumerWidget {
   Widget _buildActions(
       BuildContext context, WidgetRef ref, UserCard userCard, Color rarityColor) {
     final card = userCard.playerCard!;
-    final sellPrice = quickSellPrice(card.rarity);
+    final sellPrice = quickSellPrice(card.rarity.value);
 
     return Column(
       children: [

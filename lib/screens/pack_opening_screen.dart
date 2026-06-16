@@ -315,7 +315,7 @@ class _PackOpeningScreenState extends ConsumerState<PackOpeningScreen>
                             Text(
                               card.playerCard!.rarity.value.toUpperCase(),
                               style: TextStyle(
-                                color: AppTheme.getRarityColor(card.playerCard!.rarity),
+                                color: AppTheme.getRarityColor(card.playerCard!.rarity.value),
                                 fontWeight: FontWeight.bold,
                                 fontSize: 14,
                                 letterSpacing: 2,

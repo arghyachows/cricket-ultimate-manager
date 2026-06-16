@@ -28,13 +28,13 @@ class FeaturedCardSection extends ConsumerWidget {
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  AppTheme.getRarityColor(playerCard.rarity).withValues(alpha: 0.15),
+                  AppTheme.getRarityColor(playerCard.rarity.value).withValues(alpha: 0.15),
                   AppTheme.surface,
                 ],
               ),
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: AppTheme.getRarityColor(playerCard.rarity).withValues(alpha: 0.3),
+                color: AppTheme.getRarityColor(playerCard.rarity.value).withValues(alpha: 0.3),
               ),
             ),
             child: Column(
@@ -45,10 +45,10 @@ class FeaturedCardSection extends ConsumerWidget {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
-                        color: AppTheme.getRarityColor(playerCard.rarity),
+                        color: AppTheme.getRarityColor(playerCard.rarity.value),
                         borderRadius: BorderRadius.circular(4),
                       ),
-                      child: Text(playerCard.rarity.toUpperCase(),
+                      child: Text(playerCard.rarity.value.toUpperCase(),
                           style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 9, letterSpacing: 1)),
                     ),
                     const SizedBox(width: 8),
@@ -73,12 +73,12 @@ class FeaturedCardSection extends ConsumerWidget {
                         gradient: LinearGradient(
                           begin: Alignment.topLeft, end: Alignment.bottomRight,
                           colors: [
-                            AppTheme.getRarityColor(playerCard.rarity).withValues(alpha: 0.6),
-                            AppTheme.getRarityColor(playerCard.rarity).withValues(alpha: 0.2),
+                            AppTheme.getRarityColor(playerCard.rarity.value).withValues(alpha: 0.6),
+                            AppTheme.getRarityColor(playerCard.rarity.value).withValues(alpha: 0.2),
                           ],
                         ),
                         borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: AppTheme.getRarityColor(playerCard.rarity).withValues(alpha: 0.6)),
+                        border: Border.all(color: AppTheme.getRarityColor(playerCard.rarity.value).withValues(alpha: 0.6)),
                       ),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -100,7 +100,7 @@ class FeaturedCardSection extends ConsumerWidget {
                           Text(playerCard.playerName,
                               style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
                           const SizedBox(height: 4),
-                          Text('${playerCard.role.replaceAll('_', ' ').toUpperCase()} · ${playerCard.country}',
+                          Text('${playerCard.role.value.replaceAll('_', ' ').toUpperCase()} · ${playerCard.country}',
                               style: const TextStyle(color: Colors.white54, fontSize: 12)),
                           const SizedBox(height: 8),
                           Row(

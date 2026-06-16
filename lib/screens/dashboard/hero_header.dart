@@ -62,7 +62,7 @@ class HeroHeader extends ConsumerWidget {
                   ],
                 ),
               ),
-              SeasonTierBadge(tier: user.seasonTier),
+              SeasonTierBadge(tier: user.seasonTier.value),
               const SizedBox(width: 8),
               IconButton(
                 onPressed: () => context.go(AppConstants.profileRoute),

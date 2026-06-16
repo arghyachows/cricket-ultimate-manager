@@ -17,7 +17,7 @@ class UserCard {
   final int contractsMax;
   final PlayerCard? playerCard; // Joined data
 
-  const UserCard({
+  UserCard({
     required this.id,
     required this.userId,
     required this.cardId,

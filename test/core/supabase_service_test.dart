@@ -37,7 +37,7 @@ void main() {
       //   type:   eq
       //   column: user_id
       // We assert subscribeToSquad follows the same shape.
-      const filter = PostgresChangeFilter(
+      final filter = PostgresChangeFilter(
         type: PostgresChangeFilterType.eq,
         column: 'user_id',
         value: userId,

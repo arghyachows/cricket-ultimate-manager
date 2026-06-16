@@ -49,7 +49,7 @@ void showSellOnMarketDialog(BuildContext context, WidgetRef ref, UserCard card) 
                     height: 44,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(6),
-                      color: AppTheme.getRarityColor(pc.rarity),
+                      color: AppTheme.getRarityColor(pc.rarity.value),
                     ),
                     child: Center(
                       child: Text('${pc.rating}',
@@ -66,9 +66,9 @@ void showSellOnMarketDialog(BuildContext context, WidgetRef ref, UserCard card) 
                       children: [
                         Text(pc.playerName,
                             style: const TextStyle(fontWeight: FontWeight.bold)),
-                        Text('${pc.rarity.toUpperCase()} • ${pc.role.replaceAll('_', ' ')}',
+                        Text('${pc.rarity.value.toUpperCase()} • ${pc.role.value.replaceAll('_', ' ')}',
                             style: TextStyle(
-                                color: AppTheme.getRarityColor(pc.rarity),
+                                color: AppTheme.getRarityColor(pc.rarity.value),
                                 fontSize: 12)),
                       ],
                     ),
@@ -1279,7 +1279,7 @@ class _SellTab extends ConsumerWidget {
                 const SizedBox(height: 8),
                 ...tradeableContracts.map((contract) {
                   final ct = contract.contractType!;
-                  final tierColor = AppTheme.getRarityColor(ct.tier);
+                  final tierColor = AppTheme.getRarityColor(ct.tier.value);
                   final minPrice = AppConstants.contractPriceFloors[ct.tier] ?? 10;
 
                   return Container(
@@ -1305,7 +1305,7 @@ class _SellTab extends ConsumerWidget {
                           style: const TextStyle(fontWeight: FontWeight.bold)),
                       subtitle: Row(
                         children: [
-                          Text(ct.tier.toUpperCase(),
+                          Text(ct.tier.value.toUpperCase(),
                               style: TextStyle(color: tierColor, fontSize: 12)),
                           const SizedBox(width: 8),
                           Text('x${contract.quantity}',
@@ -1317,7 +1317,7 @@ class _SellTab extends ConsumerWidget {
                       ),
                       trailing: ElevatedButton(
                         onPressed: () => showSellContractDialog(
-                          context, ref, ct.name, ct.id, ct.tier, ct.matchesAwarded),
+                          context, ref, ct.name, ct.id, ct.tier.value, ct.matchesAwarded),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: AppTheme.accent,
                           foregroundColor: Colors.black,

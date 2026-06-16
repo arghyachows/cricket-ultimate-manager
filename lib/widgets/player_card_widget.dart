@@ -58,7 +58,7 @@ String playerCardImageUrl(PlayerCard card) {
   }
   
   // Fallback to generic images based on role and country
-  final prefix = _imageRolePrefix(card.role);
+  final prefix = _imageRolePrefix(card.role.value);
   final tone = _ethnicityForCountry(card.country);
   return '$_storageBucket/$prefix-$tone.jpg';
 }
