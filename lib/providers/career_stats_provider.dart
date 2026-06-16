@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../core/logger.dart';
 import '../core/supabase_service.dart';
 import 'match_provider.dart';
 
@@ -78,8 +79,9 @@ class CareerStatsNotifier extends StateNotifier<List<PlayerCareerStats>> {
           .eq('user_id', userId)
           .order('runs', ascending: false);
       state = (rows as List).map((r) => PlayerCareerStats.fromJson(r)).toList();
-    } catch (_) {
+    } catch (e) {
       // Table may not exist yet; keep empty
+      Log.e('CareerStats loadFromDb failed', e);
     }
   }
 
@@ -97,8 +99,9 @@ class CareerStatsNotifier extends StateNotifier<List<PlayerCareerStats>> {
           .select('id')
           .eq('user_id', userId);
       myCardIds = Set<String>.from((rows as List).map((r) => r['id'].toString()));
-    } catch (_) {
+    } catch (e) {
       // If lookup fails, fall back to the AI-prefix filter only
+      Log.e('CareerStats card ID lookup failed', e);
     }
 
     // Aggregate per-player deltas from this match
@@ -181,8 +184,8 @@ class CareerStatsNotifier extends StateNotifier<List<PlayerCareerStats>> {
           'p_high_score': d.highScore,
           'p_best_bowling_wickets': d.bestBowlingWickets,
         });
-      } catch (_) {
-        // Silently fail for individual players
+      } catch (e) {
+        Log.e('CareerStats upsert failed for ${d.userCardId}', e);
       }
     }
 

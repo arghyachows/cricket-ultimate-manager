@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../core/logger.dart';
 import '../core/theme.dart';
 import '../core/constants.dart';
 import '../core/supabase_service.dart';
@@ -384,7 +385,8 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
         'p_is_multiplayer': true,
         'p_is_ranked': isRanked,
       });
-    } catch (_) {
+    } catch (e) {
+      Log.w('MultiplayerMatch: RPC award_match_rewards failed, trying fallback');
       try {
         final data = await SupabaseService.getCurrentUser();
         if (data == null) return;
@@ -422,8 +424,12 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
         try {
           await SupabaseService.grantLevelUpPack(userId, oldDbLevel, newDbLevel);
           await SupabaseService.grantLevelUpContractPack(userId, oldDbLevel, newDbLevel);
-        } catch (_) {}
-      } catch (_) {}
+        } catch (e) {
+          Log.w('MultiplayerMatch: Level-up pack grant failed');
+        }
+      } catch (e) {
+        Log.e('MultiplayerMatch: Fallback reward persistence failed', e);
+      }
     }
     await Future.delayed(const Duration(milliseconds: 800));
     await ref.read(currentUserProvider.notifier).silentRefresh();
@@ -466,7 +472,7 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
 
       return lineupData.map<String>((e) => e['user_card_id'] as String).toList();
     } catch (e) {
-      print('❌ [MULTIPLAYER] Failed to fetch user XI card IDs: $e');
+      Log.e('Multiplayer: failed to fetch user XI card IDs', e);
       return [];
     }
   }
@@ -494,13 +500,13 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
       final errors = (result?['errors'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>().toList();
 
       if (errors.isNotEmpty) {
-        print('⚠️ [MULTIPLAYER CONTRACTS] Some contracts could not be consumed: $errors');
+        Log.w('Multiplayer contracts: some contracts could not be consumed');
       }
 
       // Refresh user cards to get updated contracts_remaining
       ref.read(userCardsProvider.notifier).refresh();
     } catch (e) {
-      print('❌ [MULTIPLAYER CONTRACTS] Failed to consume contracts: $e');
+      Log.e('Multiplayer contracts: failed to consume contracts', e);
     }
   }
 
@@ -867,14 +873,14 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
   Future<bool> _connectAndJoinSocket() async {
     if (_socketIOActive) return true;
 
-    print('🔌 Multiplayer: Connecting Socket.IO...');
+    Log.d('Multiplayer: Connecting Socket.IO...');
     NodeBackendService.initSocket();
     final connected = await NodeBackendService.waitForConnection(
       timeout: const Duration(seconds: 10),
     );
 
     if (connected) {
-      print('👤 Multiplayer: Joining match room ${widget.matchId}...');
+      Log.i('Multiplayer: Joining match room ${widget.matchId}...');
       final joined = await NodeBackendService.joinMatch(
         widget.matchId,
         _onSocketBallUpdate,
@@ -886,10 +892,10 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
         _startMultiplayerPollingFallback();
         return true;
       } else {
-        print('⚠️ Multiplayer: Failed to join Socket.IO room');
+        Log.w('Multiplayer: Failed to join Socket.IO room');
       }
     } else {
-      print('⚠️ Multiplayer: Socket.IO connection failed');
+      Log.w('Multiplayer: Socket.IO connection failed');
     }
     return false;
   }
@@ -926,9 +932,9 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
     );
 
     if (result.success) {
-      print('✅ Multiplayer match started via Node.js backend');
+      Log.i('Multiplayer match started via Node.js backend');
     } else {
-      print('❌ Node.js backend failed to start multiplayer match');
+      Log.e('Node.js backend failed to start multiplayer match');
     }
   }
 
@@ -1068,14 +1074,14 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
             commentaryLog: updatedLog,
           ));
     } catch (e) {
-      print('❌ Error processing Socket.IO ball update: $e');
+      Log.e('Error processing Socket.IO ball update', e);
     }
   }
 
   void _onSocketMatchComplete(Map<String, dynamic> data) {
     if (!mounted) return;
     try {
-      print('🏁 Multiplayer match complete via Socket.IO');
+      Log.i('Multiplayer match complete via Socket.IO');
       _pollingTimer?.cancel();
       // Socket.IO delivers quick notification; Supabase Realtime will follow
       // with the authoritative final state (winner_user_id, rewards, etc.)
@@ -1106,7 +1112,7 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
       // Note: Full completion with rewards is handled by _onRealtimeUpdate
       // when the backend writes status='completed' to Supabase
     } catch (e) {
-      print('❌ Error processing Socket.IO match complete: $e');
+      Log.e('Error processing Socket.IO match complete', e);
     }
   }
 
@@ -1146,7 +1152,7 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
 
       if (polledInnings > _state.currentInnings ||
           (polledInnings == _state.currentInnings && polledActiveScore > localActiveScore)) {
-        print('📡 Multiplayer polling caught up: polled=$polledActiveScore local=$localActiveScore');
+        Log.d('Multiplayer polling caught up: polled=$polledActiveScore local=$localActiveScore');
 
         final overNumber = matchState['overNumber'] as int? ?? 0;
         final ballNumber = matchState['ballNumber'] as int? ?? 0;
@@ -1222,14 +1228,14 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
 
       // Handle match complete from polling
       if (matchComplete && _state.isSimulating) {
-        print('🏁 Multiplayer match complete detected via polling');
+        Log.i('Multiplayer match complete detected via polling');
         _pollingTimer?.cancel();
         _setState((s) => s.copyWith(isSimulating: false));
         NodeBackendService.leaveMatch(widget.matchId);
         _socketIOActive = false;
       }
     } catch (e) {
-      print('📡 Multiplayer polling error (non-fatal): $e');
+      Log.w('Multiplayer polling error (non-fatal): $e', e);
     }
   }
 

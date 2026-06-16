@@ -1,12 +1,14 @@
+import 'enums.dart';
+
 class MatchModel {
   final String id;
   final String homeTeamId;
   final String awayTeamId;
   final String homeUserId;
   final String? awayUserId;
-  final String format;
-  final String status;
-  final String pitchCondition;
+  final MatchFormat format;
+  final MatchStatus status;
+  final PitchCondition pitchCondition;
   final String? tossWinner;
   final String? tossDecision;
   final int homeScore;
@@ -29,9 +31,9 @@ class MatchModel {
     required this.awayTeamId,
     required this.homeUserId,
     this.awayUserId,
-    this.format = 't20',
-    this.status = 'pending',
-    this.pitchCondition = 'balanced',
+    this.format = MatchFormat.t20,
+    this.status = MatchStatus.pending,
+    this.pitchCondition = PitchCondition.balanced,
     this.tossWinner,
     this.tossDecision,
     this.homeScore = 0,
@@ -47,7 +49,12 @@ class MatchModel {
     this.coinsReward = 0,
     this.xpReward = 0,
     required this.createdAt,
-  });
+  }) : assert(homeScore >= 0, 'homeScore must be >= 0'),
+       assert(awayScore >= 0, 'awayScore must be >= 0'),
+       assert(homeWickets >= 0 && homeWickets <= 10, 'homeWickets must be 0-10'),
+       assert(awayWickets >= 0 && awayWickets <= 10, 'awayWickets must be 0-10'),
+       assert(homeOvers >= 0, 'homeOvers must be >= 0'),
+       assert(awayOvers >= 0, 'awayOvers must be >= 0');
 
   factory MatchModel.fromJson(Map<String, dynamic> json) {
     return MatchModel(
@@ -56,9 +63,9 @@ class MatchModel {
       awayTeamId: json['away_team_id'],
       homeUserId: json['home_user_id'],
       awayUserId: json['away_user_id'],
-      format: json['format'] ?? 't20',
-      status: json['status'] ?? 'pending',
-      pitchCondition: json['pitch_condition'] ?? 'balanced',
+      format: MatchFormat.fromValue(json['format'] as String? ?? 't20'),
+      status: MatchStatus.fromValue(json['status'] as String? ?? 'pending'),
+      pitchCondition: PitchCondition.fromValue(json['pitch_condition'] as String? ?? 'balanced'),
       tossWinner: json['toss_winner'],
       tossDecision: json['toss_decision'],
       homeScore: json['home_score'] ?? 0,
@@ -80,19 +87,36 @@ class MatchModel {
   String get homeScoreDisplay => '$homeScore/$homeWickets ($homeOvers ov)';
   String get awayScoreDisplay => '$awayScore/$awayWickets ($awayOvers ov)';
 
-  bool get isCompleted => status == 'completed';
-  bool get isLive => status == 'in_progress';
+  bool get isCompleted => status == MatchStatus.completed;
+  bool get isLive => status == MatchStatus.inProgress;
 
-  int get maxOvers {
-    switch (format) {
-      case 't20':
-        return 20;
-      case 'odi':
-        return 50;
-      default:
-        return 20;
-    }
-  }
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'home_team_id': homeTeamId,
+        'away_team_id': awayTeamId,
+        'home_user_id': homeUserId,
+        'away_user_id': awayUserId,
+        'format': format.value,
+        'status': status.value,
+        'pitch_condition': pitchCondition.value,
+        'toss_winner': tossWinner,
+        'toss_decision': tossDecision,
+        'home_score': homeScore,
+        'home_wickets': homeWickets,
+        'home_overs': homeOvers,
+        'away_score': awayScore,
+        'away_wickets': awayWickets,
+        'away_overs': awayOvers,
+        'winner_team_id': winnerTeamId,
+        'winner_user_id': winnerUserId,
+        'home_chemistry': homeChemistry,
+        'away_chemistry': awayChemistry,
+        'coins_reward': coinsReward,
+        'xp_reward': xpReward,
+        'created_at': createdAt.toIso8601String(),
+      };
+
+  int get maxOvers => format.overs;
 }
 
 class MatchEvent {
@@ -158,6 +182,27 @@ class MatchEvent {
       wicketsAfter: json['wickets_after'] ?? 0,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'match_id': matchId,
+        'innings': innings,
+        'over_number': overNumber,
+        'ball_number': ballNumber,
+        'batting_team_id': battingTeamId,
+        'bowling_team_id': bowlingTeamId,
+        'batsman_card_id': batsmanCardId,
+        'bowler_card_id': bowlerCardId,
+        'event_type': eventType,
+        'runs': runs,
+        'is_boundary': isBoundary,
+        'is_wicket': isWicket,
+        'wicket_type': wicketType,
+        'fielder_card_id': fielderCardId,
+        'commentary': commentary,
+        'score_after': scoreAfter,
+        'wickets_after': wicketsAfter,
+      };
 
   String get overDisplay => '$overNumber.$ballNumber';
 }

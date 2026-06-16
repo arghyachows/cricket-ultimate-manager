@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../core/logger.dart';
 import '../core/node_backend_service.dart';
 
 /// API service for match-related HTTP calls.
@@ -31,6 +32,8 @@ class MatchApiService {
       );
       return resp.statusCode == 200;
     } catch (e) {
+      // Logged but returns false — caller handles fallback to local engine
+      Log.e('MatchApiService.startMatch failed', e);
       return false;
     }
   }
@@ -45,8 +48,9 @@ class MatchApiService {
       if (resp.statusCode == 200) {
         return jsonDecode(resp.body) as Map<String, dynamic>;
       }
+      Log.w('MatchApiService.pollMatchStatus returned ${resp.statusCode}');
     } catch (e) {
-      // ignore
+      Log.e('MatchApiService.pollMatchStatus failed', e);
     }
     return null;
   }
@@ -59,13 +63,16 @@ class MatchApiService {
     required bool won,
   }) async {
     try {
-      await http.post(
+      final resp = await http.post(
         Uri.parse('$_baseUrl/match/$matchId/rewards'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'coins': coins, 'xp': xp, 'won': won}),
       );
+      if (resp.statusCode != 200) {
+        Log.w('MatchApiService.saveRewards returned ${resp.statusCode}');
+      }
     } catch (e) {
-      // ignore errors for reward persistence
+      Log.e('MatchApiService.saveRewards failed', e);
     }
   }
 }

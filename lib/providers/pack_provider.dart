@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../core/logger.dart';
 import '../core/supabase_service.dart';
 import '../models/models.dart';
 import 'auth_provider.dart';
@@ -237,7 +238,8 @@ class PackOpeningNotifier extends StateNotifier<PackOpeningState> {
       ref.read(currentUserProvider.notifier).refresh();
 
       return true;
-    } catch (_) {
+    } catch (e) {
+      Log.e('PackProvider: Purchase failed', e);
       return false;
     }
   }

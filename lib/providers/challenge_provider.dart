@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../core/logger.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import '../core/supabase_service.dart';
@@ -250,7 +251,7 @@ class ChallengeNotifier extends StateNotifier<ChallengeState> {
       // Refresh packs
       ref.read(userCardPacksProvider.notifier).refresh();
     } catch (e) {
-      print('❌ Failed to award challenge pack: $e');
+      Log.e('Failed to award challenge pack', e);
     }
   }
 

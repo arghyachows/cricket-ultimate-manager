@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:postgrest/postgrest.dart';
+import '../../core/logger.dart';
 import '../../core/supabase_service.dart';
 import '../../core/constants.dart';
 import '../../core/notification_service.dart';
@@ -171,16 +172,16 @@ class MatchCompletionHandler {
       return PersistResult.succeeded(oldLevel: oldDbLevel, newLevel: newDbLevel, contractPackAwarded: contractPackAwarded);
     } on PostgrestException catch (e) {
       // Database/query error — log and fall through to fallback
-      print('⚠️ [PERSIST] PostgrestException during RPC: ${e.message}');
+      Log.w('PERSIST: PostgrestException during RPC');
     } on SocketException catch (e) {
       // Network unreachable — log and fall through to fallback
-      print('⚠️ [PERSIST] SocketException during RPC: ${e.message}');
+      Log.w('PERSIST: SocketException during RPC');
     } on FormatException catch (e) {
       // Malformed response — log and fall through to fallback
-      print('⚠️ [PERSIST] FormatException during RPC: ${e.message}');
+      Log.w('PERSIST: FormatException during RPC');
     } catch (e) {
       // Unknown error — log and fall through to fallback
-      print('⚠️ [PERSIST] Unexpected error during RPC: $e');
+      Log.w('PERSIST: Unexpected error during RPC');
     }
 
     // Attempt 2: Fallback direct table update
@@ -232,16 +233,16 @@ class MatchCompletionHandler {
 
       return PersistResult.succeeded(oldLevel: oldDbLevel, newLevel: newDbLevel, contractPackAwarded: contractPackAwarded);
     } on PostgrestException catch (e, st) {
-      print('❌ [PERSIST] PostgrestException during fallback update: ${e.message}');
+      Log.e('PERSIST: PostgrestException during fallback update');
       return PersistResult.failed(error: e, stackTrace: st);
     } on SocketException catch (e, st) {
-      print('❌ [PERSIST] SocketException during fallback update: ${e.message}');
+      Log.e('PERSIST: SocketException during fallback update');
       return PersistResult.failed(error: e, stackTrace: st);
     } on FormatException catch (e, st) {
-      print('❌ [PERSIST] FormatException during fallback update: ${e.message}');
+      Log.e('PERSIST: FormatException during fallback update');
       return PersistResult.failed(error: e, stackTrace: st);
     } catch (e, st) {
-      print('❌ [PERSIST] Unexpected error during fallback update: $e');
+      Log.e('PERSIST: Unexpected error during fallback update', e);
       return PersistResult.failed(error: e, stackTrace: st);
     }
   }
@@ -284,16 +285,16 @@ class MatchCompletionHandler {
         errors: errors,
       );
     } on PostgrestException catch (e, st) {
-      print('❌ [CONTRACTS] PostgrestException during contract consumption: ${e.message}');
+      Log.e('CONTRACTS: PostgrestException during contract consumption');
       return ContractConsumeResult.failed(error: e, stackTrace: st);
     } on SocketException catch (e, st) {
-      print('❌ [CONTRACTS] SocketException during contract consumption: ${e.message}');
+      Log.e('CONTRACTS: SocketException during contract consumption');
       return ContractConsumeResult.failed(error: e, stackTrace: st);
     } on FormatException catch (e, st) {
-      print('❌ [CONTRACTS] FormatException during contract consumption: ${e.message}');
+      Log.e('CONTRACTS: FormatException during contract consumption');
       return ContractConsumeResult.failed(error: e, stackTrace: st);
     } catch (e, st) {
-      print('❌ [CONTRACTS] Unexpected error during contract consumption: $e');
+      Log.e('CONTRACTS: Unexpected error during contract consumption', e);
       return ContractConsumeResult.failed(error: e, stackTrace: st);
     }
   }

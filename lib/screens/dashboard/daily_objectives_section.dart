@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import '../../core/logger.dart';
 import '../../core/supabase_service.dart';
 import '../../models/models.dart';
 import '../../widgets/daily_objectives_card.dart';
@@ -40,7 +41,8 @@ class _DailyObjectivesSectionState extends ConsumerState<DailyObjectivesSection>
           _loading = false;
         });
       }
-    } catch (_) {
+    } catch (e) {
+      Log.e('Dashboard: failed to load daily objectives', e);
       if (mounted) setState(() => _loading = false);
     }
   }

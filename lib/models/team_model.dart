@@ -37,6 +37,17 @@ class Team {
     );
   }
 
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'user_id': userId,
+        'team_name': teamName,
+        'logo_url': logoUrl,
+        'chemistry': chemistry,
+        'overall_rating': overallRating,
+        'is_active': isActive,
+        'squads': squads.map((s) => s.toJson()).toList(),
+      };
+
   Squad? get activeSquad => squads.isEmpty
       ? null
       : squads.firstWhere((s) => s.isActive, orElse: () => squads.first);
@@ -107,9 +118,19 @@ class Squad {
 
   List<LineupPlayer> get bowlers => playingXI
       .where((p) =>
-          p.userCard?.playerCard?.role == 'bowler' ||
-          p.userCard?.playerCard?.role == 'all_rounder')
+          p.userCard?.playerCard?.role == PlayerRole.bowler ||
+          p.userCard?.playerCard?.role == PlayerRole.allRounder)
       .toList();
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'team_id': teamId,
+        'squad_name': squadName,
+        'formation': formation,
+        'is_active': isActive,
+        'squad_players': players.map((p) => p.toJson()).toList(),
+        'lineup_players': lineup.map((l) => l.toJson()).toList(),
+      };
 
   /// Check if a user_card is in the lineup
   bool isInLineup(String userCardId) =>
@@ -130,7 +151,7 @@ class SquadPlayer {
     required this.userCardId,
     required this.position,
     this.userCard,
-  });
+  }) : assert(position >= 1 && position <= 30, 'position must be 1-30');
 
   factory SquadPlayer.fromJson(Map<String, dynamic> json) {
     return SquadPlayer(
@@ -143,6 +164,13 @@ class SquadPlayer {
           : null,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'squad_id': squadId,
+        'user_card_id': userCardId,
+        'position': position,
+      };
 }
 
 /// A player in the Playing XI lineup.
@@ -169,7 +197,7 @@ class LineupPlayer {
     this.isBowler1 = false,
     this.isBowler2 = false,
     this.userCard,
-  });
+  }) : assert(battingOrder >= 1 && battingOrder <= 11, 'battingOrder must be 1-11');
 
   factory LineupPlayer.fromJson(Map<String, dynamic> json) {
     return LineupPlayer(
@@ -187,4 +215,16 @@ class LineupPlayer {
           : null,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'squad_id': squadId,
+        'user_card_id': userCardId,
+        'batting_order': battingOrder,
+        'is_captain': isCaptain,
+        'is_vice_captain': isViceCaptain,
+        'is_wicket_keeper': isWicketKeeper,
+        'is_bowler_1': isBowler1,
+        'is_bowler_2': isBowler2,
+      };
 }

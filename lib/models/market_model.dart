@@ -1,3 +1,5 @@
+import 'enums.dart';
+
 class MarketListing {
   final String id;
   final String sellerId;
@@ -6,13 +8,13 @@ class MarketListing {
   final int startingBid;
   final int currentBid;
   final String? currentBidderId;
-  final String status;
+  final ListingStatus status;
   final DateTime expiresAt;
   final DateTime? soldAt;
   final String? sellerUsername;
   final Map<String, dynamic>? userCardData;
   // Contract listing fields
-  final String listingType; // 'card' or 'contract'
+  final ListingType listingType;
   final String? contractTypeId;
   final int quantity;
   final Map<String, dynamic>? contractTypeData;
@@ -25,19 +27,22 @@ class MarketListing {
     required this.startingBid,
     this.currentBid = 0,
     this.currentBidderId,
-    this.status = 'active',
+    this.status = ListingStatus.active,
     required this.expiresAt,
     this.soldAt,
     this.sellerUsername,
     this.userCardData,
-    this.listingType = 'card',
+    this.listingType = ListingType.card,
     this.contractTypeId,
     this.quantity = 1,
     this.contractTypeData,
-  });
+  }) : assert(buyNowPrice >= 0, 'buyNowPrice must be >= 0'),
+       assert(startingBid >= 0, 'startingBid must be >= 0'),
+       assert(currentBid >= 0, 'currentBid must be >= 0'),
+       assert(quantity >= 1, 'quantity must be >= 1');
 
   factory MarketListing.fromJson(Map<String, dynamic> json) {
-    final listingType = json['listing_type'] ?? 'card';
+    final listingType = ListingType.fromValue(json['listing_type'] as String? ?? 'card');
     return MarketListing(
       id: json['id'],
       sellerId: json['seller_id'],
@@ -46,7 +51,7 @@ class MarketListing {
       startingBid: json['starting_bid'],
       currentBid: json['current_bid'] ?? 0,
       currentBidderId: json['current_bidder_id'],
-      status: json['status'] ?? 'active',
+      status: ListingStatus.fromValue(json['status'] as String? ?? 'active'),
       expiresAt: DateTime.parse(json['expires_at']),
       soldAt:
           json['sold_at'] != null ? DateTime.parse(json['sold_at']) : null,
@@ -59,8 +64,24 @@ class MarketListing {
     );
   }
 
-  bool get isActive => status == 'active';
+  bool get isActive => status == ListingStatus.active;
   bool get hasExpired => DateTime.now().toUtc().isAfter(expiresAt);
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'seller_id': sellerId,
+        'user_card_id': userCardId,
+        'buy_now_price': buyNowPrice,
+        'starting_bid': startingBid,
+        'current_bid': currentBid,
+        'current_bidder_id': currentBidderId,
+        'status': status.value,
+        'expires_at': expiresAt.toIso8601String(),
+        'sold_at': soldAt?.toIso8601String(),
+        'listing_type': listingType.value,
+        'contract_type_id': contractTypeId,
+        'quantity': quantity,
+      };
 
   Duration get timeRemaining => expiresAt.difference(DateTime.now().toUtc());
   String get timeRemainingDisplay {
@@ -76,7 +97,7 @@ class MarketBid {
   final String listingId;
   final String bidderId;
   final int bidAmount;
-  final String status; // 'active', 'outbid', 'won', 'lost'
+  final BidStatus status;
   final DateTime createdAt;
   final MarketListing? listing;
 
@@ -85,7 +106,7 @@ class MarketBid {
     required this.listingId,
     required this.bidderId,
     required this.bidAmount,
-    this.status = 'active',
+    this.status = BidStatus.active,
     required this.createdAt,
     this.listing,
   });
@@ -96,7 +117,7 @@ class MarketBid {
       listingId: json['listing_id'],
       bidderId: json['bidder_id'],
       bidAmount: json['bid_amount'],
-      status: json['status'] ?? 'active',
+      status: BidStatus.fromValue(json['status'] as String? ?? 'active'),
       createdAt: DateTime.parse(json['created_at']),
       listing: json['transfer_market'] != null
           ? MarketListing.fromJson(json['transfer_market'])
@@ -104,10 +125,19 @@ class MarketBid {
     );
   }
 
-  bool get isActive => status == 'active';
-  bool get isWon => status == 'won';
-  bool get isOutbid => status == 'outbid';
-  bool get isLost => status == 'lost';
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'listing_id': listingId,
+        'bidder_id': bidderId,
+        'bid_amount': bidAmount,
+        'status': status.value,
+        'created_at': createdAt.toIso8601String(),
+      };
+
+  bool get isActive => status == BidStatus.active;
+  bool get isWon => status == BidStatus.won;
+  bool get isOutbid => status == BidStatus.outbid;
+  bool get isLost => status == BidStatus.lost;
 }
 
 class PackType {
@@ -156,6 +186,21 @@ class PackType {
     );
   }
 
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'description': description,
+        'coin_cost': coinCost,
+        'premium_cost': premiumCost,
+        'card_count': cardCount,
+        'bronze_chance': bronzeChance,
+        'silver_chance': silverChance,
+        'gold_chance': goldChance,
+        'elite_chance': eliteChance,
+        'legend_chance': legendChance,
+        'image_url': imageUrl,
+      };
+
   bool get isCoinPurchase => coinCost > 0;
   bool get isPremiumPurchase => premiumCost > 0;
 }
@@ -190,6 +235,16 @@ class Transaction {
       createdAt: DateTime.parse(json['created_at']),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'user_id': userId,
+        'type': type,
+        'coins_amount': coinsAmount,
+        'premium_amount': premiumAmount,
+        'description': description,
+        'created_at': createdAt.toIso8601String(),
+      };
 }
 
 class DailyObjective {
@@ -202,7 +257,7 @@ class DailyObjective {
   final int rewardCoins;
   final int rewardPremium;
   final int rewardXp;
-  final String status;
+  final ObjectiveStatus status;
 
   const DailyObjective({
     required this.id,
@@ -214,7 +269,7 @@ class DailyObjective {
     this.rewardCoins = 0,
     this.rewardPremium = 0,
     this.rewardXp = 0,
-    this.status = 'active',
+    this.status = ObjectiveStatus.active,
   });
 
   factory DailyObjective.fromJson(Map<String, dynamic> json) {
@@ -228,9 +283,22 @@ class DailyObjective {
       rewardCoins: json['reward_coins'] ?? 0,
       rewardPremium: json['reward_premium'] ?? 0,
       rewardXp: json['reward_xp'] ?? 0,
-      status: json['status'] ?? 'active',
+      status: ObjectiveStatus.fromValue(json['status'] as String? ?? 'active'),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'user_id': userId,
+        'title': title,
+        'description': description,
+        'target_value': targetValue,
+        'current_value': currentValue,
+        'reward_coins': rewardCoins,
+        'reward_premium': rewardPremium,
+        'reward_xp': rewardXp,
+        'status': status.value,
+      };
 
   double get progress => targetValue > 0 ? currentValue / targetValue : 0;
   bool get isCompleted => currentValue >= targetValue;
@@ -245,7 +313,7 @@ class Tournament {
   final int currentParticipants;
   final int entryFeeCoins;
   final int prizeCoins;
-  final String status;
+  final TournamentStatus status;
   final DateTime startsAt;
 
   const Tournament({
@@ -257,7 +325,7 @@ class Tournament {
     this.currentParticipants = 0,
     this.entryFeeCoins = 0,
     this.prizeCoins = 0,
-    this.status = 'open',
+    this.status = TournamentStatus.open,
     required this.startsAt,
   });
 
@@ -271,11 +339,24 @@ class Tournament {
       currentParticipants: json['current_participants'] ?? 0,
       entryFeeCoins: json['entry_fee_coins'] ?? 0,
       prizeCoins: json['prize_coins'] ?? 0,
-      status: json['status'] ?? 'open',
+      status: TournamentStatus.fromValue(json['status'] as String? ?? 'open'),
       startsAt: DateTime.parse(json['starts_at']),
     );
   }
 
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'description': description,
+        'format': format,
+        'max_participants': maxParticipants,
+        'current_participants': currentParticipants,
+        'entry_fee_coins': entryFeeCoins,
+        'prize_coins': prizeCoins,
+        'status': status.value,
+        'starts_at': startsAt.toIso8601String(),
+      };
+
   bool get isFull => currentParticipants >= maxParticipants;
-  bool get isOpen => status == 'open' && !isFull;
+  bool get isOpen => status == TournamentStatus.open && !isFull;
 }

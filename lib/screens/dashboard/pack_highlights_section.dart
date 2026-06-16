@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/logger.dart';
 import '../../core/constants.dart';
 import '../../core/supabase_service.dart';
 import 'pack_tile.dart';
@@ -37,7 +38,8 @@ class _PackHighlightsSectionState extends ConsumerState<PackHighlightsSection> {
           _loading = false;
         });
       }
-    } catch (_) {
+    } catch (e) {
+      Log.e('Dashboard: failed to load pack highlights', e);
       if (mounted) setState(() => _loading = false);
     }
   }

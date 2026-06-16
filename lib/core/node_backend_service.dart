@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 import 'package:socket_io_client/socket_io_client.dart' as io;
 import 'app_config.dart';
+import 'logger.dart';
 import 'retry_with_backoff.dart';
 
 /// SINGLE socket owner for the entire app.
@@ -66,14 +67,14 @@ class NodeBackendService {
   static void initSocket() {
     // Already connected — fast path
     if (_socket != null && _socket!.connected) {
-      print('🔌 Socket already connected');
+      Log.d('Socket already connected');
       _registerLifecycleObserver();
       return;
     }
 
     // Connection already in progress — no redundant init
     if (_connecting) {
-      print('🔌 Socket connection already in progress, skipping redundant init');
+      Log.d('Socket connection already in progress, skipping redundant init');
       return;
     }
 
@@ -82,14 +83,14 @@ class NodeBackendService {
 
     // Dispose stale socket if it exists but isn't connected
     if (_socket != null) {
-      print('🔌 Disposing stale socket before reconnecting');
+      Log.d('Disposing stale socket before reconnecting');
       _socket!.disconnect();
       _socket!.dispose();
       _socket = null;
     }
 
     _registerLifecycleObserver();
-    print('🔌 Initializing Socket.IO connection to $baseUrl');
+    Log.d('Initializing Socket.IO connection to $baseUrl');
 
     _socket = io.io(
       baseUrl,
@@ -105,24 +106,24 @@ class NodeBackendService {
     );
 
     _socket!.onConnect((_) {
-      print('✅ Connected to Node.js backend');
+      Log.i('Connected to Node.js backend');
       _connecting = false;
       if (_connectionCompleter != null && !_connectionCompleter!.isCompleted) {
         _connectionCompleter!.complete(true);
         _connectionCompleter = null;
       }
       if (_currentJoinedMatchId != null) {
-        print('🔄 Re-joining match room on connect: $_currentJoinedMatchId');
+        Log.d('Re-joining match room on connect: $_currentJoinedMatchId');
         _socket!.emit('joinMatch', _currentJoinedMatchId);
       }
     });
 
     _socket!.onDisconnect((_) {
-      print('❌ Disconnected from Node.js backend');
+      Log.w('Disconnected from Node.js backend');
     });
 
     _socket!.onConnectError((error) {
-      print('❌ Socket connection error: $error');
+      Log.e('Socket connection error', error);
       _connecting = false;
       if (_connectionCompleter != null && !_connectionCompleter!.isCompleted) {
         _connectionCompleter!.complete(false);
@@ -131,26 +132,26 @@ class NodeBackendService {
     });
 
     _socket!.onError((error) {
-      print('❌ Socket error: $error');
+      Log.e('Socket error', error);
     });
 
     _socket!.onReconnect((attempt) {
-      print('🔄 Reconnected after $attempt attempts');
+      Log.i('Reconnected after $attempt attempts');
       if (_currentJoinedMatchId != null) {
-        print('🔄 Re-joining match room on reconnect: $_currentJoinedMatchId');
+        Log.d('Re-joining match room on reconnect: $_currentJoinedMatchId');
         _socket!.emit('joinMatch', _currentJoinedMatchId);
       }
     });
 
     _socket!.onReconnectError((error) {
-      print('❌ Reconnection error: $error');
+      Log.e('Reconnection error', error);
     });
 
     _socket!.onReconnectFailed((_) {
-      print('❌ Reconnection failed after all attempts');
+      Log.e('Reconnection failed after all attempts');
     });
 
-    print('🚀 Attempting to connect...');
+    Log.d('Attempting to connect...');
     _socket!.connect();
   }
 
@@ -180,11 +181,11 @@ class NodeBackendService {
   }) async {
     // Ensure socket is initialized and connected
     if (_socket == null || !_socket!.connected) {
-      print('⚠️ Socket not connected, initializing...');
+      Log.w('Socket not connected, initializing...');
       initSocket();
       final connected = await waitForConnection();
       if (!connected) {
-        print('❌ Socket failed to connect within timeout');
+        Log.e('Socket failed to connect within timeout');
         return false;
       }
     }
@@ -199,7 +200,7 @@ class NodeBackendService {
     Function(Map<String, dynamic>)? onRoomJoined,
   }) {
     if (_socket == null || !_socket!.connected) {
-      print('❌ Cannot join room: socket not connected');
+      Log.e('Cannot join room: socket not connected');
       return false;
     }
 
@@ -211,18 +212,18 @@ class NodeBackendService {
     if (_cbCompleteHandler != null) _socket!.off('matchComplete', _cbCompleteHandler!);
     if (_cbJoinedHandler != null) _socket!.off('joined', _cbJoinedHandler!);
 
-    print('👤 Joining match room: $matchId');
+    Log.i('Joining match room: $matchId');
     _socket!.emit('joinMatch', matchId);
 
     _cbJoinedHandler = (data) {
       try {
         final joinedData = Map<String, dynamic>.from(data as Map);
-        print('✅ Joined match room: ${joinedData['matchId']}');
+        Log.i('Joined match room: ${joinedData['matchId']}');
         if (_onRoomJoinedCallback != null) {
           _onRoomJoinedCallback!(joinedData);
         }
       } catch (e) {
-        print('❌ Error in joined handler: $e');
+        Log.e('Error in joined handler', e);
       }
     };
     _socket!.on('joined', _cbJoinedHandler!);
@@ -236,7 +237,7 @@ class NodeBackendService {
           _ballUpdateController.add(updateData);
         }
       } catch (e) {
-        print('❌ Error processing ball update: $e');
+        Log.e('Error processing ball update', e);
       }
     };
     _socket!.on('ballUpdate', _cbBallHandler!);
@@ -249,7 +250,7 @@ class NodeBackendService {
           _matchCompleteController.add(completeData);
         }
       } catch (e) {
-        print('❌ Error processing match complete: $e');
+        Log.e('Error processing match complete', e);
       }
     };
     _socket!.on('matchComplete', _cbCompleteHandler!);
@@ -260,7 +261,7 @@ class NodeBackendService {
   /// Leave a match room
   static void leaveMatch(String matchId) {
     if (_socket != null && _socket!.connected) {
-      print('👋 Leaving match room: $matchId');
+      Log.i('Leaving match room: $matchId');
       _socket!.emit('leaveMatch', matchId);
     }
     _currentJoinedMatchId = null;
@@ -300,7 +301,7 @@ class NodeBackendService {
             _ballUpdateController.add(data as Map<String, dynamic>);
           }
         } catch (e) {
-          print('❌ Error in stream ball handler: $e');
+          Log.e('Error in stream ball handler', e);
         }
       };
       _socket!.on('ballUpdate', _streamBallHandler!);
@@ -313,7 +314,7 @@ class NodeBackendService {
             _matchCompleteController.add(data as Map<String, dynamic>);
           }
         } catch (e) {
-          print('❌ Error in stream match complete handler: $e');
+          Log.e('Error in stream match complete handler', e);
         }
       };
       _socket!.on('matchComplete', _streamCompleteHandler!);
@@ -346,8 +347,8 @@ class NodeBackendService {
   }) async {
     final result = await retryWithBackoff(
       fn: () async {
-        print('🚀 Node.js: Starting match $matchId');
-        print('🌐 Backend URL: $baseUrl/api/match/start');
+        Log.i('Node.js: Starting match $matchId');
+        Log.d('Backend URL: $baseUrl/api/match/start');
 
         final response = await http.post(
           Uri.parse('$baseUrl/api/match/start'),
@@ -358,11 +359,11 @@ class NodeBackendService {
           }),
         ).timeout(const Duration(seconds: 10));
 
-        print('📡 Node.js response: ${response.statusCode}');
+        Log.d('Node.js response: ${response.statusCode}');
 
         if (response.statusCode == 200) {
           final data = json.decode(response.body);
-          print('✅ Node.js success: $data');
+          Log.i('Node.js success');
           return data['success'] == true;
         }
 
@@ -374,7 +375,7 @@ class NodeBackendService {
           );
         }
 
-        print('❌ Node.js match start failed: ${response.statusCode} ${response.body}');
+        Log.e('Node.js match start failed: ${response.statusCode}');
         // Non-retryable — return failure, not throw
         return false;
       },
@@ -389,11 +390,11 @@ class NodeBackendService {
     if (!result.succeeded) {
       if (result.error is _RetryableHttpException) {
         final httpErr = result.error as _RetryableHttpException;
-        print('❌ Match start failed after ${result.attemptsUsed} attempts (HTTP ${httpErr.statusCode})');
+        Log.e('Match start failed after ${result.attemptsUsed} attempts (HTTP ${httpErr.statusCode})');
       } else if (result.error != null) {
-        print('❌ Match start failed after ${result.attemptsUsed} attempts: ${result.error}');
+        Log.e('Match start failed after ${result.attemptsUsed} attempts', result.error);
       } else {
-        print('❌ Match start returned failure after ${result.attemptsUsed} attempts');
+        Log.e('Match start returned failure after ${result.attemptsUsed} attempts');
       }
     }
 
@@ -408,7 +409,7 @@ class NodeBackendService {
   static Future<bool> stopMatch(String matchId) async {
     final result = await retryWithBackoff(
       fn: () async {
-        print('⏹️ Stopping match: $matchId');
+        Log.d('Stopping match: $matchId');
         
         final response = await http.post(
           Uri.parse('$baseUrl/api/match/stop'),
@@ -427,7 +428,7 @@ class NodeBackendService {
           );
         }
 
-        print('❌ Node.js match stop failed: ${response.statusCode} ${response.body}');
+        Log.e('Node.js match stop failed: ${response.statusCode}');
         return false;
       },
       config: const RetryConfig(
@@ -439,7 +440,7 @@ class NodeBackendService {
     );
 
     if (!result.succeeded && result.error != null) {
-      print('❌ Match stop failed after ${result.attemptsUsed} attempts: ${result.error}');
+      Log.e('Match stop failed after ${result.attemptsUsed} attempts', result.error);
     }
 
     return result.value ?? false;
@@ -452,7 +453,7 @@ class NodeBackendService {
   static Future<bool> confirmMatch(String matchId) async {
     final result = await retryWithBackoff(
       fn: () async {
-        print('✅ Confirming match: $matchId');
+        Log.i('Confirming match: $matchId');
         
         final response = await http.post(
           Uri.parse('$baseUrl/api/match/confirm'),
@@ -471,7 +472,7 @@ class NodeBackendService {
           );
         }
 
-        print('❌ Node.js match confirm failed: ${response.statusCode} ${response.body}');
+        Log.e('Node.js match confirm failed: ${response.statusCode}');
         return false;
       },
       config: const RetryConfig(
@@ -483,7 +484,7 @@ class NodeBackendService {
     );
 
     if (!result.succeeded && result.error != null) {
-      print('❌ Match confirm failed after ${result.attemptsUsed} attempts: ${result.error}');
+      Log.e('Match confirm failed after ${result.attemptsUsed} attempts', result.error);
     }
 
     return result.value ?? false;
@@ -497,7 +498,7 @@ class NodeBackendService {
   static Future<bool> cancelMatch(String matchId) async {
     final result = await retryWithBackoff(
       fn: () async {
-        print('❌ Cancelling match: $matchId');
+        Log.i('Cancelling match: $matchId');
         
         final response = await http.post(
           Uri.parse('$baseUrl/api/match/cancel'),
@@ -516,7 +517,7 @@ class NodeBackendService {
           );
         }
 
-        print('❌ Node.js match cancel failed: ${response.statusCode} ${response.body}');
+        Log.e('Node.js match cancel failed: ${response.statusCode}');
         return false;
       },
       config: const RetryConfig(
@@ -528,7 +529,7 @@ class NodeBackendService {
     );
 
     if (!result.succeeded && result.error != null) {
-      print('❌ Match cancel failed after ${result.attemptsUsed} attempts: ${result.error}');
+      Log.e('Match cancel failed after ${result.attemptsUsed} attempts', result.error);
     }
 
     return result.value ?? false;
@@ -547,7 +548,7 @@ class NodeBackendService {
       
       return null;
     } catch (e) {
-      print('❌ Node.js get match state error: $e');
+      Log.e('Node.js get match state error', e);
       return null;
     }
   }
@@ -566,7 +567,7 @@ class NodeBackendService {
       
       return [];
     } catch (e) {
-      print('❌ Node.js get active matches error: $e');
+      Log.e('Node.js get active matches error', e);
       return [];
     }
   }
@@ -574,20 +575,20 @@ class NodeBackendService {
   /// Check backend health
   static Future<bool> checkHealth() async {
     try {
-      print('🏋️ Checking backend health at $baseUrl/health');
+      Log.d('Checking backend health at $baseUrl/health');
       final response = await http.get(
         Uri.parse('$baseUrl/health'),
       ).timeout(const Duration(seconds: 5));
 
-      print('📊 Health check response: ${response.statusCode}');
+      Log.d('Health check response: ${response.statusCode}');
       if (response.statusCode == 200) {
-        print('✅ Backend is healthy: ${response.body}');
+        Log.i('Backend is healthy');
         return true;
       }
-      print('❌ Backend health check failed: ${response.statusCode}');
+      Log.w('Backend health check failed: ${response.statusCode}');
       return false;
     } catch (e) {
-      print('❌ Node.js health check error: $e');
+      Log.e('Node.js health check error', e);
       return false;
     }
   }
@@ -601,8 +602,8 @@ class NodeBackendService {
   }) async {
     final result = await retryWithBackoff(
       fn: () async {
-        print('🚀 Node.js: Starting multiplayer match $matchId');
-        print('🌐 Backend URL: $baseUrl/api/multiplayer/start');
+        Log.i('Node.js: Starting multiplayer match $matchId');
+        Log.d('Backend URL: $baseUrl/api/multiplayer/start');
 
         final response = await http.post(
           Uri.parse('$baseUrl/api/multiplayer/start'),
@@ -613,11 +614,11 @@ class NodeBackendService {
           }),
         ).timeout(const Duration(seconds: 10));
 
-        print('📡 Node.js multiplayer response: ${response.statusCode}');
+        Log.d('Node.js multiplayer response: ${response.statusCode}');
 
         if (response.statusCode == 200) {
           final data = json.decode(response.body);
-          print('✅ Node.js multiplayer success: $data');
+          Log.i('Node.js multiplayer success');
           return data['success'] == true;
         }
 
@@ -628,7 +629,7 @@ class NodeBackendService {
           );
         }
 
-        print('❌ Node.js multiplayer start failed: ${response.statusCode} ${response.body}');
+        Log.e('Node.js multiplayer start failed: ${response.statusCode}');
         return false;
       },
       config: const RetryConfig(
@@ -640,7 +641,7 @@ class NodeBackendService {
     );
 
     if (!result.succeeded && result.error != null) {
-      print('❌ Multiplayer match start failed after ${result.attemptsUsed} attempts: ${result.error}');
+      Log.e('Multiplayer match start failed after ${result.attemptsUsed} attempts', result.error);
     }
 
     return MatchStartResult(
@@ -663,7 +664,7 @@ class NodeBackendService {
 
       return null;
     } catch (e) {
-      print('❌ Node.js get multiplayer match state error: $e');
+      Log.e('Node.js get multiplayer match state error', e);
       return null;
     }
   }
@@ -679,7 +680,7 @@ class NodeBackendService {
 
       return response.statusCode == 200;
     } catch (e) {
-      print('❌ Node.js multiplayer stop error: $e');
+      Log.e('Node.js multiplayer stop error', e);
       return false;
     }
   }
@@ -698,7 +699,7 @@ class NodeBackendService {
       }
       return [];
     } catch (e) {
-      print('❌ Get tournaments error: $e');
+      Log.e('Get tournaments error', e);
       return [];
     }
   }
@@ -714,7 +715,7 @@ class NodeBackendService {
       }
       return null;
     } catch (e) {
-      print('❌ Get tournament details error: $e');
+      Log.e('Get tournament details error', e);
       return null;
     }
   }
@@ -731,7 +732,7 @@ class NodeBackendService {
       }
       return [];
     } catch (e) {
-      print('❌ Get standings error: $e');
+      Log.e('Get standings error', e);
       return [];
     }
   }
@@ -748,7 +749,7 @@ class NodeBackendService {
       }
       return [];
     } catch (e) {
-      print('❌ Get commentary error: $e');
+      Log.e('Get commentary error', e);
       return [];
     }
   }
@@ -784,7 +785,7 @@ class NodeBackendService {
         'message': data['error'] ?? 'Tournament created',
       };
     } catch (e) {
-      print('❌ Create tournament error: $e');
+      Log.e('Create tournament error', e);
       return {'success': false, 'message': 'Network error: $e'};
     }
   }
@@ -810,7 +811,7 @@ class NodeBackendService {
         'message': data['message'] ?? data['error'] ?? 'Unknown error',
       };
     } catch (e) {
-      print('❌ Join tournament error: $e');
+      Log.e('Join tournament error', e);
       return {'success': false, 'message': 'Network error: $e'};
     }
   }
@@ -830,7 +831,7 @@ class NodeBackendService {
         'matchCount': data['matchCount'] ?? 0,
       };
     } catch (e) {
-      print('❌ Check-start tournament error: $e');
+      Log.e('Check-start tournament error', e);
       return {'success': false, 'status': 'error', 'message': 'Network error: $e'};
     }
   }
@@ -846,7 +847,7 @@ class NodeBackendService {
       }
       return null;
     } catch (e) {
-      print('❌ Get tournament active match error: $e');
+      Log.e('Get tournament active match error', e);
       return null;
     }
   }
@@ -859,7 +860,7 @@ class NodeBackendService {
   /// initSocket() again before the next connection attempt.
   static void dispose() {
     if (_socket != null) {
-      print('🔌 Disposing Socket.IO connection');
+      Log.d('Disposing Socket.IO connection');
       _socket!.disconnect();
       _socket!.dispose();
       _socket = null;
@@ -874,16 +875,16 @@ class NodeBackendService {
     if (_lifecycleObserverRegistered) return;
     WidgetsBinding.instance.addObserver(_SocketLifecycleObserver());
     _lifecycleObserverRegistered = true;
-    print('📱 SocketLifecycleObserver registered successfully');
+    Log.d('SocketLifecycleObserver registered successfully');
   }
 
   static void handleAppResume() {
     if (_socket == null) return;
-    print('📱 Reconnect check on App Resume: isConnected=$isConnected, currentJoinedMatchId=$_currentJoinedMatchId');
+    Log.d('Reconnect check on App Resume: isConnected=$isConnected, currentJoinedMatchId=$_currentJoinedMatchId');
     
     // Completely reconnect to guarantee fresh connection and trigger room join state sync
     if (_currentJoinedMatchId != null) {
-      print('🔄 App resumed with active match. Reconnecting socket to guarantee fresh state...');
+      Log.i('App resumed with active match. Reconnecting socket to guarantee fresh state...');
       _socket!.disconnect();
       _socket!.connect();
     } else if (!_socket!.connected) {
@@ -896,7 +897,7 @@ class _SocketLifecycleObserver extends WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      print('📱 App resumed: Checking Socket.IO connection status...');
+      Log.d('App resumed: Checking Socket.IO connection status...');
       NodeBackendService.handleAppResume();
     }
   }

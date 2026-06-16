@@ -1,3 +1,5 @@
+import 'enums.dart';
+
 class UserModel {
   final String id;
   final String username;
@@ -7,7 +9,7 @@ class UserModel {
   final int premiumTokens;
   final int xp;
   final int level;
-  final String seasonTier;
+  final SeasonTier seasonTier;
   final int seasonPoints;
   final int matchesPlayed;
   final int matchesWon;
@@ -24,14 +26,18 @@ class UserModel {
     this.premiumTokens = 50,
     this.xp = 0,
     this.level = 1,
-    this.seasonTier = 'bronze',
+    this.seasonTier = SeasonTier.bronze,
     this.seasonPoints = 0,
     this.matchesPlayed = 0,
     this.matchesWon = 0,
     this.lastDailyReward,
     this.dailyStreak = 0,
     required this.createdAt,
-  });
+  }) : assert(level >= 1, 'level must be >= 1'),
+       assert(coins >= 0, 'coins must be >= 0'),
+       assert(premiumTokens >= 0, 'premiumTokens must be >= 0'),
+       assert(xp >= 0, 'xp must be >= 0'),
+       assert(dailyStreak >= 0, 'dailyStreak must be >= 0');
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
     return UserModel(
@@ -43,7 +49,7 @@ class UserModel {
       premiumTokens: json['premium_tokens'] ?? 50,
       xp: json['xp'] ?? 0,
       level: json['level'] ?? 1,
-      seasonTier: json['season_tier'] ?? 'bronze',
+      seasonTier: SeasonTier.fromValue(json['season_tier'] as String? ?? 'bronze'),
       seasonPoints: json['season_points'] ?? 0,
       matchesPlayed: json['matches_played'] ?? 0,
       matchesWon: json['matches_won'] ?? 0,
@@ -64,10 +70,13 @@ class UserModel {
         'premium_tokens': premiumTokens,
         'xp': xp,
         'level': level,
-        'season_tier': seasonTier,
+        'season_tier': seasonTier.value,
         'season_points': seasonPoints,
         'matches_played': matchesPlayed,
         'matches_won': matchesWon,
+        'last_daily_reward': lastDailyReward?.toIso8601String(),
+        'daily_streak': dailyStreak,
+        'created_at': createdAt.toIso8601String(),
       };
 
   double get winRate =>

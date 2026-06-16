@@ -442,14 +442,14 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
 
     int ratingOf(UserCard c) => c.playerCard?.rating ?? 0;
     int battingOf(UserCard c) => c.playerCard?.batting ?? 0;
-    String roleOf(UserCard c) => c.playerCard?.role ?? 'batsman';
+    PlayerRole roleOf(UserCard c) => c.playerCard?.role ?? PlayerRole.batsman;
 
     // Always pick the best 11 from scratch (ignore existing lineup)
     final selected = <UserCard>[];
     final selectedIds = <String>{};
     final selectedCardIds = <String>{};
 
-    void pick(String role, int count) {
+    void pick(PlayerRole role, int count) {
       int picked = 0;
       for (final card in candidates) {
         if (picked >= count) break;
@@ -466,10 +466,10 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
     }
 
     // Target composition: 4 bat, 1 WK, 2 AR, 4 bowl
-    pick('batsman', 4);
-    pick('wicket_keeper', 1);
-    pick('all_rounder', 2);
-    pick('bowler', 4);
+    pick(PlayerRole.batsman, 4);
+    pick(PlayerRole.wicketKeeper, 1);
+    pick(PlayerRole.allRounder, 2);
+    pick(PlayerRole.bowler, 4);
 
     // Fill remaining by overall rating (unique players)
     for (final card in candidates) {
@@ -517,11 +517,11 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
     // Sort selected by batting order score for the full lineup
     int battingOrderScore(UserCard c) {
       final role = roleOf(c);
-      final bonus = role == 'batsman'
+      final bonus = role == PlayerRole.batsman
           ? 40
-          : role == 'wicket_keeper'
+          : role == PlayerRole.wicketKeeper
               ? 30
-              : role == 'all_rounder'
+              : role == PlayerRole.allRounder
                   ? 20
                   : 0;
       return battingOf(c) * 2 + ratingOf(c) + bonus;
@@ -545,13 +545,13 @@ class TeamNotifier extends StateNotifier<AsyncValue<Team?>> {
     }
 
     String? wkCardId;
-    final wks = List<UserCard>.from(selected.where((c) => roleOf(c) == 'wicket_keeper'))
+    final wks = List<UserCard>.from(selected.where((c) => roleOf(c) == PlayerRole.wicketKeeper))
       ..sort((a, b) => ratingOf(b).compareTo(ratingOf(a)));
     if (wks.isNotEmpty) wkCardId = wks.first.id;
 
     String? b1CardId;
     String? b2CardId;
-    final blrs = List<UserCard>.from(selected.where((c) => roleOf(c) == 'bowler'))
+    final blrs = List<UserCard>.from(selected.where((c) => roleOf(c) == PlayerRole.bowler))
       ..sort((a, b) => ratingOf(b).compareTo(ratingOf(a)));
     if (blrs.isNotEmpty) b1CardId = blrs.first.id;
     if (blrs.length > 1) b2CardId = blrs[1].id;

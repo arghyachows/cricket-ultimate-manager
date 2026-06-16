@@ -9,3 +9,4 @@ export 'career_stats_provider.dart';
 export 'multiplayer_provider.dart';
 export 'challenge_provider.dart';
 export 'contracts_provider.dart';
+export 'daily_reward_provider.dart';

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:uuid/uuid.dart';
+import '../../core/logger.dart';
 import '../../core/node_backend_service.dart';
 import '../../models/models.dart';
 import 'match_state.dart';
@@ -44,15 +45,14 @@ class MatchNodeBackend {
     required bool homeBatsFirst,
   }) async {
     try {
-      print('🚀 Attempting Node.js backend match simulation...');
+      Log.i('Attempting Node.js backend match simulation...');
       _remoteMatchId = const Uuid().v4();
-      print('📝 Match ID: $_remoteMatchId');
+      Log.d('Match ID: $_remoteMatchId');
 
       final homeXIData = homeXI.map((p) => _playerToMap(p)).toList();
       final awayXIData = awayXI.map((p) => _playerToMap(p)).toList();
 
-      print('👥 Home XI: ${homeXIData.length} players');
-      print('👥 Away XI: ${awayXIData.length} players');
+      Log.d('Home XI: ${homeXIData.length} players, Away XI: ${awayXIData.length} players');
 
       final config = {
         'homeXI': homeXIData,
@@ -67,17 +67,17 @@ class MatchNodeBackend {
         'useAICommentary': false,
       };
 
-      print('🔌 Connecting Socket.IO before starting match...');
+      Log.d('Connecting Socket.IO before starting match...');
       NodeBackendService.initSocket();
       final connected = await NodeBackendService.waitForConnection(
         timeout: const Duration(seconds: 10),
       );
       if (!connected) {
-        print('❌ Socket.IO failed to connect');
+        Log.e('Socket.IO failed to connect');
         return false;
       }
 
-      print('👤 Joining match room...');
+      Log.i('Joining match room...');
       final joined = await NodeBackendService.joinMatch(
         _remoteMatchId!,
         onBallUpdate,
@@ -85,30 +85,29 @@ class MatchNodeBackend {
         onRoomJoined: _onRoomJoined,
       );
       if (!joined) {
-        print('❌ Failed to join match room');
+        Log.e('Failed to join match room');
         return false;
       }
 
       await Future.delayed(const Duration(milliseconds: 500));
 
-      print('⚙️ Starting match on Node.js backend...');
+      Log.d('Starting match on Node.js backend...');
       final started = await NodeBackendService.startMatch(
         matchId: _remoteMatchId!,
         config: config,
       );
 
       if (started.success) {
-        print('✅ Node.js backend match started successfully!');
+        Log.i('Node.js backend match started successfully!');
         _startPollingFallback();
         return true;
       }
 
-      print('❌ Node.js backend returned false');
+      Log.e('Node.js backend returned false');
       NodeBackendService.leaveMatch(_remoteMatchId!);
       return false;
     } catch (e, stackTrace) {
-      print('❌ Node.js backend exception: $e');
-      print('  $stackTrace');
+      Log.e('Node.js backend exception', e, stackTrace);
       return false;
     }
   }
@@ -151,17 +150,19 @@ class MatchNodeBackend {
       final ms = stateData['state'] as Map<String, dynamic>?;
       if (ms == null) return;
       if ((ms['matchComplete'] as bool? ?? false) && (ms['isSimulating'] ?? true)) {
-        print('🏁 Match complete detected via completion poll');
+        Log.i('Match complete detected via completion poll');
         _pollingTimer?.cancel();
         onMatchComplete();
         NodeBackendService.leaveMatch(_remoteMatchId!);
       }
-    } catch (_) {}
+    } catch (e) {
+      Log.w('MatchNodeBackend: Polling error', e);
+    }
   }
 
   void _onRoomJoined(Map<String, dynamic> data) {
     // Room join callback — state sync handled by ball update flow
-    print('👤 Node match: Room joined callback received.');
+    Log.i('Node match: Room joined callback received.');
   }
 }
 

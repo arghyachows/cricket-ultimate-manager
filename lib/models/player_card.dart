@@ -1,10 +1,12 @@
+import 'enums.dart';
+
 class PlayerCard {
   final String id;
   final String playerName;
   final String country;
   final String? league;
   final String? team;
-  final String role;
+  final PlayerRole role;
   final int rating;
   final int batting;
   final int bowling;
@@ -25,8 +27,8 @@ class PlayerCard {
   final int variations;
   final int yorkers;
   final int bouncer;
-  final String rarity;
-  final String cardType;
+  final CardRarity rarity;
+  final CardType cardType;
   final String? imageUrl;
   final String? countryFlagUrl;
 
@@ -58,10 +60,13 @@ class PlayerCard {
     this.yorkers = 50,
     this.bouncer = 50,
     required this.rarity,
-    this.cardType = 'standard',
+    this.cardType = CardType.standard,
     this.imageUrl,
     this.countryFlagUrl,
-  });
+  }) : assert(rating >= 1 && rating <= 99, 'rating must be 1-99'),
+       assert(batting >= 1 && batting <= 99, 'batting must be 1-99'),
+       assert(bowling >= 1 && bowling <= 99, 'bowling must be 1-99'),
+       assert(stamina >= 1 && stamina <= 99, 'stamina must be 1-99');
 
   factory PlayerCard.fromJson(Map<String, dynamic> json) {
     return PlayerCard(
@@ -70,7 +75,7 @@ class PlayerCard {
       country: json['country'],
       league: json['league'],
       team: json['team'],
-      role: json['role'],
+      role: PlayerRole.fromValue(json['role'] as String? ?? 'batsman'),
       rating: json['rating'],
       batting: json['batting'],
       bowling: json['bowling'],
@@ -91,8 +96,8 @@ class PlayerCard {
       variations: json['variations'] ?? 50,
       yorkers: json['yorkers'] ?? 50,
       bouncer: json['bouncer'] ?? 50,
-      rarity: json['rarity'],
-      cardType: json['card_type'] ?? 'standard',
+      rarity: CardRarity.fromValue(json['rarity'] as String? ?? 'bronze'),
+      cardType: CardType.fromValue(json['card_type'] as String? ?? 'standard'),
       imageUrl: json['image_url'],
       countryFlagUrl: json['country_flag_url'],
     );
@@ -104,7 +109,7 @@ class PlayerCard {
         'country': country,
         'league': league,
         'team': team,
-        'role': role,
+        'role': role.value,
         'rating': rating,
         'batting': batting,
         'bowling': bowling,
@@ -123,39 +128,14 @@ class PlayerCard {
         'variations': variations,
         'yorkers': yorkers,
         'bouncer': bouncer,
-        'rarity': rarity,
-        'card_type': cardType,
+        'rarity': rarity.value,
+        'card_type': cardType.value,
+        'image_url': imageUrl,
+        'country_flag_url': countryFlagUrl,
       };
 
-  String get roleDisplay {
-    switch (role) {
-      case 'batsman':
-        return 'BAT';
-      case 'bowler':
-        return 'BOWL';
-      case 'all_rounder':
-        return 'ALL';
-      case 'wicket_keeper':
-        return 'WK';
-      default:
-        return role.toUpperCase();
-    }
-  }
-
-  String get roleLabel {
-    switch (role) {
-      case 'batsman':
-        return 'Batsman';
-      case 'bowler':
-        return 'Bowler';
-      case 'all_rounder':
-        return 'All-Rounder';
-      case 'wicket_keeper':
-        return 'Wicket Keeper';
-      default:
-        return role.replaceAll('_', ' ');
-    }
-  }
+  String get roleDisplay => role.display;
+  String get roleLabel => role.label;
 
   String get countryCode {
     const codes = {

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../core/logger.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/supabase_service.dart';
 import '../models/models.dart';
@@ -171,16 +172,16 @@ class MultiplayerNotifier extends StateNotifier<MultiplayerState> {
   }
 
   Future<void> joinRoom(String roomId) async {
-    print('=== JOIN ROOM START ==');
-    print('Room ID: $roomId');
+    Log.d('JOIN ROOM START');
+    Log.d('Room ID: $roomId');
     
     try {
       final userId = SupabaseService.currentUserId;
-      print('User ID: $userId');
+      Log.d('User ID: $userId');
       
       if (userId == null) {
         state = state.copyWith(error: 'User not authenticated');
-        print('ERROR: User not authenticated');
+        Log.e('User not authenticated');
         return;
       }
 
@@ -189,21 +190,21 @@ class MultiplayerNotifier extends StateNotifier<MultiplayerState> {
       var team = ref.read(teamProvider).valueOrNull;
 
       if (user == null) {
-        print('User not loaded yet, refreshing...');
+        Log.d('User not loaded yet, refreshing...');
         await ref.read(currentUserProvider.notifier).loadUser();
         user = ref.read(currentUserProvider).valueOrNull;
       }
       if (team == null) {
-        print('Team not loaded yet, refreshing...');
+        Log.d('Team not loaded yet, refreshing...');
         await ref.read(teamProvider.notifier).loadTeam();
         team = ref.read(teamProvider).valueOrNull;
       }
       
-      print('User: ${user?.username}, Team: ${team?.teamName}');
+      Log.d('User: ${user?.username}, Team: ${team?.teamName}');
       
       if (user == null || team == null) {
         state = state.copyWith(error: 'User or team data not available. Please ensure you have created a team.');
-        print('ERROR: User or team data not available');
+        Log.e('User or team data not available');
         return;
       }
 
@@ -212,18 +213,18 @@ class MultiplayerNotifier extends StateNotifier<MultiplayerState> {
 
       // Find the room
       final room = state.rooms.firstWhere((r) => r.id == roomId);
-      print('Found room: ${room.roomName}');
+      Log.d('Found room: ${room.roomName}');
       state = state.copyWith(currentRoom: room, isLoading: true);
 
       // Clean up any stale presence for this user across all rooms
-      print('Cleaning up stale presence...');
+      Log.d('Cleaning up stale presence...');
       await SupabaseService.client
           .from('room_presence')
           .delete()
           .eq('user_id', userId);
 
       // Create presence record in database
-      print('Creating presence record...');
+      Log.d('Creating presence record...');
       final presence = await SupabaseService.client
           .from('room_presence')
           .insert({
@@ -237,32 +238,30 @@ class MultiplayerNotifier extends StateNotifier<MultiplayerState> {
           .single();
 
       _currentPresenceId = presence['id'];
-      print('Presence created: $_currentPresenceId');
+      Log.d('Presence created: $_currentPresenceId');
 
       // Load initial room data
-      print('Loading room users...');
+      Log.d('Loading room users...');
       await _loadRoomUsers(roomId);
-      print('Loaded ${state.usersInRoom.length} users');
+      Log.d('Loaded ${state.usersInRoom.length} users');
       
-      print('Loading challenges...');
+      Log.d('Loading challenges...');
       await _loadPendingChallenges();
-      print('Loaded ${state.pendingChallenges.length} challenges');
+      Log.d('Loaded ${state.pendingChallenges.length} challenges');
 
       // Setup WebSocket channel for real-time updates
-      print('Setting up realtime channel...');
+      Log.d('Setting up realtime channel...');
       await _setupRealtimeChannel(roomId, userId);
-      print('Realtime channel setup complete');
+      Log.d('Realtime channel setup complete');
 
       // Start heartbeat to keep presence alive
       _startHeartbeat();
-      print('Heartbeat started');
+      Log.d('Heartbeat started');
 
       state = state.copyWith(isLoading: false, isConnected: true);
-      print('=== JOIN ROOM SUCCESS ===');
+      Log.i('Join room successful');
     } catch (e, stackTrace) {
-      print('=== JOIN ROOM ERROR ===');
-      print('Error: $e');
-      print('Stack trace: $stackTrace');
+      Log.e('Join room failed', e, stackTrace);
       state = state.copyWith(error: e.toString(), isLoading: false, isConnected: false);
     }
   }
@@ -366,7 +365,7 @@ class MultiplayerNotifier extends StateNotifier<MultiplayerState> {
       final updatedUsers = _normalizeUsersInRoom([...state.usersInRoom, newUser]);
       state = state.copyWith(usersInRoom: updatedUsers);
     } catch (e) {
-      print('Error handling user joined: $e');
+      Log.e('Error handling user joined', e);
     }
   }
 
@@ -379,7 +378,7 @@ class MultiplayerNotifier extends StateNotifier<MultiplayerState> {
       final updatedUsers = _normalizeUsersInRoom(mergedUsers);
       state = state.copyWith(usersInRoom: updatedUsers);
     } catch (e) {
-      print('Error handling user updated: $e');
+      Log.e('Error handling user updated', e);
     }
   }
 
@@ -391,19 +390,19 @@ class MultiplayerNotifier extends StateNotifier<MultiplayerState> {
       );
       state = state.copyWith(usersInRoom: updatedUsers);
     } catch (e) {
-      print('Error handling user left: $e');
+      Log.e('Error handling user left', e);
     }
   }
 
   void _handleChallengeReceived(Map<String, dynamic> data) {
     try {
       final challenge = MatchChallenge.fromJson(data);
-      if (challenge.status == 'pending') {
+      if (challenge.status == ChallengeStatus.pending) {
         final updatedChallenges = [...state.pendingChallenges, challenge];
         state = state.copyWith(pendingChallenges: updatedChallenges);
       }
     } catch (e) {
-      print('Error handling challenge received: $e');
+      Log.e('Error handling challenge received', e);
     }
   }
 
@@ -411,48 +410,41 @@ class MultiplayerNotifier extends StateNotifier<MultiplayerState> {
     try {
       final updatedChallenge = MatchChallenge.fromJson(data);
       // Remove from pending if no longer pending
-      if (updatedChallenge.status != 'pending') {
+      if (updatedChallenge.status != ChallengeStatus.pending) {
         final updatedChallenges = state.pendingChallenges
             .where((c) => c.id != updatedChallenge.id)
             .toList();
         state = state.copyWith(pendingChallenges: updatedChallenges);
       }
     } catch (e) {
-      print('Error handling challenge updated: $e');
+      Log.e('Error handling challenge updated', e);
     }
   }
 
   void _handleMatchCreated(Map<String, dynamic> data, String userId) {
     try {
-      print('=== MATCH CREATED EVENT RECEIVED ===');
-      print('Match data: $data');
+      Log.d('Match created event received: $data');
       final matchId = data['id'];
       final homeUserId = data['home_user_id'];
       final awayUserId = data['away_user_id'];
       
-      print('Match ID: $matchId');
-      print('Home User ID: $homeUserId');
-      print('Away User ID: $awayUserId');
-      print('Current User ID: $userId');
+      Log.d('Match ID: $matchId, Home: $homeUserId, Away: $awayUserId, Current: $userId');
       
       // Check if this user is part of the match
       if (homeUserId == userId || awayUserId == userId) {
-        print('=== USER IS PART OF MATCH, SETTING matchStartedId ===');
+        Log.i('User is part of match, setting matchStartedId');
         // Trigger navigation by setting matchStartedId
         state = state.copyWith(matchStartedId: matchId);
-        print('State updated with matchStartedId: ${state.matchStartedId}');
       } else {
-        print('User is NOT part of this match, ignoring');
+        Log.d('User is NOT part of this match, ignoring');
       }
     } catch (e, stackTrace) {
-      print('=== ERROR HANDLING MATCH CREATED ===');
-      print('Error: $e');
-      print('Stack trace: $stackTrace');
+      Log.e('Error handling match created', e, stackTrace);
     }
   }
 
   void clearMatchStarted() {
-    print('=== CLEARING MATCH STARTED ID ===');
+    Log.d('Clearing matchStartedId');
     state = MultiplayerState(
       rooms: state.rooms,
       currentRoom: state.currentRoom,
@@ -478,7 +470,7 @@ class MultiplayerNotifier extends StateNotifier<MultiplayerState> {
       );
       state = state.copyWith(usersInRoom: users);
     } catch (e) {
-      print('Error loading room users: $e');
+      Log.e('Error loading room users', e);
     }
   }
 
@@ -497,7 +489,7 @@ class MultiplayerNotifier extends StateNotifier<MultiplayerState> {
       final challenges = (data as List).map((json) => MatchChallenge.fromJson(json)).toList();
       state = state.copyWith(pendingChallenges: challenges);
     } catch (e) {
-      print('Error loading challenges: $e');
+      Log.e('Error loading challenges', e);
     }
   }
 
@@ -511,7 +503,7 @@ class MultiplayerNotifier extends StateNotifier<MultiplayerState> {
               .update({'last_seen': DateTime.now().toIso8601String()})
               .eq('id', _currentPresenceId!);
         } catch (e) {
-          print('Heartbeat error: $e');
+          Log.e('Heartbeat error', e);
         }
       }
     });
@@ -577,7 +569,9 @@ class MultiplayerNotifier extends StateNotifier<MultiplayerState> {
               .eq('id', challengeData['challenged_team_id'])
               .single();
           awayTeamName = awayTeam['team_name'] ?? 'Away';
-        } catch (_) {}
+        } catch (e) {
+          Log.w('Multiplayer: failed to fetch team names for challenge');
+        }
 
         // Create multiplayer match
         final match = await SupabaseService.client
@@ -597,7 +591,7 @@ class MultiplayerNotifier extends StateNotifier<MultiplayerState> {
             .select()
             .single();
 
-        print('Match created: ${match['id']}');
+        Log.d('Match created: ${match['id']}');
       } else {
         // Decline challenge
         await SupabaseService.client
@@ -615,7 +609,7 @@ class MultiplayerNotifier extends StateNotifier<MultiplayerState> {
           .toList();
       state = state.copyWith(pendingChallenges: updatedChallenges);
     } catch (e) {
-      print('Error responding to challenge: $e');
+      Log.e('Error responding to challenge', e);
       state = state.copyWith(error: 'Failed to respond to challenge: $e');
     }
   }
@@ -653,7 +647,7 @@ class MultiplayerNotifier extends StateNotifier<MultiplayerState> {
         isConnected: false,
       );
     } catch (e) {
-      print('Error leaving room: $e');
+      Log.e('Error leaving room', e);
     }
   }
 

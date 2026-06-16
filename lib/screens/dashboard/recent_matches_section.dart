@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/logger.dart';
 import '../../core/constants.dart';
 import '../../core/supabase_service.dart';
 import 'recent_match_tile.dart';
@@ -35,7 +36,8 @@ class _RecentMatchesSectionState extends ConsumerState<RecentMatchesSection> {
           .order('completed_at', ascending: false)
           .limit(3);
       if (mounted) setState(() { _matches = List<Map<String, dynamic>>.from(rows as List); _loading = false; });
-    } catch (_) {
+    } catch (e) {
+      Log.e('Dashboard: failed to load recent matches', e);
       if (mounted) setState(() => _loading = false);
     }
   }

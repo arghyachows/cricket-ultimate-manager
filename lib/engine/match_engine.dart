@@ -1,5 +1,7 @@
 import 'dart:math';
 import '../models/models.dart';
+import 'commentary_templates.dart';
+import 'probability_calculator.dart';
 
 /// Ball-by-ball cricket match simulation engine.
 /// Takes into account batting/bowling ratings, chemistry,
@@ -38,7 +40,7 @@ class MatchEngine {
   int _currentBatsmanIndex = 0;
   int _currentBowlerIndex = 0;
   int _nonStrikerIndex = 1;
-  int _nextBatsmanIndex = 2; // Next batsman to come in (after opener 0 and 1)
+  int _nextBatsmanIndex = 2;
   bool _matchComplete = false;
   int _target = 0;
   bool _isSuperOver = false;
@@ -69,8 +71,8 @@ class MatchEngine {
     
     List<LineupPlayer> getBowlingOrder(List<LineupPlayer> xi) {
       var bowlers = xi.where((p) =>
-              p.userCard?.playerCard?.role == 'bowler' ||
-              p.userCard?.playerCard?.role == 'all_rounder')
+              p.userCard?.playerCard?.role == PlayerRole.bowler ||
+              p.userCard?.playerCard?.role == PlayerRole.allRounder)
           .toList();
       if (bowlers.isEmpty) bowlers = List.from(xi);
       
@@ -173,11 +175,22 @@ class MatchEngine {
         ? (homeBatsFirst ? homeChemistry : awayChemistry)
         : (homeBatsFirst ? awayChemistry : homeChemistry);
 
-    // Calculate outcome
-    final outcome = _calculateOutcome(
+    // Calculate outcome using probability calculator module
+    final outcome = calculateOutcome(
       battingRating: battingRating,
       bowlingRating: bowlingRating,
       chemistry: chemistry,
+      batsman: batsman,
+      bowler: bowler,
+      isFirstInnings: isFirstInnings,
+      currentScore: isFirstInnings ? _score1 : _score2,
+      currentWickets: _currentWickets,
+      overNumber: _overNumber,
+      ballNumber: _ballNumber,
+      maxOvers: maxOvers,
+      target: _target,
+      pitchCondition: pitchCondition,
+      rng: _rng,
     );
 
     // Build event
@@ -197,7 +210,7 @@ class MatchEngine {
       case BallOutcome.dot:
         runs = 0;
         eventType = 'dot_ball';
-        commentary = _dotCommentary(batsmanName, bowlerName);
+        commentary = dotCommentary(batsmanName, bowlerName, _rng);
         if (isFreeHit) commentary += ' (Free Hit)';
         break;
       case BallOutcome.single:
@@ -248,14 +261,14 @@ class MatchEngine {
         runs = 4;
         isBoundary = true;
         eventType = 'four';
-        commentary = _fourCommentary(batsmanName, bowlerName);
+        commentary = fourCommentary(batsmanName, bowlerName, _rng);
         if (isFreeHit) commentary += ' (Free Hit)';
         break;
       case BallOutcome.six:
         runs = 6;
         isBoundary = true;
         eventType = 'six';
-        commentary = _sixCommentary(batsmanName);
+        commentary = sixCommentary(batsmanName, _rng);
         if (isFreeHit) commentary += ' (Free Hit)';
         break;
       case BallOutcome.wicket:
@@ -273,7 +286,7 @@ class MatchEngine {
           final fielder = _pickFielder(wicketTypeResult, bowler);
           fielderCardIdResult = fielder?.userCardId;
           final fielderName = fielder?.userCard?.playerCard?.playerName;
-          commentary = _wicketCommentary(batsmanName, bowlerName, wicketTypeResult, fielderName);
+          commentary = wicketCommentary(batsmanName, bowlerName, wicketTypeResult, fielderName, _rng);
         }
         break;
       case BallOutcome.wide:
@@ -495,224 +508,6 @@ class MatchEngine {
     }
   }
 
-  BallOutcome _calculateOutcome({
-    required int battingRating,
-    required int bowlingRating,
-    required int chemistry,
-  }) {
-    final batsman = _currentBatsman;
-    
-    // Base T20 probabilities
-    var probs = {
-      'dot': 0.30,
-      'single': 0.30,
-      'double': 0.10,
-      'triple': 0.02,
-      'four': 0.15,
-      'six': 0.08,
-      'wicket': 0.05,
-      'wide': 0.015,
-      'no_ball': 0.015,
-    };
-
-    // ─── Step 1: Calculate matchup score ───────────────────────────────
-    final matchupScore = battingRating - bowlingRating;
-    final normalized = matchupScore / 100.0; // range ~ -1 to +1
-
-    // ─── Step 2: Adjust based on matchup ───────────────────────────────
-    probs['four'] = probs['four']! + 0.1 * normalized;
-    probs['six'] = probs['six']! + 0.08 * normalized;
-    probs['dot'] = probs['dot']! - 0.1 * normalized;
-    probs['wicket'] = probs['wicket']! - 0.05 * normalized;
-    probs['single'] = probs['single']! + 0.03 * normalized;
-
-    // ─── Step 3: Add player trait impacts ──────────────────────────────
-    final aggression = batsman.userCard!.playerCard!.rating.toDouble();
-    final technique = battingRating.toDouble();
-    final power = battingRating.toDouble();
-    final consistency = battingRating.toDouble();
-    
-    final pace = bowlingRating.toDouble();
-    final accuracy = bowlingRating.toDouble();
-    final variations = bowlingRating.toDouble();
-
-    // Aggressive batsman
-    probs['six'] = probs['six']! + aggression * 0.001;
-    probs['wicket'] = probs['wicket']! + aggression * 0.0005;
-    probs['dot'] = probs['dot']! - aggression * 0.0008;
-    
-    // Powerful batsman
-    probs['six'] = probs['six']! + power * 0.0008;
-    probs['four'] = probs['four']! + power * 0.0006;
-    
-    // Technical batsman
-    probs['single'] = probs['single']! + technique * 0.0005;
-    probs['double'] = probs['double']! + technique * 0.0003;
-    probs['wicket'] = probs['wicket']! - technique * 0.0004;
-    
-    // Consistent batsman
-    probs['dot'] = probs['dot']! + consistency * 0.0003;
-    probs['wicket'] = probs['wicket']! - consistency * 0.0005;
-
-    // Accurate bowler
-    probs['dot'] = probs['dot']! + accuracy * 0.001;
-    probs['wicket'] = probs['wicket']! + accuracy * 0.0007;
-    probs['wide'] = probs['wide']! - accuracy * 0.0003;
-    probs['no_ball'] = probs['no_ball']! - accuracy * 0.0002;
-    
-    // Pace bowler
-    probs['wicket'] = probs['wicket']! + pace * 0.0005;
-    probs['dot'] = probs['dot']! + pace * 0.0003;
-    
-    // Variations
-    probs['wicket'] = probs['wicket']! + variations * 0.0003;
-    probs['dot'] = probs['dot']! + variations * 0.0002;
-
-    // ─── Step 4: Context awareness ─────────────────────────────────────
-    final currentScore = isFirstInnings ? _score1 : _score2;
-    final currentWickets = _currentWickets;
-    final ballsRemaining = (maxOvers * 6) - (_overNumber * 6 + _ballNumber);
-    
-    // Dynamic phase boundaries based on match format
-    final powerplayEnd = (maxOvers * 0.3).floor().clamp(0, 10);
-    final middleOversEnd = (maxOvers * 0.8).floor();
-    
-    // Death overs (final 20% of match)
-    if (_overNumber >= middleOversEnd) {
-      probs['six'] = probs['six']! + 0.05;
-      probs['four'] = probs['four']! + 0.03;
-      probs['wicket'] = probs['wicket']! + 0.03;
-      probs['dot'] = probs['dot']! - 0.05;
-      probs['single'] = probs['single']! - 0.02;
-    }
-    // Powerplay (first 30% of match)
-    else if (_overNumber < powerplayEnd) {
-      probs['four'] = probs['four']! + 0.03;
-      probs['six'] = probs['six']! + 0.02;
-      probs['dot'] = probs['dot']! - 0.02;
-    }
-    // Middle overs (30%-80% of match)
-    else {
-      probs['single'] = probs['single']! + 0.05;
-      probs['double'] = probs['double']! + 0.02;
-      probs['dot'] = probs['dot']! + 0.02;
-      probs['six'] = probs['six']! - 0.02;
-    }
-
-    // Chasing scenario
-    if (!isFirstInnings && _target > 0) {
-      final runsNeeded = _target + 1 - currentScore;
-      final requiredRunRate = ballsRemaining > 0 ? (runsNeeded / ballsRemaining) * 6 : 0.0;
-      
-      // High required run rate
-      if (requiredRunRate > 10) {
-        probs['six'] = probs['six']! + 0.07;
-        probs['four'] = probs['four']! + 0.04;
-        probs['wicket'] = probs['wicket']! + 0.04;
-        probs['dot'] = probs['dot']! - 0.08;
-      } else if (requiredRunRate > 8) {
-        probs['six'] = probs['six']! + 0.04;
-        probs['four'] = probs['four']! + 0.03;
-        probs['wicket'] = probs['wicket']! + 0.02;
-        probs['dot'] = probs['dot']! - 0.04;
-      }
-      
-      // Easy chase
-      if (requiredRunRate < 6) {
-        probs['single'] = probs['single']! + 0.05;
-        probs['dot'] = probs['dot']! + 0.03;
-        probs['six'] = probs['six']! - 0.03;
-        probs['wicket'] = probs['wicket']! - 0.02;
-      }
-    }
-    
-    // Wickets in hand
-    if (currentWickets >= 7) {
-      // Tail-enders
-      probs['wicket'] = probs['wicket']! + 0.05;
-      probs['dot'] = probs['dot']! + 0.05;
-      probs['six'] = probs['six']! - 0.03;
-      probs['four'] = probs['four']! - 0.03;
-    } else if (currentWickets <= 2) {
-      // Set batsmen
-      probs['wicket'] = probs['wicket']! - 0.02;
-      probs['single'] = probs['single']! + 0.02;
-    }
-
-    // ─── Step 5: Pitch effects ─────────────────────────────────────────
-    switch (pitchCondition) {
-      case 'batting_friendly':
-      case 'flat':
-        probs['four'] = probs['four']! + 0.05;
-        probs['six'] = probs['six']! + 0.05;
-        probs['wicket'] = probs['wicket']! - 0.03;
-        probs['dot'] = probs['dot']! - 0.03;
-        break;
-      case 'bowling_friendly':
-      case 'green':
-        probs['wicket'] = probs['wicket']! + 0.05;
-        probs['dot'] = probs['dot']! + 0.05;
-        probs['four'] = probs['four']! - 0.03;
-        probs['six'] = probs['six']! - 0.03;
-        break;
-      case 'spin_friendly':
-      case 'dusty':
-        probs['wicket'] = probs['wicket']! + 0.03;
-        probs['dot'] = probs['dot']! + 0.04;
-        probs['six'] = probs['six']! - 0.02;
-        break;
-      case 'seam_friendly':
-        probs['wicket'] = probs['wicket']! + 0.03;
-        probs['four'] = probs['four']! - 0.02;
-        probs['dot'] = probs['dot']! + 0.02;
-        break;
-    }
-
-    // Chemistry bonus
-    final chemMod = chemistry / 500.0;
-    probs['four'] = probs['four']! + chemMod * 0.02;
-    probs['six'] = probs['six']! + chemMod * 0.01;
-    probs['wicket'] = probs['wicket']! - chemMod * 0.02;
-
-    // ─── Step 6: Clamp and normalize ───────────────────────────────────
-    probs['dot'] = probs['dot']!.clamp(0.05, 0.6);
-    probs['single'] = probs['single']!.clamp(0.1, 0.45);
-    probs['double'] = probs['double']!.clamp(0.02, 0.2);
-    probs['triple'] = probs['triple']!.clamp(0.005, 0.05);
-    probs['four'] = probs['four']!.clamp(0.02, 0.3);
-    probs['six'] = probs['six']!.clamp(0.01, 0.2);
-    probs['wicket'] = probs['wicket']!.clamp(0.01, 0.2);
-    probs['wide'] = probs['wide']!.clamp(0.005, 0.05);
-    probs['no_ball'] = probs['no_ball']!.clamp(0.005, 0.03);
-
-    final total = probs.values.reduce((a, b) => a + b);
-    probs.forEach((key, value) {
-      probs[key] = value / total;
-    });
-
-    // ─── Step 7: Sample outcome ────────────────────────────────────────
-    final roll = _rng.nextDouble();
-    double cumulative = 0;
-    
-    for (final entry in probs.entries) {
-      cumulative += entry.value;
-      if (roll < cumulative) {
-        switch (entry.key) {
-          case 'dot': return BallOutcome.dot;
-          case 'single': return BallOutcome.single;
-          case 'double': return BallOutcome.double;
-          case 'triple': return BallOutcome.triple;
-          case 'four': return BallOutcome.four;
-          case 'six': return BallOutcome.six;
-          case 'wicket': return BallOutcome.wicket;
-          case 'wide': return BallOutcome.wide;
-          case 'no_ball': return BallOutcome.noBall;
-        }
-      }
-    }
-    return BallOutcome.dot;
-  }
-
   void _swapStrike() {
     final temp = _currentBatsmanIndex;
     _currentBatsmanIndex = _nonStrikerIndex;
@@ -732,80 +527,6 @@ class MatchEngine {
     return types[_rng.nextInt(types.length)];
   }
 
-  // Commentary generators
-  String _dotCommentary(String batsman, String bowler) {
-    final options = [
-      '$bowler keeps it tight, dot ball.',
-      'Good length from $bowler, $batsman defends solidly.',
-      'Beaten! $bowler just misses the edge.',
-      '$batsman leaves it alone, good judgement.',
-      'Tight line from $bowler, no run.',
-      '$batsman blocks it back to $bowler.',
-      'Dot ball. $bowler builds the pressure.',
-      '$batsman shoulders arms, good leave.',
-      'Defended watchfully by $batsman.',
-      '$bowler beats $batsman with a beauty!',
-      'Past the outside edge! Close call!',
-      '$batsman plays and misses, lucky to survive!',
-      'Solid defense from $batsman, no run.',
-      '$bowler on target, $batsman can\'t get it away.',
-      'Excellent line from $bowler, dot ball.',
-    ];
-    return options[_rng.nextInt(options.length)];
-  }
-
-  String _fourCommentary(String batsman, String bowler) {
-    final options = [
-      '$batsman punches it through cover for FOUR!',
-      'FOUR! $batsman drives beautifully past mid-off!',
-      'Pulled away for FOUR! $batsman is in command.',
-      'Cut shot for FOUR! $batsman finds the gap.',
-      'FOUR through the legs! $bowler won\'t like that.',
-      'Swept fine for FOUR! Excellent placement by $batsman.',
-      'FOUR! $batsman finds the boundary with a cracking shot!',
-      'Glorious cover drive! That races to the fence!',
-      'FOUR! $batsman threads the gap perfectly!',
-      'Exquisite timing from $batsman, four runs!',
-      'Cut away beautifully for FOUR!',
-      '$batsman leans into the drive, FOUR runs!',
-      'Pulled away with authority! That\'s a boundary!',
-      'FOUR! $batsman finds the rope with ease!',
-      'Classy stroke from $batsman, four runs!',
-      'Driven through the covers, FOUR!',
-      '$batsman flicks it off his pads for FOUR!',
-      'Square cut for four! Brilliant shot!',
-      'FOUR! $batsman punishes the loose delivery!',
-      'That\'s raced away to the boundary! FOUR!',
-    ];
-    return options[_rng.nextInt(options.length)];
-  }
-
-  String _sixCommentary(String batsman) {
-    final options = [
-      'SIX! $batsman launches it into the stands!',
-      'MASSIVE SIX! $batsman clears the boundary with ease!',
-      'That\'s gone all the way! SIX by $batsman!',
-      'SIX! $batsman deposits it into the crowd!',
-      'What a hit! $batsman muscles it for SIX!',
-      'HIGH AND HANDSOME! SIX runs!',
-      '$batsman absolutely smashes it for SIX!',
-      'Out of the ground! What a strike from $batsman!',
-      'SIX! $batsman clears the ropes with ease!',
-      'Monstrous hit! That\'s disappeared into the crowd!',
-      '$batsman gets under it and sends it sailing for SIX!',
-      'BANG! $batsman deposits it over the boundary!',
-      'Clean strike! SIX runs to $batsman!',
-      '$batsman goes downtown! Maximum!',
-      'Incredible power! That\'s a huge SIX!',
-      'SIX! $batsman in full flow now!',
-      'Into the stands! $batsman with a mighty blow!',
-      'That\'s out of here! SIX runs!',
-      '$batsman sends it soaring over the ropes!',
-      'MAXIMUM! $batsman with a colossal hit!',
-    ];
-    return options[_rng.nextInt(options.length)];
-  }
-
   /// Pick a fielder for caught/stumped dismissals from the bowling team
   LineupPlayer? _pickFielder(String wicketType, LineupPlayer bowler) {
     if (wicketType == 'bowled' || wicketType == 'lbw') return null;
@@ -815,7 +536,7 @@ class MatchEngine {
         : (homeBatsFirst ? homeXI : awayXI);
     if (wicketType == 'caught_behind' || wicketType == 'stumped') {
       // Pick the wicket keeper
-      final keepers = allFielders.where((p) => p.userCard?.playerCard?.role == 'wicket_keeper').toList();
+      final keepers = allFielders.where((p) => p.userCard?.playerCard?.role == PlayerRole.wicketKeeper).toList();
       if (keepers.isNotEmpty) return keepers[_rng.nextInt(keepers.length)];
     }
     // Pick any fielder (exclude batsman, exclude bowler for caught)
@@ -823,94 +544,4 @@ class MatchEngine {
     if (candidates.isEmpty) return allFielders[_rng.nextInt(allFielders.length)];
     return candidates[_rng.nextInt(candidates.length)];
   }
-
-  String _wicketCommentary(String batsman, String bowler, String wicketType, String? fielderName) {
-    switch (wicketType) {
-      case 'bowled':
-        final options = [
-          'BOWLED! $bowler knocks over the stumps! $batsman is gone!',
-          'Timber! $bowler cleans up $batsman! What a delivery!',
-          'BOWLED HIM! $batsman\'s stumps are shattered by $bowler!',
-          'BOWLED! $bowler crashes through the defense!',
-          'Through the gate! $bowler gets his man!',
-          'CLEANED UP! $bowler shatters the stumps!',
-          'BOWLED! The stumps are in disarray! $batsman departs!',
-          'What a ball! $bowler knocks back the off stump!',
-        ];
-        return options[_rng.nextInt(options.length)];
-      case 'caught':
-        final catcher = fielderName ?? 'fielder';
-        final options = [
-          'CAUGHT! $batsman edges it and $catcher takes a sharp catch! $bowler strikes!',
-          'OUT! Caught by $catcher! $bowler gets the wicket of $batsman!',
-          'Gone! $batsman skies it to $catcher, c $catcher b $bowler!',
-          'IN THE AIR... and taken! $catcher holds on! $bowler celebrates!',
-          'CAUGHT! $catcher takes a brilliant catch! $batsman is gone!',
-          'GONE! $catcher pouches it safely! $batsman walks back!',
-          'CAUGHT! What a grab by $catcher! $bowler gets the breakthrough!',
-          'Edged and taken! $catcher makes no mistake!',
-          'OUT! $catcher with a stunning catch! $bowler strikes!',
-        ];
-        return options[_rng.nextInt(options.length)];
-      case 'caught_behind':
-        final keeper = fielderName ?? 'keeper';
-        final options = [
-          'CAUGHT BEHIND! $batsman nicks it and $keeper takes a clean catch! c $keeper b $bowler!',
-          'Edge and taken! $keeper snaps it up, $batsman has to go! c $keeper b $bowler!',
-          'CAUGHT BEHIND! $keeper with the gloves does the rest!',
-          'Feather edge! $keeper takes a sharp catch behind the stumps!',
-          'GONE! $keeper pouches it cleanly! c $keeper b $bowler!',
-        ];
-        return options[_rng.nextInt(options.length)];
-      case 'lbw':
-        final options = [
-          'LBW! $bowler traps $batsman plumb in front! Given out!',
-          'OUT! LBW! That was crashing into the stumps. $batsman walks back!',
-          'PLUMB! That\'s hitting middle stump! $batsman has to go!',
-          'OUT LBW! $bowler gets his man! Dead in front!',
-          'TRAPPED! $batsman is gone LBW! $bowler strikes!',
-          'LBW! No doubt about that one! $batsman departs!',
-          'STONE DEAD! $bowler gets the LBW decision!',
-          'OUT! That\'s as plumb as they come! LBW!',
-        ];
-        return options[_rng.nextInt(options.length)];
-      case 'run_out':
-        final thrower = fielderName ?? 'fielder';
-        final options = [
-          'RUN OUT! Direct hit by $thrower! $batsman is short of the crease!',
-          'Gone! Brilliant throw from $thrower catches $batsman short!',
-          'RUN OUT! Brilliant work by $thrower! $batsman is gone!',
-          'DIRECT HIT! $thrower finds the stumps! $batsman is short!',
-          'RUN OUT! $thrower with a rocket throw! $batsman can\'t make it!',
-          'OUT! Superb fielding from $thrower! $batsman is run out!',
-          'RUN OUT! $thrower hits the target! $batsman is well short!',
-        ];
-        return options[_rng.nextInt(options.length)];
-      case 'stumped':
-        final keeper = fielderName ?? 'keeper';
-        final options = [
-          'STUMPED! $batsman dances down the pitch and $keeper whips the bails off! st $keeper b $bowler!',
-          'OUT! Quick work by $keeper! $batsman stumped off $bowler!',
-          'STUMPED! Lightning work by $keeper! $batsman is out!',
-          'STUMPED! $keeper whips off the bails! $batsman is gone!',
-          'OUT STUMPED! Quick hands from $keeper! $batsman departs!',
-          'STUMPED! $batsman is caught out of his crease! Brilliant keeping!',
-        ];
-        return options[_rng.nextInt(options.length)];
-      default:
-        return 'OUT! $bowler strikes! $batsman has to walk back.';
-    }
-  }
-}
-
-enum BallOutcome {
-  dot,
-  single,
-  double,
-  triple,
-  four,
-  six,
-  wicket,
-  wide,
-  noBall,
 }

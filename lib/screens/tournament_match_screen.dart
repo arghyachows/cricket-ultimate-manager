@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../core/logger.dart';
 import '../core/theme.dart';
 import '../core/constants.dart';
 import '../core/supabase_service.dart';
@@ -131,7 +132,8 @@ class _TournamentMatchScreenState
         'p_is_multiplayer': false,
         'p_is_ranked': false,
       });
-    } catch (_) {
+    } catch (e) {
+      Log.w('TournamentMatch: RPC award_match_rewards failed, trying fallback');
       try {
         final data = await SupabaseService.getCurrentUser();
         if (data == null) return;
@@ -168,8 +170,12 @@ class _TournamentMatchScreenState
         
         try {
           await SupabaseService.grantLevelUpPack(userId, oldDbLevel, newDbLevel);
-        } catch (_) {}
-      } catch (_) {}
+        } catch (e) {
+          Log.w('TournamentMatch: Level-up pack grant failed');
+        }
+      } catch (e) {
+        Log.e('TournamentMatch: Fallback reward persistence failed', e);
+      }
     }
     await Future.delayed(const Duration(milliseconds: 800));
     ref.read(currentUserProvider.notifier).silentRefresh();

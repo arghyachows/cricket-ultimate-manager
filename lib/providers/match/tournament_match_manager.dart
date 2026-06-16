@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/widgets.dart';
+import '../../core/logger.dart';
 import '../../core/node_backend_service.dart';
 import '../../core/supabase_service.dart';
 import '../../core/constants.dart';
@@ -237,7 +238,7 @@ class MatchSocketManager {
         });
       }
     } catch (e) {
-      print('❌ Room joined state sync error: $e');
+      Log.e('Room joined state sync error', e);
     }
   }
 
@@ -327,7 +328,7 @@ class MatchSocketManager {
         ..addAll(CommentaryParser.parse(entries));
       onStateChanged();
     } catch (e) {
-      print('⚠️ Failed to load commentary: $e');
+      Log.e('Failed to load commentary', e);
     }
   }
 
@@ -415,7 +416,7 @@ class MatchSocketManager {
       state.currentCommentary = commentary;
       onStateChanged();
     } catch (e) {
-      print('❌ Tournament match ball update error: $e');
+      Log.e('Tournament match ball update error', e);
     }
   }
 

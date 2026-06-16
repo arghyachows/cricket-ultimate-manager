@@ -1,3 +1,4 @@
+export 'enums.dart';
 export 'user_model.dart';
 export 'player_card.dart';
 export 'user_card.dart';

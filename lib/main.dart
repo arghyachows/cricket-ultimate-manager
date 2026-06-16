@@ -1,13 +1,30 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/router.dart';
 import 'core/theme.dart';
 import 'core/notification_service.dart';
+import 'core/logger.dart';
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Initialize Sentry (best-effort — doesn't block app start)
+  await SentryFlutter.init(
+    (options) {
+      options.dsn = const String.fromEnvironment(
+        'SENTRY_DSN',
+        defaultValue: '',
+      );
+      options.tracesSampleRate = 0.2;
+      options.enableAppHangTracking = true;
+    },
+    appRunner: () => _runApp(),
+  );
+}
+
+Future<void> _runApp() async {
   try {
     await NotificationService.instance.init();
 
@@ -45,6 +62,7 @@ void main() async {
       anonKey: supabaseAnonKey,
     );
   } catch (e, st) {
+    Log.e('App initialization failed', e, st);
     if (const bool.fromEnvironment('FLUTTER_TEST')) rethrow;
     runApp(_InitErrorApp(
       message: 'Failed to initialize the app.\n\n$e',

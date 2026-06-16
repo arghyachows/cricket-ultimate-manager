@@ -43,4 +43,19 @@ class UserCardPack {
       createdAt: DateTime.parse(json['created_at']),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'user_id': userId,
+        'pack_name': packName,
+        'card_count': cardCount,
+        'bronze_chance': bronzeChance,
+        'silver_chance': silverChance,
+        'gold_chance': goldChance,
+        'elite_chance': eliteChance,
+        'legend_chance': legendChance,
+        'source': source,
+        'opened': opened,
+        'created_at': createdAt.toIso8601String(),
+      };
 }

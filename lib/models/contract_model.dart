@@ -1,7 +1,9 @@
+import 'enums.dart';
+
 class ContractType {
   final String id;
   final String name;
-  final String tier; // 'bronze', 'silver', 'gold', 'elite', 'legend'
+  final ContractTier tier;
   final int matchesAwarded;
   final String? imageUrl;
   final bool isAvailable;
@@ -19,7 +21,7 @@ class ContractType {
     return ContractType(
       id: json['id'],
       name: json['name'],
-      tier: json['tier'],
+      tier: ContractTier.fromValue(json['tier'] as String? ?? 'bronze'),
       matchesAwarded: json['matches_awarded'],
       imageUrl: json['image_url'],
       isAvailable: json['is_available'] ?? true,
@@ -29,31 +31,19 @@ class ContractType {
   Map<String, dynamic> toJson() => {
         'id': id,
         'name': name,
-        'tier': tier,
+        'tier': tier.value,
         'matches_awarded': matchesAwarded,
         'image_url': imageUrl,
         'is_available': isAvailable,
       };
 
   // Helper to get tier color for UI
-  int get tierColor {
-    switch (tier) {
-      case 'bronze':
-        return 0xFFCD7F32;
-      case 'silver':
-        return 0xFFC0C0C0;
-      case 'gold':
-        return 0xFFFFD700;
-      case 'elite':
-        return 0xFF9932CC;
-      case 'legend':
-        return 0xFFFF4500;
-      default:
-        return 0xFF9E9E9E;
-    }
-  }
+  int get tierColor => tier.color;
 
-  String get tierDisplayName => tier[0].toUpperCase() + tier.substring(1);
+  String get tierDisplayName {
+    final s = tier.value;
+    return s[0].toUpperCase() + s.substring(1);
+  }
 }
 
 class UserContract {
@@ -127,7 +117,7 @@ class UserContract {
   }
 
   int get matchesAwarded => contractType?.matchesAwarded ?? 0;
-  String get tier => contractType?.tier ?? 'bronze';
+  ContractTier get tier => contractType?.tier ?? ContractTier.bronze;
   String get name => contractType?.name ?? 'Unknown Contract';
 }
 

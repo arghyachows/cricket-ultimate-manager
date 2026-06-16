@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../core/logger.dart';
 import '../core/theme.dart';
 import '../core/supabase_service.dart';
 
@@ -34,7 +35,8 @@ class _LeaderboardScreenState extends ConsumerState<LeaderboardScreen>
     try {
       final data = await SupabaseService.getLeaderboard(limit: 50);
       if (mounted) setState(() { _entries = data; _loading = false; });
-    } catch (_) {
+    } catch (e) {
+      Log.e('Leaderboard: failed to load', e);
       if (mounted) setState(() => _loading = false);
     }
   }

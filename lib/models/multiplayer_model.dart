@@ -1,3 +1,5 @@
+import 'enums.dart';
+
 class MultiplayerRoom {
   final String id;
   final String roomName;
@@ -22,6 +24,14 @@ class MultiplayerRoom {
       createdAt: DateTime.parse(json['created_at']),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'room_name': roomName,
+        'room_code': roomCode,
+        'max_players': maxPlayers,
+        'created_at': createdAt.toIso8601String(),
+      };
 }
 
 class RoomPresence {
@@ -57,6 +67,17 @@ class RoomPresence {
       lastSeen: DateTime.parse(json['last_seen']),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'room_id': roomId,
+        'user_id': userId,
+        'team_id': teamId,
+        'team_name': teamName,
+        'user_level': userLevel,
+        'joined_at': joinedAt.toIso8601String(),
+        'last_seen': lastSeen.toIso8601String(),
+      };
 }
 
 class MatchChallenge {
@@ -66,7 +87,7 @@ class MatchChallenge {
   final String challengedId;
   final String challengerTeamId;
   final String challengedTeamId;
-  final String status;
+  final ChallengeStatus status;
   final String matchFormat;
   final int matchOvers;
   final DateTime createdAt;
@@ -106,7 +127,7 @@ class MatchChallenge {
       challengedId: json['challenged_id'],
       challengerTeamId: json['challenger_team_id'],
       challengedTeamId: json['challenged_team_id'],
-      status: json['status'],
+      status: ChallengeStatus.fromValue(json['status'] as String?),
       matchFormat: json['match_format'],
       matchOvers: json['match_overs'],
       createdAt: DateTime.parse(json['created_at']),
@@ -119,6 +140,21 @@ class MatchChallenge {
     );
   }
 
-  bool get isPending => status == 'pending';
-  bool get isExpired => status == 'expired' || DateTime.now().isAfter(expiresAt);
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'room_id': roomId,
+        'challenger_id': challengerId,
+        'challenged_id': challengedId,
+        'challenger_team_id': challengerTeamId,
+        'challenged_team_id': challengedTeamId,
+        'status': status.value,
+        'match_format': matchFormat,
+        'match_overs': matchOvers,
+        'created_at': createdAt.toIso8601String(),
+        'expires_at': expiresAt.toIso8601String(),
+        'responded_at': respondedAt?.toIso8601String(),
+      };
+
+  bool get isPending => status == ChallengeStatus.pending;
+  bool get isExpired => status == ChallengeStatus.expired || DateTime.now().isAfter(expiresAt);
 }

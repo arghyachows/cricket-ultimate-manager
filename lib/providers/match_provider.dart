@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../core/logger.dart';
 import '../core/supabase_service.dart';
 import '../core/constants.dart';
 import '../models/models.dart';
@@ -105,7 +106,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
     );
 
     if (_nodeBackendEnabled) {
-      print('🎯 PRIMARY: Trying Node.js backend...');
+      Log.d('PRIMARY: Trying Node.js backend...');
       _nodeBackend = MatchNodeBackend(
         state: state,
         onBallUpdate: _onNodeBallUpdate,
@@ -124,10 +125,10 @@ class MatchNotifier extends StateNotifier<MatchState> {
       );
 
       if (success) {
-        print('✅ SUCCESS: Using Node.js backend');
+        Log.i('SUCCESS: Using Node.js backend');
         return;
       }
-      print('⚠️ FALLBACK: Node.js backend failed, using local engine...');
+      Log.w('FALLBACK: Node.js backend failed, using local engine...');
       _nodeBackend = null;
     }
 
@@ -170,7 +171,9 @@ class MatchNotifier extends StateNotifier<MatchState> {
         bowlerStats: MatchHelpers.parseBowlerStats(stateData['bowlerStats']),
         target: stateData['target'] ?? 0,
       );
-    } catch (_) {}
+    } catch (e) {
+      Log.e('MatchProvider: failed to apply remote ball update', e);
+    }
   }
 
   void _onRemoteMatchComplete() {
@@ -318,7 +321,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
         );
       } else if (contractResult.totalErrors > 0) {
         // Some players had errors (e.g., already out of contracts)
-        print('⚠️ [CONTRACTS] Some contracts could not be consumed: ${contractResult.errors}');
+        Log.w('CONTRACTS: some contracts could not be consumed');
       }
       
       // Refresh user cards to get updated contracts_remaining

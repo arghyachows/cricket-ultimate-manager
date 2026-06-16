@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../core/logger.dart';
 import '../core/supabase_service.dart';
 import '../core/constants.dart';
 import '../models/models.dart';
@@ -92,7 +93,9 @@ class CurrentUserNotifier extends StateNotifier<AsyncValue<UserModel?>> {
       if (data != null) {
         state = AsyncValue.data(UserModel.fromJson(data));
       }
-    } catch (_) {}
+    } catch (e) {
+      Log.e('silentRefresh failed', e);
+    }
   }
 
   /// Set a persistence error with pending rewards for retry.

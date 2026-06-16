@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../core/logger.dart';
 import '../core/theme.dart';
 import '../providers/multiplayer_provider.dart';
 import '../providers/auth_provider.dart';
@@ -36,16 +37,13 @@ class _MultiplayerRoomScreenState extends ConsumerState<MultiplayerRoomScreen> {
 
     // Listen for match start (only once per match)
     ref.listen<MultiplayerState>(multiplayerProvider, (previous, next) {
-      print('=== MULTIPLAYER STATE CHANGED ===');
-      print('Previous matchStartedId: ${previous?.matchStartedId}');
-      print('Next matchStartedId: ${next.matchStartedId}');
-      print('Has navigated: $_hasNavigated');
+      Log.d('Multiplayer state changed — prev: ${previous?.matchStartedId}, next: ${next.matchStartedId}');
       
       if (next.matchStartedId != null && 
           previous?.matchStartedId != next.matchStartedId && 
           !_hasNavigated) {
         // Match started, navigate to match screen
-        print('=== NAVIGATING TO MATCH: ${next.matchStartedId} ===');
+        Log.i('Navigating to match: ${next.matchStartedId}');
         _hasNavigated = true;
         final matchId = next.matchStartedId!;
         
@@ -54,7 +52,7 @@ class _MultiplayerRoomScreenState extends ConsumerState<MultiplayerRoomScreen> {
         
         // Navigate immediately — the match screen handles its own loading state
         context.push('/multiplayer/match/$matchId').then((_) {
-          print('=== NAVIGATION COMPLETED ===');
+          Log.d('Navigation completed, resetting _hasNavigated');
           if (mounted) {
             _hasNavigated = false; // Reset for next match
             ref.invalidate(activeMultiplayerMatchProvider);
@@ -464,19 +462,19 @@ class _MultiplayerRoomScreenState extends ConsumerState<MultiplayerRoomScreen> {
                             onPressed: hasActiveMatch || respondingId != null
                                 ? null
                                 : () async {
-                              print('=== ACCEPTING CHALLENGE: ${challenge.id} ===');
+                              Log.i('Accepting challenge: ${challenge.id}');
                               setDialogState(() => respondingId = challenge.id);
                               
                               try {
                                 // Accept challenge — navigation happens via ref.listen when matchStartedId is set
                                 await ref.read(multiplayerProvider.notifier).respondToChallenge(challenge.id, true);
-                                print('=== CHALLENGE ACCEPTED SUCCESSFULLY ===');
+                                Log.i('Challenge accepted successfully');
                                 
                                 if (context.mounted) {
                                   Navigator.pop(context); // Close challenges dialog
                                 }
                               } catch (e) {
-                                print('=== ERROR ACCEPTING CHALLENGE: $e ===');
+                                Log.e('Error accepting challenge', e);
                                 if (context.mounted) {
                                   Navigator.pop(context);
                                   ScaffoldMessenger.of(context).showSnackBar(

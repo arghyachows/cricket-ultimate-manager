@@ -492,11 +492,11 @@ class _BuyTab extends ConsumerWidget {
                 // Hide seller's own listings
                 if (userId != null && l.sellerId == userId) return false;
                 if (query.isNotEmpty) {
-                  if (l.listingType == 'card') {
+                  if (l.listingType == ListingType.card) {
                     final cardData = l.userCardData?['player_cards'];
                     final name = (cardData?['player_name'] ?? '').toString().toLowerCase();
                     if (!name.contains(query)) return false;
-                  } else if (l.listingType == 'contract') {
+                  } else if (l.listingType == ListingType.contract) {
                     final contractData = l.contractTypeData;
                     final name = (contractData?['name'] ?? '').toString().toLowerCase();
                     if (!name.contains(query)) return false;
@@ -587,7 +587,7 @@ class _ListingCard extends ConsumerWidget {
     final isHighestBidder = listing.currentBidderId == userId;
 
     // Contract listing
-    if (listing.listingType == 'contract') {
+    if (listing.listingType == ListingType.contract) {
       return _buildContractCard(context, ref, userId, userCoins, isSeller);
     }
 
@@ -1226,9 +1226,9 @@ class _SellTab extends ConsumerWidget {
           data: (contracts) => contracts.where((c) =>
             c.quantity > 0 &&
             c.contractType != null &&
-            (c.contractType!.tier == 'gold' ||
-             c.contractType!.tier == 'elite' ||
-             c.contractType!.tier == 'legend')
+            (c.contractType!.tier == ContractTier.gold ||
+             c.contractType!.tier == ContractTier.elite ||
+             c.contractType!.tier == ContractTier.legend)
           ).toList(),
         );
 
@@ -1622,7 +1622,7 @@ class _MyListingTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // Contract listing
-    if (listing.listingType == 'contract') {
+    if (listing.listingType == ListingType.contract) {
       return _buildContractListing(context, ref);
     }
 

@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'constants.dart';
+import 'logger.dart';
 
 class SupabaseService {
   static SupabaseClient get client => Supabase.instance.client;
@@ -279,7 +280,7 @@ class SupabaseService {
         'p_new_level': newLevel,
       });
     } catch (e) {
-      print('❌ [GRANT LEVEL UP CONTRACT PACK] Error: $e');
+      Log.e('Grant level up contract pack failed', e);
     }
   }
 

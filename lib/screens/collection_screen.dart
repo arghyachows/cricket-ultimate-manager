@@ -200,8 +200,8 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen>
   Widget _buildStatsBar(List<UserCard> all, List<UserCard> filtered, CardFilter filter) {
     final hasFilters = filter.rarity != null || filter.role != null;
     final avgRating = all.isEmpty ? 0 : (all.fold<int>(0, (sum, c) => sum + (c.playerCard?.rating ?? 0)) / all.length).round();
-    final legendaryCount = all.where((c) => c.playerCard?.rarity == 'legend').length;
-    final eliteCount = all.where((c) => c.playerCard?.rarity == 'elite').length;
+    final legendaryCount = all.where((c) => c.playerCard?.rarity == CardRarity.legend).length;
+    final eliteCount = all.where((c) => c.playerCard?.rarity == CardRarity.elite).length;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'app_config.dart';
+import 'logger.dart';
 
 class LocalMultiplayerService {
   static String get baseUrl => AppConfig.backendUrl;
@@ -10,8 +11,8 @@ class LocalMultiplayerService {
     required Map<String, dynamic> config,
   }) async {
     try {
-      print('🚀 Local Backend: Starting multiplayer match $matchId');
-      print('📦 Config: $config');
+      Log.i('Local Backend: Starting multiplayer match $matchId');
+      Log.d('Config: $config');
       
       final response = await http.post(
         Uri.parse('$baseUrl/api/multiplayer/start'),
@@ -22,20 +23,19 @@ class LocalMultiplayerService {
         }),
       ).timeout(const Duration(seconds: 10));
 
-      print('📡 Local Backend response: ${response.statusCode}');
-      print('📄 Response body: ${response.body}');
+      Log.d('Local Backend response: ${response.statusCode}');
+      Log.d('Response body: ${response.body}');
       
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        print('✅ Local Backend success: $data');
+        Log.i('Local Backend success');
         return data['success'] == true;
       }
       
-      print('❌ Local Backend failed: ${response.statusCode} ${response.body}');
+      Log.e('Local Backend failed: ${response.statusCode}');
       return false;
     } catch (e, stackTrace) {
-      print('❌ Local Backend error: $e');
-      print('Stack trace: $stackTrace');
+      Log.e('Local Backend error', e, stackTrace);
       return false;
     }
   }
@@ -52,7 +52,7 @@ class LocalMultiplayerService {
       
       return null;
     } catch (e) {
-      print('Local Backend state error: $e');
+      Log.e('Local Backend state error', e);
       return null;
     }
   }
@@ -67,7 +67,7 @@ class LocalMultiplayerService {
 
       return response.statusCode == 200;
     } catch (e) {
-      print('Local Backend stop error: $e');
+      Log.e('Local Backend stop error', e);
       return false;
     }
   }

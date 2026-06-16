@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
 import 'package:http/http.dart' as http;
+import '../core/logger.dart';
 import '../core/node_backend_service.dart';
 import '../core/retry_with_backoff.dart';
 
@@ -167,8 +168,9 @@ class IdempotencyService {
           operation: operation,
           result: resultMap,
         );
-      } catch (_) {
-        // Not serializable — best-effort
+      } catch (e) {
+        // Not serializable — best-effort (log for debugging)
+        Log.e('Idempotency: failed to cache result for $operation', e);
       }
       return result;
     } catch (e) {

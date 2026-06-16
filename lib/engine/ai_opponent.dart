@@ -1,4 +1,5 @@
 import 'dart:math';
+import '../core/logger.dart';
 import '../models/models.dart';
 import '../core/supabase_service.dart';
 
@@ -87,8 +88,9 @@ class AIOpponent {
             picked.add(_generateFakeCard(role, rarities, picked.length + i));
           }
         }
-      } catch (_) {
+      } catch (e) {
         // DB failed — generate fake cards as fallback
+        Log.w('AIOpponent: DB fetch failed for role $role, using generated cards');
         for (int i = 0; i < count; i++) {
           picked.add(_generateFakeCard(role, rarities, picked.length + i));
         }
@@ -126,50 +128,48 @@ class AIOpponent {
 
   /// Fallback: generate a fake card when DB doesn't have enough for a role.
   static PlayerCard _generateFakeCard(String role, List<String> rarities, int index) {
-    final rarity = rarities[_rng.nextInt(rarities.length)];
-    final baseRating = _baseRatingForRarity(rarity);
+    final rarityStr = rarities[_rng.nextInt(rarities.length)];
+    final roleEnum = PlayerRole.fromValue(role);
+    final rarityEnum = CardRarity.fromValue(rarityStr);
+    final baseRating = _baseRatingForRarity(rarityEnum);
     final variation = _rng.nextInt(11) - 5;
     final rating = (baseRating + variation).clamp(30, 99);
 
-    int batting, bowling;
-    switch (role) {
-      case 'batsman':
-      case 'wicket_keeper':
-        batting = (rating + _rng.nextInt(11) - 5).clamp(30, 99);
-        bowling = (rating - 20 + _rng.nextInt(11)).clamp(10, 60);
-        break;
-      case 'bowler':
-        bowling = (rating + _rng.nextInt(11) - 5).clamp(30, 99);
-        batting = (rating - 20 + _rng.nextInt(11)).clamp(10, 60);
-        break;
-      default:
-        batting = (rating + _rng.nextInt(11) - 5).clamp(30, 99);
-        bowling = (rating + _rng.nextInt(11) - 5).clamp(30, 99);
+    late int batting, bowling;
+    if (roleEnum == PlayerRole.batsman || roleEnum == PlayerRole.wicketKeeper) {
+      batting = (rating + _rng.nextInt(11) - 5).clamp(30, 99);
+      bowling = (rating - 20 + _rng.nextInt(11)).clamp(10, 60);
+    } else if (roleEnum == PlayerRole.bowler) {
+      batting = (rating - 20 + _rng.nextInt(11)).clamp(10, 60);
+      bowling = (rating + _rng.nextInt(11) - 5).clamp(30, 99);
+    } else {
+      batting = (rating + _rng.nextInt(11) - 5).clamp(30, 99);
+      bowling = (rating + _rng.nextInt(11) - 5).clamp(30, 99);
     }
 
     return PlayerCard(
       id: 'ai_gen_${index}_${_rng.nextInt(99999)}',
       playerName: 'AI Player ${index + 1}',
       country: 'Unknown',
-      role: role,
+      role: roleEnum,
       rating: rating,
       batting: batting,
       bowling: bowling,
       fielding: (40 + _rng.nextInt(40)).clamp(30, 90),
       stamina: (50 + _rng.nextInt(30)).clamp(40, 90),
-      pace: role == 'bowler' ? 40 + _rng.nextInt(50) : 30 + _rng.nextInt(30),
-      spin: role == 'bowler' ? 30 + _rng.nextInt(50) : 20 + _rng.nextInt(30),
-      rarity: rarity,
+      pace: roleEnum == PlayerRole.bowler ? 40 + _rng.nextInt(50) : 30 + _rng.nextInt(30),
+      spin: roleEnum == PlayerRole.bowler ? 30 + _rng.nextInt(50) : 20 + _rng.nextInt(30),
+      rarity: rarityEnum,
     );
   }
 
-  static int _baseRatingForRarity(String rarity) {
+  static int _baseRatingForRarity(CardRarity rarity) {
     switch (rarity) {
-      case 'legend': return 90;
-      case 'elite': return 85;
-      case 'gold': return 78;
-      case 'silver': return 70;
-      default: return 60;
+      case CardRarity.legend: return 90;
+      case CardRarity.elite: return 85;
+      case CardRarity.gold: return 78;
+      case CardRarity.silver: return 70;
+      case CardRarity.bronze: return 60;
     }
   }
 }

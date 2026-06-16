@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/supabase_service.dart';
@@ -15,6 +16,7 @@ final marketListingsProvider = StateNotifierProvider<MarketNotifier,
 class MarketNotifier extends StateNotifier<AsyncValue<List<MarketListing>>> {
   final Ref ref;
   RealtimeChannel? _channel;
+  Timer? _debounceTimer; // debounces rapid market updates into one refresh
 
   MarketNotifier(this.ref) : super(const AsyncValue.loading()) {
     loadListings();
@@ -62,12 +64,16 @@ class MarketNotifier extends StateNotifier<AsyncValue<List<MarketListing>>> {
 
   void _subscribeToUpdates() {
     _channel = SupabaseService.subscribeToMarket((update) {
-      loadListings();
-      // Cascade refresh so users see real-time bid updates, outbid status, coin changes
-      ref.read(myBidsProvider.notifier).load();
-      ref.read(myListingsProvider.notifier).load();
-      ref.read(currentUserProvider.notifier).silentRefresh();
-      ref.invalidate(listedCardIdsProvider);
+      // Debounce: rapid market updates (e.g. bid bursts) batch into one refresh
+      _debounceTimer?.cancel();
+      _debounceTimer = Timer(const Duration(milliseconds: 300), () {
+        loadListings();
+        // Cascade refresh so users see real-time bid updates, outbid status, coin changes
+        ref.read(myBidsProvider.notifier).load();
+        ref.read(myListingsProvider.notifier).load();
+        ref.read(currentUserProvider.notifier).silentRefresh();
+        ref.invalidate(listedCardIdsProvider);
+      });
     });
   }
 
@@ -268,6 +274,7 @@ class MarketNotifier extends StateNotifier<AsyncValue<List<MarketListing>>> {
 
   @override
   void dispose() {
+    _debounceTimer?.cancel();
     _channel?.unsubscribe();
     super.dispose();
   }

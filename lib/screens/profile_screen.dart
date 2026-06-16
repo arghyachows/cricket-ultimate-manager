@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../providers/auth_provider.dart';
+import '../core/logger.dart';
 import '../core/theme.dart';
 import '../core/constants.dart';
 
@@ -220,7 +221,7 @@ class ProfileScreen extends ConsumerWidget {
                         icon: Icons.edit_rounded,
                         label: 'Edit Profile',
                         onTap: () {
-                          // TODO: Navigate to edit profile
+                          Log.d('Edit Profile tapped — screen not yet implemented');
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
                               content: Text('Edit profile coming soon!'),
@@ -234,7 +235,7 @@ class ProfileScreen extends ConsumerWidget {
                         icon: Icons.settings_rounded,
                         label: 'Settings',
                         onTap: () {
-                          // TODO: Navigate to settings
+                          Log.d('Settings tapped — screen not yet implemented');
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
                               content: Text('Settings coming soon!'),

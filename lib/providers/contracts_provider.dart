@@ -21,6 +21,7 @@ final userContractsProvider =
 class UserContractsNotifier extends StateNotifier<AsyncValue<List<UserContract>>> {
   final Ref ref;
   RealtimeChannel? _channel;
+  bool _isMutating = false; // guards against subscription race during mutations
 
   UserContractsNotifier(this.ref) : super(const AsyncValue.loading()) {
     loadContracts();
@@ -31,11 +32,16 @@ class UserContractsNotifier extends StateNotifier<AsyncValue<List<UserContract>>
     final userId = SupabaseService.currentUserId;
     if (userId == null) return;
     _channel = SupabaseService.subscribeToContracts(userId, () {
-      loadContracts();
+      // Skip refresh if we're in the middle of a mutation — the mutation
+      // handler will call loadContracts() explicitly after the RPC completes.
+      if (!_isMutating) {
+        loadContracts();
+      }
     });
   }
 
   Future<void> loadContracts() async {
+    if (_isMutating) return; // don't overwrite optimistic state mid-mutation
     try {
       if (!state.hasValue) state = const AsyncValue.loading();
       final data = await SupabaseService.getUserContracts();
@@ -96,7 +102,7 @@ class UserContractsNotifier extends StateNotifier<AsyncValue<List<UserContract>>
       for (final t in typesData) {
         final ct = ContractType.fromJson(t);
         if (ct.isAvailable) {
-          typesByTier.putIfAbsent(ct.tier, () => []).add(ct);
+          typesByTier.putIfAbsent(ct.tier.value, () => []).add(ct);
         }
       }
 
@@ -135,6 +141,7 @@ class UserContractsNotifier extends StateNotifier<AsyncValue<List<UserContract>>
 
   /// Apply a contract to a user card
   Future<bool> applyContract(String userCardId, String contractTypeId) async {
+    _isMutating = true;
     try {
       final userId = SupabaseService.currentUserId;
       if (userId == null) throw Exception('Not logged in');
@@ -166,6 +173,10 @@ class UserContractsNotifier extends StateNotifier<AsyncValue<List<UserContract>>
       return true;
     } catch (e) {
       rethrow;
+    } finally {
+      _isMutating = false;
+      // Sync from DB after mutation to ensure consistency
+      loadContracts();
     }
   }
 
