@@ -115,7 +115,7 @@ class MatchNodeBackend {
   Map<String, dynamic> _playerToMap(LineupPlayer p) => {
     'userCardId': p.userCardId,
     'name': p.userCard?.playerCard?.playerName ?? 'Unknown',
-    'role': p.userCard?.playerCard?.role ?? 'batsman',
+    'role': p.userCard?.playerCard?.role.value ?? 'batsman',
     'batting': p.userCard?.effectiveBatting ?? 50,
     'bowling': p.userCard?.effectiveBowling ?? 50,
     'fielding': p.userCard?.playerCard?.fielding ?? 50,
