@@ -106,8 +106,8 @@ class MatchLocalEngine {
     batsmanStats.putIfAbsent(batKey,
         () => BatsmanStats(name: engine.getBatsmanName(result.batsmanCardId), innings: result.innings));
     final bat = batsmanStats[batKey]!;
-    if (result.eventType != 'wide') bat.balls++;
-    bat.runs += result.runs;
+    if (!isExtra) bat.balls++;
+    if (!isExtra) bat.runs += result.runs;
     if (result.runs == 4) bat.fours++;
     if (result.runs == 6) bat.sixes++;
     if (result.isWicket) {
@@ -153,8 +153,8 @@ class MatchLocalEngine {
       final batName = engine.getBatsmanName(result.batsmanCardId);
       batsmanStats.putIfAbsent(batKey, () => BatsmanStats(name: batName, innings: result.innings));
       final bat = batsmanStats[batKey]!;
-      if (result.eventType != 'wide') bat.balls++;
-      bat.runs += result.runs;
+      if (!isExtra) bat.balls++;
+      if (!isExtra) bat.runs += result.runs;
       if (result.runs == 4) bat.fours++;
       if (result.runs == 6) bat.sixes++;
       if (result.isWicket) {

@@ -221,15 +221,16 @@ class PackOpeningNotifier extends StateNotifier<PackOpeningState> {
       }
 
       // Insert into user_contract_packs with source='purchase'
+      // Convert decimal probabilities (0.0-1.0) to percentages (0-100) for DB
       await SupabaseService.client.from('user_contract_packs').insert({
         'user_id': user.id,
         'pack_name': packName,
         'contract_count': contractCount,
-        'bronze_chance': probabilities['bronze'] ?? 0,
-        'silver_chance': probabilities['silver'] ?? 0,
-        'gold_chance': probabilities['gold'] ?? 0,
-        'elite_chance': probabilities['elite'] ?? 0,
-        'legend_chance': probabilities['legend'] ?? 0,
+        'bronze_chance': (probabilities['bronze'] ?? 0) * 100,
+        'silver_chance': (probabilities['silver'] ?? 0) * 100,
+        'gold_chance': (probabilities['gold'] ?? 0) * 100,
+        'elite_chance': (probabilities['elite'] ?? 0) * 100,
+        'legend_chance': (probabilities['legend'] ?? 0) * 100,
         'source': 'purchase',
         'opened': false,
       });
