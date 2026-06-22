@@ -273,7 +273,9 @@ class MatchNotifier extends StateNotifier<MatchState> {
       final idempotencyKey = 'match_complete_${state.match?.id ?? DateTime.now().millisecondsSinceEpoch}';
       
       // Consume contracts AFTER simulation but BEFORE reward persistence
-      _consumeContractsAndPersistRewards(userId, rewards, state.matchDifficulty, idempotencyKey);
+      _consumeContractsAndPersistRewards(userId, rewards, state.matchDifficulty, idempotencyKey).catchError((e, st) {
+        Log.e('CONTRACTS: Unhandled error in _consumeContractsAndPersistRewards', e, st);
+      });
     }
 
     // Persist career stats
@@ -300,6 +302,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
     String idempotencyKey,
   ) async {
     final userXiCardIds = state.userXiCardIds;
+    Log.i('CONTRACTS: Starting contract consumption for ${userXiCardIds.length} cards (matchId: ${state.match?.id ?? "none"})');
     
     if (userXiCardIds.isNotEmpty) {
       final contractResult = await MatchCompletionHandler.consumeContracts(
@@ -311,6 +314,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
 
       if (!contractResult.success) {
         // Contract consumption failed — surface error but continue to try rewards
+        Log.e('CONTRACTS: Contract consumption failed: ${contractResult.error}');
         final userNotifier = ref.read(currentUserProvider.notifier);
         userNotifier.setPersistenceError(
           'Failed to consume contracts: ${contractResult.error}',
@@ -319,13 +323,17 @@ class MatchNotifier extends StateNotifier<MatchState> {
           pendingHomeWon: rewards.homeWon,
           pendingDifficulty: difficulty,
         );
-      } else if (contractResult.totalErrors > 0) {
-        // Some players had errors (e.g., already out of contracts)
-        Log.w('CONTRACTS: some contracts could not be consumed');
+      } else {
+        Log.i('CONTRACTS: Consumed ${contractResult.totalConsumed} contracts, ${contractResult.totalErrors} errors');
+        if (contractResult.totalErrors > 0) {
+          Log.w('CONTRACTS: some contracts could not be consumed');
+        }
       }
       
       // Refresh user cards to get updated contracts_remaining
       ref.read(userCardsProvider.notifier).refresh();
+    } else {
+      Log.w('CONTRACTS: No user XI card IDs found — skipping contract consumption');
     }
 
     // Now persist rewards (after contract consumption)

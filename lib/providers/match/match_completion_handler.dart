@@ -266,6 +266,7 @@ class MatchCompletionHandler {
   }) async {
     // If we have a valid match ID (multiplayer/tournament), try the RPC path
     if (matchId.isNotEmpty) {
+      Log.i('CONTRACTS: Using RPC path for match $matchId (${userXiCardIds.length} cards)');
       try {
         final result = await SupabaseService.client.rpc(
           'consume_contracts_on_match_completion',
@@ -284,6 +285,7 @@ class MatchCompletionHandler {
             .cast<Map<String, dynamic>>()
             .toList();
 
+        Log.i('CONTRACTS: RPC succeeded — consumed: ${consumed.length}, errors: ${errors.length}');
         return ContractConsumeResult.succeeded(
           consumed: consumed,
           errors: errors,
@@ -304,6 +306,7 @@ class MatchCompletionHandler {
     }
 
     // No valid match ID (single-player quick match) — use direct table update
+    Log.i('CONTRACTS: No matchId, using direct table update path');
     return _consumeContractsDirect(
       userId: userId,
       userXiCardIds: userXiCardIds,
@@ -318,6 +321,7 @@ class MatchCompletionHandler {
   }) async {
     final consumed = <Map<String, dynamic>>[];
     final errors = <Map<String, dynamic>>[];
+    Log.i('CONTRACTS: _consumeContractsDirect for ${userXiCardIds.length} cards');
 
     for (final cardId in userXiCardIds) {
       try {
@@ -329,6 +333,7 @@ class MatchCompletionHandler {
             .eq('user_id', userId);
 
         if (cards.isEmpty) {
+          Log.w('CONTRACTS: Card $cardId not found or not owned by user $userId');
           errors.add({
             'user_card_id': cardId,
             'error': 'Card not found or not owned by user',
@@ -340,6 +345,7 @@ class MatchCompletionHandler {
         final currentMatchesPlayed = cards[0]['matches_played'] as int? ?? 0;
 
         if (currentContracts <= 0) {
+          Log.w('CONTRACTS: Card $cardId already out of contracts ($currentContracts)');
           errors.add({
             'user_card_id': cardId,
             'error': 'Player already out of contracts',
@@ -370,6 +376,20 @@ class MatchCompletionHandler {
           'error': e.toString(),
         });
       }
+    }
+
+    Log.i('CONTRACTS: _consumeContractsDirect done — consumed: ${consumed.length}, errors: ${errors.length}');
+
+    if (consumed.isEmpty && errors.isNotEmpty) {
+      Log.e('CONTRACTS: All cards failed contract consumption (${errors.length} errors)');
+      return ContractConsumeResult.failed(
+        error: 'All ${errors.length} cards failed contract consumption',
+        stackTrace: StackTrace.current,
+      );
+    }
+
+    if (errors.isNotEmpty) {
+      Log.w('CONTRACTS: ${errors.length}/${consumed.length + errors.length} cards had consumption errors');
     }
 
     return ContractConsumeResult.succeeded(

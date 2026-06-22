@@ -115,7 +115,10 @@ class _TournamentMatchScreenState
   /// Consume contracts for the user's XI in a tournament match.
   Future<void> _consumeTournamentContracts() async {
     final userId = SupabaseService.currentUserId;
-    if (userId == null) return;
+    if (userId == null) {
+      Log.w('TournamentMatch: No userId — skipping contract consumption');
+      return;
+    }
 
     try {
       // Get match data to find the user's team
@@ -127,7 +130,10 @@ class _TournamentMatchScreenState
 
       final isHome = matchData['home_user_id'] == userId;
       final teamId = isHome ? matchData['home_team_id'] : matchData['away_team_id'];
-      if (teamId == null) return;
+      if (teamId == null) {
+        Log.w('TournamentMatch: No teamId found — skipping contract consumption');
+        return;
+      }
 
       // Get the active squad for this team
       final squadData = await SupabaseService.client
@@ -137,7 +143,10 @@ class _TournamentMatchScreenState
           .eq('is_active', true)
           .maybeSingle();
 
-      if (squadData == null) return;
+      if (squadData == null) {
+        Log.w('TournamentMatch: No active squad found — skipping contract consumption');
+        return;
+      }
 
       // Get the lineup players for this squad
       final lineupData = await SupabaseService.client
@@ -147,9 +156,13 @@ class _TournamentMatchScreenState
           .order('batting_order');
 
       final userXiCardIds = lineupData.map<String>((e) => e['user_card_id'] as String).toList();
-      if (userXiCardIds.isEmpty) return;
+      if (userXiCardIds.isEmpty) {
+        Log.w('TournamentMatch: No lineup players found — skipping contract consumption');
+        return;
+      }
 
-      await SupabaseService.client.rpc(
+      Log.i('TournamentMatch: Consuming contracts for ${userXiCardIds.length} cards');
+      final result = await SupabaseService.client.rpc(
         'consume_contracts_on_match_completion',
         params: {
           'p_user_id': userId,
@@ -158,6 +171,7 @@ class _TournamentMatchScreenState
           'p_idempotency_key': 'tournament_contracts_${widget.matchId}_$userId',
         },
       );
+      Log.i('TournamentMatch: Contract consumption result: $result');
 
       // Refresh user cards to get updated contracts_remaining
       ref.read(userCardsProvider.notifier).refresh();

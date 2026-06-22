@@ -6,7 +6,7 @@
 
 -- New table: contract_types (seed data like pack_types)
 CREATE TABLE contract_types (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL UNIQUE,
     tier TEXT NOT NULL CHECK (tier IN ('bronze', 'silver', 'gold', 'elite', 'legend')),
     matches_awarded INT NOT NULL CHECK (matches_awarded > 0),
@@ -17,7 +17,7 @@ CREATE TABLE contract_types (
 
 -- New table: user_contracts (quantity for stacking duplicates)
 CREATE TABLE user_contracts (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     contract_type_id UUID NOT NULL REFERENCES contract_types(id) ON DELETE CASCADE,
     quantity INT NOT NULL DEFAULT 1 CHECK (quantity >= 0),
@@ -28,7 +28,7 @@ CREATE TABLE user_contracts (
 
 -- New table: user_contract_packs (mirrors pack_types but for contract packs per user)
 CREATE TABLE user_contract_packs (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     pack_name TEXT NOT NULL,
     contract_count INT NOT NULL DEFAULT 3 CHECK (contract_count > 0),
@@ -203,32 +203,17 @@ CREATE OR REPLACE FUNCTION consume_contracts_for_match(
     p_match_id UUID,
     p_is_home_user BOOLEAN
 ) RETURNS TABLE(user_card_id UUID, contracts_remaining INT) AS $$
-DECLARE
-    v_user_card RECORD;
 BEGIN
-    -- Get the user's playing XI for this match
-    FOR v_user_card IN
-        SELECT uc.id, uc.contracts_remaining
-        FROM user_cards uc
-        JOIN line_up lu ON lu.user_card_id = uc.id
-        WHERE lu.match_id = p_match_id
+    RETURN QUERY
+        UPDATE user_cards uc
+        SET contracts_remaining = uc.contracts_remaining - 1
+        FROM line_up lu
+        WHERE lu.user_card_id = uc.id
+          AND lu.match_id = p_match_id
           AND lu.is_home = p_is_home_user
           AND uc.user_id = p_user_id
           AND uc.contracts_remaining > 0
-    LOOP
-        -- Decrement contracts_remaining by 1 for each XI player
-        UPDATE user_cards
-        SET contracts_remaining = contracts_remaining - 1
-        WHERE id = v_user_card.id
-          AND user_id = p_user_id
-          AND contracts_remaining > 0
-        RETURNING id, contracts_remaining INTO v_user_card;
-        
-        -- Return the updated card
-        RETURN NEXT v_user_card;
-    END LOOP;
-    
-    RETURN;
+        RETURNING uc.id, uc.contracts_remaining;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
@@ -308,32 +293,17 @@ CREATE OR REPLACE FUNCTION consume_contracts_for_match(
     p_match_id UUID,
     p_is_home_user BOOLEAN
 ) RETURNS TABLE(user_card_id UUID, contracts_remaining INT) AS $$
-DECLARE
-    v_user_card RECORD;
 BEGIN
-    -- Get the user's playing XI for this match
-    FOR v_user_card IN
-        SELECT uc.id, uc.contracts_remaining
-        FROM user_cards uc
-        JOIN line_up lu ON lu.user_card_id = uc.id
-        WHERE lu.match_id = p_match_id
+    RETURN QUERY
+        UPDATE user_cards uc
+        SET contracts_remaining = uc.contracts_remaining - 1
+        FROM line_up lu
+        WHERE lu.user_card_id = uc.id
+          AND lu.match_id = p_match_id
           AND lu.is_home = p_is_home_user
           AND uc.user_id = p_user_id
           AND uc.contracts_remaining > 0
-    LOOP
-        -- Decrement contracts_remaining by 1 for each XI player
-        UPDATE user_cards
-        SET contracts_remaining = contracts_remaining - 1
-        WHERE id = v_user_card.id
-          AND user_id = p_user_id
-          AND contracts_remaining > 0
-        RETURNING id, contracts_remaining INTO v_user_card;
-        
-        -- Return the updated card
-        RETURN NEXT v_user_card;
-    END LOOP;
-    
-    RETURN;
+        RETURNING uc.id, uc.contracts_remaining;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 

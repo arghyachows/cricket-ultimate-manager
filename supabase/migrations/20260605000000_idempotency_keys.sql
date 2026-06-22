@@ -10,7 +10,7 @@
 CREATE TABLE IF NOT EXISTS idempotency_keys (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   idempotency_key TEXT NOT NULL UNIQUE,
-  user_id       UUID NOT NULL REFERENCES auth_users(id) ON DELETE CASCADE,
+  user_id       UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   operation     TEXT NOT NULL CHECK (operation IN (
                   'start_match',
                   'confirm_match',
@@ -28,8 +28,7 @@ CREATE INDEX IF NOT EXISTS idx_idempotency_keys_key
 
 -- Periodic cleanup of expired keys
 CREATE INDEX IF NOT EXISTS idx_idempotency_keys_expires_at
-  ON idempotency_keys (expires_at)
-  WHERE expires_at < now();
+  ON idempotency_keys (expires_at);
 
 -- Revoke delete/update on expired rows — only the cleanup job may remove them
 ALTER TABLE idempotency_keys ENABLE ROW LEVEL SECURITY;

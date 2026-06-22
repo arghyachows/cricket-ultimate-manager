@@ -19,7 +19,7 @@ ALTER TABLE transfer_market ALTER COLUMN user_card_id DROP NOT NULL;
 
 -- 3) Create contract_types table if it doesn't exist
 CREATE TABLE IF NOT EXISTS contract_types (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL UNIQUE,
     tier TEXT NOT NULL CHECK (tier IN ('bronze', 'silver', 'gold', 'elite', 'legend')),
     matches_awarded INT NOT NULL CHECK (matches_awarded > 0),
@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS contract_types (
 
 -- 4) Create user_contracts table if it doesn't exist
 CREATE TABLE IF NOT EXISTS user_contracts (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     contract_type_id UUID NOT NULL REFERENCES contract_types(id) ON DELETE CASCADE,
     quantity INT NOT NULL DEFAULT 1 CHECK (quantity >= 0),
@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS user_contracts (
 
 -- 5) Create user_contract_packs table if it doesn't exist
 CREATE TABLE IF NOT EXISTS user_contract_packs (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     pack_name TEXT NOT NULL,
     contract_count INT NOT NULL DEFAULT 3 CHECK (contract_count > 0),

@@ -475,11 +475,18 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
   /// Consume contracts for the current user's XI in a multiplayer match.
   Future<void> _consumeMultiplayerContracts(String matchId) async {
     final userId = SupabaseService.currentUserId;
-    if (userId == null) return;
+    if (userId == null) {
+      Log.w('Multiplayer: No userId — skipping contract consumption');
+      return;
+    }
 
     final userXiCardIds = await _fetchUserXiCardIds(matchId, userId);
-    if (userXiCardIds.isEmpty) return;
+    if (userXiCardIds.isEmpty) {
+      Log.w('Multiplayer: No user XI card IDs — skipping contract consumption');
+      return;
+    }
 
+    Log.i('Multiplayer: Consuming contracts for ${userXiCardIds.length} cards');
     try {
       final result = await SupabaseService.client.rpc(
         'consume_contracts_on_match_completion',
@@ -492,7 +499,9 @@ class _MultiplayerMatchScreenState extends ConsumerState<MultiplayerMatchScreen>
       );
 
       final errors = (result?['errors'] as List<dynamic>? ?? []).cast<Map<String, dynamic>>().toList();
+      final consumed = (result?['consumed'] as List<dynamic>? ?? []).length;
 
+      Log.i('Multiplayer: Contract consumption result — consumed: $consumed, errors: ${errors.length}');
       if (errors.isNotEmpty) {
         Log.w('Multiplayer contracts: some contracts could not be consumed');
       }
