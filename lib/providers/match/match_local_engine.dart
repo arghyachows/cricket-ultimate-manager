@@ -8,7 +8,7 @@ import 'match_state.dart';
 class MatchLocalEngine {
   MatchEngine? _engine;
   Timer? _simulationTimer;
-  final void Function() onBallSimulated;
+  final void Function(MatchEvent result) onBallSimulated;
   final void Function() onMatchComplete;
 
   MatchLocalEngine({
@@ -59,7 +59,7 @@ class MatchLocalEngine {
       onMatchComplete();
       return;
     }
-    onBallSimulated();
+    onBallSimulated(result);
   }
 
   void cancel() {

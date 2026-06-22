@@ -1,3 +1,4 @@
+import '../../models/models.dart';
 import '../match_helpers.dart';
 import 'match_phase.dart';
 import 'match_state.dart';
@@ -13,19 +14,25 @@ extension MatchStateComputed on MatchState {
     return copyWith(phase: newPhase);
   }
 
+  /// Events from the regular match only (excluding super over).
+  List<MatchEvent> get _regularEvents {
+    final idx = events.indexWhere((e) => e.eventType == 'super_over');
+    return idx < 0 ? events : events.sublist(0, idx);
+  }
+
   /// True when a match is in progress or just completed.
   bool get hasActiveMatch => isSimulating || isMatchComplete;
 
   int _inningsScore(int inn) =>
-      MatchHelpers.inningsScoreFromEvents(events, inn);
+      MatchHelpers.inningsScoreFromEvents(_regularEvents, inn);
 
   int _inningsWickets(int inn) {
-    final innEvents = events.where((e) => e.innings == inn);
+    final innEvents = _regularEvents.where((e) => e.innings == inn);
     return innEvents.isEmpty ? 0 : (innEvents.last.wicketsAfter);
   }
 
   String _inningsOvers(int inn) {
-    final innEvents = events.where((e) =>
+    final innEvents = _regularEvents.where((e) =>
         e.innings == inn &&
         e.eventType != 'wide' &&
         e.eventType != 'no_ball' &&
@@ -117,7 +124,7 @@ extension MatchStateComputed on MatchState {
   /// Balls remaining in the current innings.
   int get ballsRemaining {
     final totalBalls = matchOvers * 6;
-    final bowled = events
+    final bowled = _regularEvents
         .where((e) =>
             e.innings == currentInnings &&
             e.eventType != 'wide' &&

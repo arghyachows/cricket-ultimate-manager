@@ -208,9 +208,7 @@ class MatchNotifier extends StateNotifier<MatchState> {
     );
   }
 
-  void _onLocalBallSimulated() {
-    final result = _localEngine?.simulateNextBall();
-    if (result == null) return;
+  void _onLocalBallSimulated(MatchEvent result) {
     _applyEngineResult(result);
   }
 
