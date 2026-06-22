@@ -383,8 +383,8 @@ class MatchEngine {
       };
     }
     const bat = this.batsmanStats[batKey];
-    if (result.eventType !== "wide") bat.balls++;
-    bat.runs += result.runs;
+    if (!isExtra) bat.balls++;
+    if (!isExtra) bat.runs += result.runs;
     if (result.runs === 4) bat.fours++;
     if (result.runs === 6) bat.sixes++;
     if (result.isWicket) {

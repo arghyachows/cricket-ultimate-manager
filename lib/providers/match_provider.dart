@@ -13,7 +13,6 @@ import 'match/match_state.dart';
 import 'match/match_phase.dart';
 export 'match/match_state.dart';
 import 'match/match_node_backend.dart';
-import 'match/match_local_engine.dart';
 import 'match/match_completion_handler.dart';
 import 'match_helpers.dart';
 
@@ -24,7 +23,6 @@ final matchProvider = StateNotifierProvider<MatchNotifier, MatchState>((ref) {
 class MatchNotifier extends StateNotifier<MatchState> {
   final Ref ref;
   MatchNodeBackend? _nodeBackend;
-  MatchLocalEngine? _localEngine;
   bool _matchCompleteFired = false;
   static const bool _nodeBackendEnabled = true;
 
@@ -36,15 +34,12 @@ class MatchNotifier extends StateNotifier<MatchState> {
   @override
   void dispose() {
     _nodeBackend?.cancel();
-    _localEngine?.cancel();
     super.dispose();
   }
 
   void reset() {
     _nodeBackend?.cancel();
-    _localEngine?.cancel();
     _nodeBackend = null;
-    _localEngine = null;
     _matchCompleteFired = false;
     state = const MatchState(phase: MatchPhase.notStarted);
   }
@@ -73,7 +68,6 @@ class MatchNotifier extends StateNotifier<MatchState> {
     bool challengeMode = false,
   }) async {
     _nodeBackend?.cancel();
-    _localEngine?.cancel();
     _matchCompleteFired = false;
 
     final isHomeBatFirst = homeBatsFirst;
@@ -124,20 +118,14 @@ class MatchNotifier extends StateNotifier<MatchState> {
         homeBatsFirst: isHomeBatFirst,
       );
 
-      if (success) {
-        Log.i('SUCCESS: Using Node.js backend');
+      if (!success) {
+        Log.e('FAILURE: Node.js backend failed to start match');
+        _nodeBackend?.cancel();
+        _nodeBackend = null;
+        state = state.copyWith(isSimulating: false, isMatchComplete: true);
         return;
       }
-      Log.w('FALLBACK: Node.js backend failed, using local engine...');
-      _nodeBackend = null;
     }
-
-    _startLocalEngine(
-      homeXI: homeXI, awayXI: awayXI,
-      homeChemistry: homeChemistry, awayChemistry: awayChemistry,
-      homeTeamName: homeTeamName, awayTeamName: awayTeamName,
-      overs: overs, pitchCondition: pitchCondition, homeBatsFirst: isHomeBatFirst,
-    );
   }
 
   // ── Node.js Backend Callbacks ──
@@ -180,55 +168,6 @@ class MatchNotifier extends StateNotifier<MatchState> {
     _nodeBackend?.cancel();
     _nodeBackend = null;
     state = state.copyWith(isSimulating: false, isMatchComplete: true);
-    _onMatchComplete();
-  }
-
-  // ── Local Engine ──
-
-  void _startLocalEngine({
-    required List<LineupPlayer> homeXI,
-    required List<LineupPlayer> awayXI,
-    required int homeChemistry,
-    required int awayChemistry,
-    required String homeTeamName,
-    required String awayTeamName,
-    required int overs,
-    required String pitchCondition,
-    required bool homeBatsFirst,
-  }) {
-    _localEngine = MatchLocalEngine(
-      onBallSimulated: _onLocalBallSimulated,
-      onMatchComplete: _onLocalMatchComplete,
-    );
-    _localEngine!.start(
-      homeXI: homeXI, awayXI: awayXI,
-      homeChemistry: homeChemistry, awayChemistry: awayChemistry,
-      homeTeamName: homeTeamName, awayTeamName: awayTeamName,
-      overs: overs, pitchCondition: pitchCondition, homeBatsFirst: homeBatsFirst,
-    );
-  }
-
-  void _onLocalBallSimulated(MatchEvent result) {
-    _applyEngineResult(result);
-  }
-
-  void _onLocalMatchComplete() {
-    final result = _localEngine?.engine?.getMatchResult();
-    state = state.copyWith(isSimulating: false, currentCommentary: result);
-    _onMatchComplete();
-  }
-
-  void _applyEngineResult(MatchEvent result) {
-    final engine = _localEngine?.engine;
-    if (engine == null) return;
-    state = MatchLocalEngine.applyBallResult(state, result, engine);
-  }
-
-  void skipToEnd() {
-    _localEngine?.cancel();
-    final engine = _localEngine?.engine;
-    if (engine == null) return;
-    state = MatchLocalEngine.computeSkipToEndResult(state, engine);
     _onMatchComplete();
   }
 
