@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import '../core/theme.dart';
 import '../core/constants.dart';
 import '../providers/match_provider.dart';
@@ -17,6 +19,12 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
+  int _lastEventCount = 0;
+  MatchEvent? _highlightEvent;
+  Timer? _highlightTimer;
+  int _scoreKey = 0;
+  Timer? _scorePulseTimer;
+
   @override
   void initState() {
     super.initState();
@@ -26,12 +34,35 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen>
   @override
   void dispose() {
     _tabController.dispose();
+    _highlightTimer?.cancel();
+    _scorePulseTimer?.cancel();
     super.dispose();
+  }
+
+  void _triggerHighlight(MatchEvent event) {
+    _highlightTimer?.cancel();
+    _highlightEvent = event;
+    _scoreKey++;
+    _highlightTimer = Timer(const Duration(milliseconds: 1200), () {
+      if (mounted) setState(() => _highlightEvent = null);
+    });
+    _scorePulseTimer?.cancel();
+    _scorePulseTimer = Timer(const Duration(milliseconds: 600), () {
+      if (mounted) setState(() => _scoreKey++);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final matchState = ref.watch(matchProvider);
+
+    if (matchState.events.length > _lastEventCount && matchState.events.isNotEmpty) {
+      final latest = matchState.events.last;
+      if (['four', 'six', 'wicket', 'no_ball'].contains(latest.eventType) || latest.runs >= 4) {
+        _triggerHighlight(latest);
+      }
+    }
+    _lastEventCount = matchState.events.length;
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -74,28 +105,30 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen>
   Widget _buildLiveTab(BuildContext context, WidgetRef ref, MatchState matchState) {
     final showResult = !matchState.isSimulating && matchState.events.isNotEmpty;
 
-    return Column(
+    return Stack(
       children: [
-        const SizedBox(height: 4),
-        // Live commentary
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(12),
-          color: AppTheme.surfaceLight,
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 300),
-            child: Text(
-              matchState.currentCommentary ?? 'Match starting...',
-              key: ValueKey(matchState.events.length),
-              style: const TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w500,
-                color: Colors.white,
+        Column(
+          children: [
+            const SizedBox(height: 4),
+            // Live commentary
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              color: AppTheme.surfaceLight,
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                child: Text(
+                  matchState.currentCommentary ?? 'Match starting...',
+                  key: ValueKey(matchState.events.length),
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.white,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
               ),
-              textAlign: TextAlign.center,
             ),
-          ),
-        ),
 
         // Current batsmen (filtered by current innings)
         if (matchState.currentBatsmen.isNotEmpty)
@@ -114,7 +147,11 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen>
               : _buildTimeline(matchState),
         ),
       ],
-    );
+    ),
+    // Highlight overlay
+    if (_highlightEvent != null) _buildHighlightOverlay(_highlightEvent!),
+   ],
+  );
   }
 
   Widget _buildScoreboard(MatchState state) {
@@ -161,12 +198,14 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen>
                         children: [
                           Text(
                             '${state.homeScore}/${state.homeWickets}',
+                            key: ValueKey('home_$_scoreKey'),
                             style: TextStyle(
                               fontSize: homeBatting ? 28 : 22,
                               fontWeight: FontWeight.bold,
                               color: homeBatting ? Colors.white : Colors.white54,
                             ),
-                          ),
+                          ).animate()
+                            .scaleXY(begin: 1.3, end: 1.0, duration: const Duration(milliseconds: 400), curve: Curves.elasticOut),
                           const SizedBox(width: 6),
                           Text(
                             '(${state.homeOvers})',
@@ -231,12 +270,14 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen>
                           const SizedBox(width: 6),
                           Text(
                             '${state.awayScore}/${state.awayWickets}',
+                            key: ValueKey('away_$_scoreKey'),
                             style: TextStyle(
                               fontSize: !homeBatting ? 28 : 22,
                               fontWeight: FontWeight.bold,
                               color: !homeBatting ? Colors.white : Colors.white54,
                             ),
-                          ),
+                          ).animate()
+                            .scaleXY(begin: 1.3, end: 1.0, duration: const Duration(milliseconds: 400), curve: Curves.elasticOut),
                         ] else
                           const Text(
                             'Yet to bat',
@@ -370,6 +411,83 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen>
     );
   }
 
+  Color _eventColor(String eventType) {
+    switch (eventType) {
+      case 'four': return AppTheme.primaryLight;
+      case 'six': return AppTheme.accent;
+      case 'wicket': return AppTheme.error;
+      case 'no_ball': return Colors.orangeAccent;
+      default: return Colors.white;
+    }
+  }
+
+  String _eventLabel(String eventType, int runs) {
+    if (runs >= 6) return 'SIX!';
+    if (runs == 4) return 'FOUR!';
+    if (eventType == 'six') return 'SIX!';
+    if (eventType == 'four') return 'FOUR!';
+    if (eventType == 'wicket') return 'WICKET!';
+    if (eventType == 'no_ball') return 'NO BALL';
+    if (runs > 0) return '+$runs';
+    return '';
+  }
+
+  Widget _buildHighlightOverlay(MatchEvent event) {
+    final color = _eventColor(event.eventType);
+    final label = _eventLabel(event.eventType, event.runs);
+    final isWicket = event.eventType == 'wicket';
+    final isBigHit = event.eventType == 'six' || event.runs >= 6;
+
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: AnimatedOpacity(
+          opacity: 1.0,
+          duration: const Duration(milliseconds: 200),
+          child: Container(
+            color: color.withValues(alpha: isBigHit ? 0.25 : (isWicket ? 0.3 : 0.15)),
+            child: Center(
+              child: isWicket
+                  ? Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: color.withValues(alpha: 0.5), width: 2),
+                      ),
+                      child: Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 36,
+                          fontWeight: FontWeight.w900,
+                          color: color,
+                          letterSpacing: 4,
+                        ),
+                      ).animate().shake(duration: const Duration(milliseconds: 400)),
+                    )
+                  : Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: isBigHit ? 64 : 48,
+                        fontWeight: FontWeight.w900,
+                        color: color,
+                        letterSpacing: 8,
+                        shadows: [
+                          Shadow(color: color.withValues(alpha: 0.6), blurRadius: 30),
+                          Shadow(color: color.withValues(alpha: 0.3), blurRadius: 60),
+                        ],
+                      ),
+                    ).animate()
+                      .scaleXY(begin: 0.3, end: 1.0, duration: const Duration(milliseconds: 500), curve: Curves.elasticOut)
+                      .rotate(begin: -0.05, end: 0.0, duration: const Duration(milliseconds: 500)),
+            ),
+          ).animate().fadeIn(duration: const Duration(milliseconds: 150))
+            .then(delay: const Duration(milliseconds: 900))
+            .fadeOut(duration: const Duration(milliseconds: 150)),
+        ),
+      ),
+    );
+  }
+
   Widget _buildTimeline(MatchState state) {
     if (state.events.isEmpty) {
       return const Center(
@@ -389,6 +507,7 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen>
   }
 
   Widget _buildEventTile(MatchEvent event) {
+    final isImportant = event.eventType == 'four' || event.eventType == 'six' || event.eventType == 'wicket';
     Color eventColor;
     IconData eventIcon;
 
@@ -466,7 +585,15 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen>
             ),
         ],
       ),
-    );
+    )
+      .animate()
+      .slideX(begin: 0.3, duration: const Duration(milliseconds: 300), curve: Curves.easeOut)
+      .fadeIn(duration: const Duration(milliseconds: 300))
+      .shake(
+        duration: isImportant ? const Duration(milliseconds: 300) : Duration.zero,
+        hz: isImportant ? 6 : 0,
+      )
+      .scaleXY(begin: 0.95, end: 1.0, duration: const Duration(milliseconds: 200));
   }
 
   Widget _buildMatchResult(BuildContext context, WidgetRef ref, MatchState state) {
