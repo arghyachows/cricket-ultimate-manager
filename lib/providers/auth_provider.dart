@@ -10,6 +10,14 @@ final authStateProvider = StreamProvider<AuthState>((ref) {
   return SupabaseService.auth.onAuthStateChange;
 });
 
+/// Signed-in user id. Changes only when the account changes (not on token
+/// refresh), so user-scoped providers can watch it to reset their state.
+final sessionUserIdProvider = Provider<String?>((ref) {
+  return ref.watch(authStateProvider
+          .select((s) => s.valueOrNull?.session?.user.id)) ??
+      SupabaseService.currentUserId;
+});
+
 final isAuthenticatedProvider = Provider<bool>((ref) {
   final authState = ref.watch(authStateProvider);
   return authState.when(

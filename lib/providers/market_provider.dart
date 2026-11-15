@@ -10,6 +10,7 @@ import 'contracts_provider.dart';
 // ─── Active market listings ───────────────────────────────────────
 final marketListingsProvider = StateNotifierProvider<MarketNotifier,
     AsyncValue<List<MarketListing>>>((ref) {
+  ref.watch(sessionUserIdProvider);
   return MarketNotifier(ref);
 });
 
@@ -285,6 +286,7 @@ class MarketNotifier extends StateNotifier<AsyncValue<List<MarketListing>>> {
 // ─── My active bids ───────────────────────────────────────────────
 final myBidsProvider = StateNotifierProvider<MyBidsNotifier,
     AsyncValue<List<MarketBid>>>((ref) {
+  ref.watch(sessionUserIdProvider);
   return MyBidsNotifier();
 });
 
@@ -321,6 +323,7 @@ class MyBidsNotifier extends StateNotifier<AsyncValue<List<MarketBid>>> {
 // ─── My active listings (seller view) ─────────────────────────────
 final myListingsProvider = StateNotifierProvider<MyListingsNotifier,
     AsyncValue<List<MarketListing>>>((ref) {
+  ref.watch(sessionUserIdProvider);
   return MyListingsNotifier();
 });
 

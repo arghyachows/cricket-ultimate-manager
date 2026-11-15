@@ -2,9 +2,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/supabase_service.dart';
 import '../models/models.dart';
+import 'auth_provider.dart';
 
 // IDs of user_cards currently listed on the market (active listings)
 final listedCardIdsProvider = FutureProvider<Set<String>>((ref) async {
+  ref.watch(sessionUserIdProvider);
   final userId = SupabaseService.currentUserId;
   if (userId == null) return {};
   final rows = await SupabaseService.client
@@ -18,6 +20,7 @@ final listedCardIdsProvider = FutureProvider<Set<String>>((ref) async {
 // All user cards
 final userCardsProvider =
     StateNotifierProvider<UserCardsNotifier, AsyncValue<List<UserCard>>>((ref) {
+  ref.watch(sessionUserIdProvider);
   return UserCardsNotifier();
 });
 

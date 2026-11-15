@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/logger.dart';
 import '../core/supabase_service.dart';
 import 'match_provider.dart';
+import 'auth_provider.dart';
 
 /// Aggregated career stats for a single player card across all matches.
 class PlayerCareerStats {
@@ -196,7 +197,10 @@ class CareerStatsNotifier extends StateNotifier<List<PlayerCareerStats>> {
 
 final careerStatsNotifierProvider =
     StateNotifierProvider<CareerStatsNotifier, List<PlayerCareerStats>>(
-  (ref) => CareerStatsNotifier(),
+  (ref) {
+    ref.watch(sessionUserIdProvider);
+    return CareerStatsNotifier();
+  },
 );
 
 /// Sorted view of career stats.

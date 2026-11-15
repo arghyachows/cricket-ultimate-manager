@@ -33,6 +33,7 @@ class DailyRewardState {
 /// Provider for daily reward logic — checks eligibility and claims rewards.
 final dailyRewardProvider =
     StateNotifierProvider<DailyRewardNotifier, DailyRewardState>((ref) {
+  ref.watch(sessionUserIdProvider);
   return DailyRewardNotifier(ref);
 });
 

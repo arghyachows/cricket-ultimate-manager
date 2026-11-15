@@ -9,6 +9,7 @@ import 'cards_provider.dart';
 final userCardPacksProvider =
     StateNotifierProvider<UserCardPacksNotifier, AsyncValue<List<UserCardPack>>>(
         (ref) {
+  ref.watch(sessionUserIdProvider);
   return UserCardPacksNotifier(ref);
 });
 

@@ -9,6 +9,7 @@ import 'team_provider.dart';
 import 'match_provider.dart';
 
 final multiplayerProvider = StateNotifierProvider<MultiplayerNotifier, MultiplayerState>((ref) {
+  ref.watch(sessionUserIdProvider);
   return MultiplayerNotifier(ref);
 });
 

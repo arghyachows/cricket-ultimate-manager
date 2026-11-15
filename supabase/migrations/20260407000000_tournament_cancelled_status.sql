@@ -8,16 +8,19 @@ ALTER TYPE match_format ADD VALUE IF NOT EXISTS 't10';
 
 -- Add missing RLS policies for tournament operations
 -- Allow service role and authenticated users to insert/update tournament_participants
-CREATE POLICY IF NOT EXISTS "Service can manage tournament participants"
+DROP POLICY IF EXISTS "Service can manage tournament participants" ON tournament_participants;
+CREATE POLICY "Service can manage tournament participants"
   ON tournament_participants FOR ALL
   USING (true) WITH CHECK (true);
 
 -- Allow service role to manage tournaments
-CREATE POLICY IF NOT EXISTS "Service can manage tournaments"
+DROP POLICY IF EXISTS "Service can manage tournaments" ON tournaments;
+CREATE POLICY "Service can manage tournaments"
   ON tournaments FOR ALL
   USING (true) WITH CHECK (true);
 
 -- Allow service role to insert matches for tournaments
-CREATE POLICY IF NOT EXISTS "Service can manage matches"
+DROP POLICY IF EXISTS "Service can manage matches" ON matches;
+CREATE POLICY "Service can manage matches"
   ON matches FOR INSERT
   WITH CHECK (true);

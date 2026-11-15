@@ -410,7 +410,7 @@ INSERT INTO player_cards (player_name, country, league, team, role, rating, batt
 
 -- Bronze
 ('Azam Khan', 'Pakistan', 'PSL', 'Islamabad United', 'wicket_keeper', 73, 76, 5, 75, 76, 50, 50, 'bronze', 'standard'),
-('Abbas Afridi', 'Pakistan', 'PSL', 'Karachi Kings', 'bowler', 72, 15, 75, 58, 80, 90, 22, 'bronze', 'bronze'),
+('Abbas Afridi', 'Pakistan', 'PSL', 'Karachi Kings', 'bowler', 72, 15, 75, 58, 80, 90, 22, 'bronze', 'standard'),
 
 -- ============================================================
 -- MORE CURRENT PLAYERS - SOUTH AFRICA
