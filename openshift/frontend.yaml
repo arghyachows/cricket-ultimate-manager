@@ -1,0 +1,107 @@
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: cricket-frontend
+  labels:
+    app: cricket-frontend
+spec:
+  lookupPolicy:
+    local: true
+---
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: cricket-frontend
+  labels:
+    app: cricket-frontend
+spec:
+  source:
+    type: Binary
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: Dockerfile
+  output:
+    to:
+      kind: ImageStreamTag
+      name: cricket-frontend:latest
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cricket-frontend
+  labels:
+    app: cricket-frontend
+    app.kubernetes.io/part-of: cricket-ultimate-manager
+  annotations:
+    image.openshift.io/triggers: '[{"from":{"kind":"ImageStreamTag","name":"cricket-frontend:latest"},"fieldPath":"spec.template.spec.containers[?(@.name==\"cricket-frontend\")].image"}]'
+    app.openshift.io/connects-to: '[{"apiVersion":"apps/v1","kind":"Deployment","name":"cricket-backend"}]'
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cricket-frontend
+  template:
+    metadata:
+      labels:
+        app: cricket-frontend
+    spec:
+      containers:
+        - name: cricket-frontend
+          image: cricket-frontend:latest
+          ports:
+            - containerPort: 8080
+              name: http
+          resources:
+            requests:
+              cpu: 20m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cricket-frontend
+  labels:
+    app: cricket-frontend
+spec:
+  selector:
+    app: cricket-frontend
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: cricket-frontend
+  labels:
+    app: cricket-frontend
+spec:
+  to:
+    kind: Service
+    name: cricket-frontend
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

@@ -15,6 +15,7 @@ final contractTypesProvider = FutureProvider<List<ContractType>>((ref) async {
 // User Contracts Provider (inventory)
 final userContractsProvider =
     StateNotifierProvider<UserContractsNotifier, AsyncValue<List<UserContract>>>((ref) {
+  ref.watch(sessionUserIdProvider);
   return UserContractsNotifier(ref);
 });
 
@@ -190,6 +191,7 @@ class UserContractsNotifier extends StateNotifier<AsyncValue<List<UserContract>>
 // User Contract Packs Provider
 final userContractPacksProvider =
     StateNotifierProvider<UserContractPacksNotifier, AsyncValue<List<UserContractPack>>>((ref) {
+  ref.watch(sessionUserIdProvider);
   return UserContractPacksNotifier();
 });
 

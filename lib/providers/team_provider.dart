@@ -7,6 +7,7 @@ import 'auth_provider.dart';
 // Active team
 final teamProvider =
     StateNotifierProvider<TeamNotifier, AsyncValue<Team?>>((ref) {
+  ref.watch(sessionUserIdProvider);
   return TeamNotifier(ref);
 });
 

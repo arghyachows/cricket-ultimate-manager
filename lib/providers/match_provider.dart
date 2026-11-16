@@ -17,6 +17,7 @@ import 'match/match_completion_handler.dart';
 import 'match_helpers.dart';
 
 final matchProvider = StateNotifierProvider<MatchNotifier, MatchState>((ref) {
+  ref.watch(sessionUserIdProvider);
   return MatchNotifier(ref);
 });
 
